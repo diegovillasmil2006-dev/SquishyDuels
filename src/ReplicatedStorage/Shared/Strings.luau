@@ -1187,7 +1187,7 @@ local Strings = {
 		power = "Your gear: {x} throw power",
 		star = "{name} ★{n}",
 		powerLine = "x{x} throw power",
-		armorLine = "Traps take less",
+		armorLine = "Go through traps",
 		max = "MAX",
 		maxLine = "You have it all!",
 		need = "Need {coins} more",
@@ -1651,8 +1651,9 @@ local Strings = {
 			rings = "{hit}/{total} RINGS",
 			landed = "{distance} studs!",
 			newBest = "NEW BEST!",
-			trap = "TRAP!", -- gear step 3: a trap took some of this throw's power
-			booster = "BOOSTER!", -- 2026-10-31: the throw bounced off a booster
+			trap = "TRAP!", -- the course: a trap stopped this throw
+			booster = "BOOSTER!", -- the course: the throw bounced off a booster
+			armor = "ARMOR!", -- the course: the armor went through a trap
 		},
 	},
 

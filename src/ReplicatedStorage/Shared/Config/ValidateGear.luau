@@ -6,8 +6,7 @@
 --   * tierSteps a non-empty list of whole numbers >= 1; tierPower finite and > 1;
 --   * launcherPrices one whole Coin price a step (as many as tierSteps add up to), each in [1, maxCoins], strictly
 --     rising; armGearShare in (0, 1] with every launcher price x it whole;
---   * armorPrices one whole price a tier, in [1, maxCoins], strictly rising;
---   * trapChance one chance a tier in [0, 1); trapBase a whole number >= 0.
+--   * armorPrices one whole price a tier, in [1, maxCoins], strictly rising.
 
 local G = "Config.Economy.Gear"
 
@@ -80,14 +79,5 @@ return function(config: any): { string }
 			)
 		end
 	end
-
-	if type(g.trapChance) ~= "table" or type(g.tierSteps) ~= "table" or #g.trapChance ~= #g.tierSteps then
-		table.insert(problems, `{G}.trapChance must have one chance a tier`)
-	else
-		for zone, chance in g.trapChance do
-			expect(isNumber(chance) and chance >= 0 and chance < 1, `{G}.trapChance[{zone}] must be in [0, 1)`)
-		end
-	end
-	expect(isWhole(g.trapBase) and g.trapBase >= 0, `{G}.trapBase must be a whole number >= 0`)
 	return problems
 end

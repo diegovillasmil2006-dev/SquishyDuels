@@ -133,21 +133,6 @@ return function(t: Context)
 		expect.equal(GearMath.multiplier({ held = 2.9 }), 4) -- whole steps only
 	end)
 
-	t.test("traps: 8% .. 30% by zone; a trap leaves 2^-(zone + 1 - armor), never more than all", function()
-		expect.deepEqual(
-			{ GearMath.trapChance(1), GearMath.trapChance(4), GearMath.trapChance(7) },
-			{ 0.08, 0.18, 0.30 }
-		)
-		expect.equal(GearMath.trapChance(99), 0.30) -- past the last zone: the last zone's
-		expect.equal(GearMath.trapChance(0), 0.08)
-		expect.equal(GearMath.trapKeep(1, 0), 1 / 4) -- harsh without armor (owner 2026-10-17)
-		expect.equal(GearMath.trapKeep(7, 0), 1 / 256)
-		expect.equal(GearMath.trapKeep(7, 7), 1 / 2)
-		expect.equal(GearMath.trapKeep(1, 1), 1 / 2)
-		expect.equal(GearMath.trapKeep(1, 2), 1) -- enough armor: the trap takes nothing
-		expect.equal(GearMath.trapKeep(1, 7), 1)
-	end)
-
 	t.test("buyDecision: the next step and its price, or net.invalid / gear.max / gear.priceChanged", function()
 		local none = gear(0, 0, 0, 0)
 		expect.deepEqual(GearMath.buyDecision(none, "held", 18_000), { step = 1, price = 18_000 })
@@ -181,7 +166,6 @@ return function(t: Context)
 			g.tierSteps = table.clone(g.tierSteps)
 			g.launcherPrices = table.clone(g.launcherPrices)
 			g.armorPrices = table.clone(g.armorPrices)
-			g.trapChance = table.clone(g.trapChance)
 			change(g)
 			local economy = table.clone(Config.Economy)
 			economy.Gear = g
@@ -198,9 +182,6 @@ return function(t: Context)
 		end) > 0)
 		expect.truthy(broken(function(g)
 			g.launcherPrices[1] = 18_001 -- arm gear's half is not whole
-		end) > 0)
-		expect.truthy(broken(function(g)
-			g.trapChance[2] = 1 -- every throw trapped
 		end) > 0)
 		expect.truthy(broken(function(g)
 			g.tierSteps[1] = 0

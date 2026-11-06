@@ -1,4 +1,5 @@
-"""Squishy Duels highway props: the 7 traps + 7 boosters as blocky Blender meshes (2026-11-01).
+"""Squishy Duels highway props: the 7 traps + 14 boosters as blocky Blender meshes (2026-11-01; the sheet's other 7
+boosters 2026-11-06: set HIGHWAY_PROPS_ONLY=id,id to build and export only those pieces).
 
 The owner's style rule (2026-11-01, "everything was made in blender and made blocky", like Steal an Egg): the pieces of
 the owner's "Launchers & Biomes - Concept Sheet" (Desktop "jason designs", Candy Toy-Box Park Lobby.zip,
@@ -51,6 +52,15 @@ def wing_pts(s):  # concept-kit.js wingPts
 
 def mirror(pts):
 	return [(-x, y) for x, y in pts]
+
+
+def star_pts(n, ro, ri):  # concept-kit.js starPts
+	pts = []
+	for i in range(n * 2):
+		a = math.pi / 2 + i * math.pi / n
+		q = ri if i % 2 else ro
+		pts.append((math.cos(a) * q, math.sin(a) * q))
+	return pts
 
 
 # id -> palette (key -> (hex, glows)) and the sheet's build (concept-kit.js line in each comment)
@@ -189,6 +199,71 @@ def _(k):
 		k.e("gold", wing_pts(1.8) if s > 0 else mirror(wing_pts(1.8)), 0.3, (s * 7, 7, 0))
 
 
+@piece("cm_sprinkle_ramp", {"ramp": ("8EEAD0", False), "s1": ("FF8FBF", False), "s2": ("FFD84A", False),
+	"s3": ("FFF6EC", False)})  # :281
+def _(k):
+	k.w("ramp", (10, 3, 12), (0, 1.5, 0), (0, 180, 0))
+	for i in range(9):
+		x = -3.6 + (i % 3) * 3.6 + (i % 2) * 0.8
+		z = 4 - (i // 3) * 4
+		k.b(("s1", "s2", "s3")[i % 3], (1.1, 0.25, 0.3), (x, (6 - z) / 4 + 0.12, z), (14, i * 40, 0))
+
+
+@piece("bt_butter_slide", {"butter": ("FFE36E", False), "melt": ("FFE36E", False), "foil": ("FFF6EC", False)})  # :284
+def _(k):
+	k.u("butter", (11.8, 0.5, 24), (0, 0, 0))
+	for x, z, w, d in ((-2.5, -6, 3.4, 5), (2.6, 2, 2.6, 6), (-1, 8, 4, 3)):
+		k.u("melt", (w, 0.14, d), (x, 0.5, z))
+	for s in (-1, 1):
+		k.u("foil", (0.5, 0.65, 24), (s * 6.15, 0, 0))
+
+
+@piece("bl_straw_tube", {"tube": ("FF6FA3", False), "stripe": ("FFF6EC", False)})  # :287
+def _(k):
+	for s in (-1, 1):
+		k.u("tube", (1, 7, 16), (s * 5.5, 0, 0))
+	k.u("tube", (12, 1, 16), (0, 7, 0))
+	for z in (-4, 4):
+		for s in (-1, 1):
+			k.u("stripe", (1.2, 7.1, 1.4), (s * 5.5, 0, z))
+		k.u("stripe", (12.2, 1.1, 1.4), (0, 7, z))
+
+
+@piece("fd_cone_cannon", {"stand": ("F4FBFF", False), "cone": ("E0A062", False), "rim": ("FF8FBF", False)})  # :290
+def _(k):
+	k.u("stand", (6, 1.2, 6), (0, 0, 0))
+	k.u("stand", (3.6, 1.2, 3.6), (0, 1.2, 0.6))
+	g = k.g((0, 3.2, 0.6), (-55, 0, 0))
+	g.c("cone", (4.6, 0.8), 7.4, (0, 3.2, 0))
+	g.r("rim", 2.3, 0.45, (0, 6.9, 0), (90, 0, 0), 8)
+
+
+@piece("lv_magma_ramp", {"ramp": ("3A2C3A", False), "seam": ("FF6A3D", True)})  # :293
+def _(k):
+	k.w("ramp", (12, 3.5, 10), (0, 1.75, 0), (0, 180, 0))
+	for i in range(3):
+		z = 3 - i * 3
+		k.b("seam", (7 - i, 0.12, 0.4), (i - 1, (5 - z) * 0.35 + 0.08, z), (19.3, 10 - i * 12, 0))
+
+
+@piece("rr_star_ring", {"ring": ("FFD84A", True), "halo": ("FFF0A0", False), "star": ("FFFFFF", True)})  # :295
+def _(k):
+	k.r("ring", 7, 0.7, (0, 8.5, 0), None, 10)
+	k.r("halo", 7.9, 0.3, (0, 8.5, 0), None, 10)
+	k.e("star", star_pts(5, 1.7, 0.75), 0.6, (0, 16.6, 0))
+
+
+@piece("dh_wing_gate", {"marble": ("FBF7F2", False), "gold": ("FFC23C", False), "wing": ("FFFFFF", False),
+	"halo": ("FFF0A0", True)})  # :298
+def _(k):
+	for s in (-1, 1):
+		k.u("marble", (2, 15, 2), (s * 9, 0, 0))
+		k.u("gold", (2.6, 1, 2.6), (s * 9, 15, 0))
+		k.e("wing", wing_pts(4.6) if s > 0 else mirror(wing_pts(4.6)), 0.6, (s * 10, 9, 0))
+	k.u("marble", (20, 1.6, 2), (0, 16, 0))
+	k.r("halo", 2.4, 0.4, (0, 20, 0), None, 12)
+
+
 # ------------------------------------------------------------------------------------------------ the sheet's kit
 
 
@@ -205,6 +280,21 @@ def bm_box(s):
 		v.co = Vector((v.co.x * s[0], v.co.y * s[1], v.co.z * s[2]))
 	chamfer = min(0.12, 0.2 * min(s))  # toy-block edges
 	bmesh.ops.bevel(bm, geom=bm.verts[:] + bm.edges[:], offset=chamfer, offset_type="OFFSET", segments=1,
+		profile=0.5, affect="EDGES", clamp_overlap=True)
+	return bm
+
+
+def bm_wedge(s):  # the sheet's k.w: width s[0], height s[1], depth s[2], rising towards +Z, centred
+	w, h, d = s[0] / 2, s[1] / 2, s[2] / 2
+	bm = bmesh.new()
+	lo = [bm.verts.new((-w, y, z)) for y, z in ((-h, -d), (-h, d), (h, d))]
+	hi = [bm.verts.new((w, y, z)) for y, z in ((-h, -d), (-h, d), (h, d))]
+	bm.faces.new(lo)
+	bm.faces.new(hi)
+	for i in range(3):
+		bm.faces.new((lo[i], lo[(i + 1) % 3], hi[(i + 1) % 3], hi[i]))
+	bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+	bmesh.ops.bevel(bm, geom=bm.verts[:] + bm.edges[:], offset=min(0.12, 0.2 * min(s)), offset_type="OFFSET", segments=1,
 		profile=0.5, affect="EDGES", clamp_overlap=True)
 	return bm
 
@@ -273,11 +363,18 @@ def hull_of(bm, flat_top):
 
 
 class Kit:
-	def __init__(self):
-		self.parts = []  # (key, bmesh in piece space, Roblox axes)
+	def __init__(self, parts=None, base=None):
+		self.parts = [] if parts is None else parts  # (key, bmesh in piece space, Roblox axes)
+		self.base = base or Matrix.Identity(4)
+
+	def g(self, p, r):  # the sheet's k.g: a group at p turned by r
+		return Kit(self.parts, self.base @ Matrix.Translation(Vector(p)) @ rot_matrix(r))
 
 	def b(self, key, s, p, r=None):
 		self._put(key, bm_box(s), p, r)
+
+	def w(self, key, s, p, r=None):
+		self._put(key, bm_wedge(s), p, r)
 
 	def u(self, key, s, p, r=None):
 		self._put(key, bm_box(s), (p[0], p[1] + s[1] / 2, p[2]), r, s[1] <= 0.6 and p[1] <= 0)
@@ -297,7 +394,7 @@ class Kit:
 
 	def _put(self, key, bm, p, r=None, flat_top=False):
 		hull = hull_of(bm, flat_top)
-		m = Matrix.Translation(Vector(p)) @ rot_matrix(r)
+		m = self.base @ Matrix.Translation(Vector(p)) @ rot_matrix(r)
 		for g in (bm, hull):
 			bmesh.ops.transform(g, matrix=m, verts=g.verts)
 		self.parts.append((key, bm))
@@ -341,7 +438,14 @@ manifest = {"uvStuds": UV_STUDS, "ink": INK, "objects": {}}
 piece_objects = {}
 problems = []
 
+ONLY = [pid for pid in os.environ.get("HIGHWAY_PROPS_ONLY", "").split(",") if pid]
+for pid in ONLY:
+	if pid not in PIECES:
+		raise SystemExit("highway_props: no piece " + pid)
+
 for pid, (pal, build) in PIECES.items():
+	if ONLY and pid not in ONLY:
+		continue
 	kit = Kit()
 	build(kit)
 	merged = {}
@@ -534,13 +638,14 @@ for pid, objs in piece_objects.items():
 import numpy as np
 
 w, h = TILE
-sheet = np.zeros((2 * h, 7 * w, 4), dtype=np.float32)
-for i, pid in enumerate(PIECES):
+rows = math.ceil(len(piece_objects) / 7)
+sheet = np.zeros((rows * h, 7 * w, 4), dtype=np.float32)
+for i, pid in enumerate(piece_objects):
 	row, col = divmod(i, 7)
 	img = bpy.data.images.load(os.path.join(OUT, f"{pid}.png"))
 	px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)
-	sheet[(1 - row) * h:(2 - row) * h, col * w:(col + 1) * w] = px  # Blender rows run bottom-up
-out = bpy.data.images.new("sheet", 7 * w, 2 * h, alpha=True)
+	sheet[(rows - 1 - row) * h:(rows - row) * h, col * w:(col + 1) * w] = px  # Blender rows run bottom-up
+out = bpy.data.images.new("sheet", 7 * w, rows * h, alpha=True)
 out.pixels = sheet.ravel()
 out.filepath_raw = os.path.join(OUT, "sheet.png")
 out.file_format = "PNG"

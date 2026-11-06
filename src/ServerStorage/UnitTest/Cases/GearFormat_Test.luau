@@ -4,8 +4,8 @@
 -- Contract:
 --   * cards(gear, coins, busyLine?): one card a line (held, platform, arm, armor) for the NEXT step: its piece's name
 --     ("Lolli Sling", then "Lolli Sling ★2" for a star), its tier, the stars bought in that tier and the tier's steps
---     (the tile's pips; armor: none), its line ("x2 throw power", tiers 6-7 "x1.4 throw power", armor "Traps take
---     less"), its price, the tier's zone colour token and the state: buy / needCoins (with the Coins missing) / busy (a
+--     (the tile's pips; armor: none), its line ("x2 throw power", tiers 6-7 "x1.4 throw power", armor "Go through
+--     traps"), its price, the tier's zone colour token and the state: buy / needCoins (with the Coins missing) / busy (a
 --     buy of that line on its way) / max (all bought: the last piece, no price);
 --   * powerText(gear): the gear's throw power multiplier ("x16");
 --   * trailTier(gear): the held launcher's tier (0 = none): the throw's trail colour;
@@ -87,7 +87,7 @@ return function(t: Context)
 				tier = 1,
 				stars = 0,
 				steps = 0, -- armor is one piece a tier: no pips
-				desc = "Traps take less",
+				desc = "Go through traps",
 				price = 9_000,
 				state = "buy",
 				missing = 0,

@@ -401,6 +401,8 @@ return function(t: Context)
 				landsAt = t0 + seconds,
 				fuel = fuel or 1,
 				boosted = boosted == true,
+				trap = false,
+				bounces = {},
 				charged = false,
 				savePending = false,
 			},
@@ -562,6 +564,58 @@ return function(t: Context)
 			stop()
 		end
 	)
+
+	t.test("the course: BOOSTER! and ARMOR! as the squishy gets there; TRAP! leads the landing's pops", function()
+		local reply = thrown(3, 1000, 3.0)
+		reply.data.bounces = { 60 }
+		reply.data.pushed = 100
+		local w = driven({ reply })
+		w.body = IN_AREA
+		w.handler(Enum.UserInputState.Begin)
+		w.tick()
+		w.now = 10.5
+		w.tick()
+		local pop = Strings.highway.pop
+		local function shown(text: string): number
+			local count = 0
+			for _, lines in w.pops do
+				count += if table.find(lines, text) then 1 else 0
+			end
+			return count
+		end
+		expect.equal(shown(pop.booster), 0) -- not there yet
+		w.server = 1000 + 0.42 + 1.2 -- d 83: past the bounce, not at the armor's trap
+		w.tick()
+		expect.equal(shown(pop.booster), 1)
+		expect.equal(shown(pop.armor), 0)
+		w.server = 1000 + 0.42 + 1.8 -- past it
+		w.tick()
+		w.tick()
+		expect.equal(shown(pop.booster), 1) -- once each
+		expect.equal(shown(pop.armor), 1)
+		stop()
+
+		local trapped = thrown(3, 1000, 3.0)
+		trapped.data.trap = true
+		local x = driven({ trapped })
+		x.body = IN_AREA
+		x.handler(Enum.UserInputState.Begin)
+		x.tick()
+		x.now = 10.5
+		x.tick()
+		x.server = 1003.1
+		x.tick()
+		expect.deepEqual(x.pops[#x.pops], { pop.trap, Strings.format(pop.landed, { distance = "213" }) })
+		local landing = landingOf(3)
+		landing.rings = { 1 }
+		x.landed(landing)
+		expect.deepEqual(x.pops[#x.pops], {
+			pop.trap,
+			Strings.format(pop.landed, { distance = Format.distance(landing.studs) }),
+			Strings.format(pop.rings, { hit = 1, total = 3 }),
+		})
+		stop()
+	end)
 
 	t.test("HighwayLanded: kept for the current throw; another id's toasts show at once", function()
 		local w = driven({ thrown(7, 1000, 50) })

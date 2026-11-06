@@ -60,7 +60,8 @@
 --   decor too: the server decides every ring hit and BULLSEYE, Shared/HighwayMath); parts under 2 studs
 --   cast no shadow (the lobby's rule); every SurfaceGui at PixelsPerStud 25, hidden beyond 150 studs (K:7873); static
 --   lines tagged SD_Sign with SD_TextKey (WorldBinder re-applies them), live lines neither.
--- Not built here (later phases): boosters, traps and reward bubbles (phases 15 and 17), the platform launchers, the
+-- Not built here: the traps and boosters (HighwayService stands them at server start, the course); later phases:
+--   reward bubbles (phases 15 and 17), the platform launchers, the
 --   effects (fx_twinkle, the volcano's fx_smoke), the animations (BoardPop, MascotIdle; SpotSquish went with the
 --   spots).
 

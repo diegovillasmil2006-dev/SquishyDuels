@@ -555,6 +555,78 @@ return function(t: Context)
 		folder:Destroy()
 	end)
 
+	-- The pen's light copy: a slot model <blueprint id>_pen (form 0), _pen1 (Golden) or _pen2 (Rainbow).
+	-- A slot's Body says which slot it is, so the tests can see which one a clone came from.
+	local function markedSlot(name: string): Model
+		local slot = slotModel(name)
+		local body = slot:FindFirstChild("Body")
+		if body then
+			body:SetAttribute("Which", name)
+		end
+		return slot
+	end
+	local function whichSlot(model: Model): any
+		local body = model:FindFirstChild("Body")
+		return if body then body:GetAttribute("Which") else nil
+	end
+
+	t.test("clonePen takes the form's light slot, fitted and built like a World slot", function()
+		local folder = Instance.new("Folder")
+		slotModel("toast").Parent = folder
+		for _, name in { "toast_pen", "toast_pen1", "toast_pen2" } do
+			markedSlot(name).Parent = folder
+		end
+		local cache, _, warnings = makeSlotCache(folder)
+		for form, name in { [0] = "toast_pen", [1] = "toast_pen1", [2] = "toast_pen2" } do
+			local model, baked = cache:clonePen("toast", form)
+			expect.truthy(baked)
+			expect.truthy(SquishyCache.isSlotModel(model))
+			expect.equal(whichSlot(model), name)
+			expect.equal(model:GetAttribute("SD_BlueprintId"), "toast")
+			expect.equal(model:GetAttribute("SD_Mode"), "World")
+			expect.near(longestSide(model), 1.6, TOLERANCE)
+			expect.truthy((model.PrimaryPart :: BasePart).Anchored)
+			expect.truthy(model:FindFirstChildWhichIsA("Weld", true) ~= nil)
+		end
+		expect.equal(#warnings, 0)
+		cache:clear()
+		folder:Destroy()
+	end)
+
+	t.test("clonePen without the form's light slot gives the normal World model, not baked", function()
+		local folder = Instance.new("Folder")
+		markedSlot("toast").Parent = folder
+		markedSlot("toast_pen").Parent = folder
+		local cache, _, warnings = makeSlotCache(folder)
+		local golden, baked = cache:clonePen("toast", 1) -- no toast_pen1
+		expect.falsy(baked)
+		expect.equal(whichSlot(golden), "toast")
+		expect.equal(golden:GetAttribute("SD_Mode"), "World")
+		cache:clear()
+		local plainCache = makeCache()
+		local plain, plainBaked = plainCache:clonePen("toast", 0) -- no slot folder at all
+		expect.falsy(plainBaked)
+		expect.falsy(SquishyCache.isSlotModel(plain))
+		plainCache:clear()
+		expect.equal(#warnings, 0)
+		folder:Destroy()
+	end)
+
+	t.test("an invalid light slot warns once and gives the normal World model", function()
+		local folder = Instance.new("Folder")
+		local bad = Instance.new("Folder")
+		bad.Name = "toast_pen"
+		bad.Parent = folder
+		local cache, _, warnings = makeSlotCache(folder)
+		local first, baked = cache:clonePen("toast", 0)
+		expect.falsy(baked)
+		expect.falsy(SquishyCache.isSlotModel(first))
+		cache:clonePen("toast", 0)
+		expect.equal(#warnings, 1)
+		cache:clear()
+		folder:Destroy()
+	end)
+
 	t.test("private caches without a slot folder never use slots", function()
 		local cache, calls = makeCache()
 		local model = cache:clone("toast", "Held")

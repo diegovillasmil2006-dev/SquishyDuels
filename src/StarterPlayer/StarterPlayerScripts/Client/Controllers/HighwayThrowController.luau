@@ -45,9 +45,9 @@
 -- * ReducedMotion: no camera shots (the camera stays the player's third person) and no tumble; the rest as usual.
 -- * Launchers (held and platform) and gear are phase 14: nothing here changes for them but the trail's colour and the
 --   launcher motion (the hook: `release`). Gear step 3 (2026-10-26): the trail fades from the held launcher's zone
---   colour to white (trailColor; white without one), and a trapped plan (plan.trap) pops TRAP! at the release with
---   the splat and a short camera jolt (Config/GearShop.trap). 2026-10-31 boosters: a plan with a booster pops
---   BOOSTER! (Config/GearShop.booster) as the squishy reaches its bounce (arcs[2].from).
+--   colour to white (trailColor; white without one). The course (2026-11-06): each pop as the squishy gets there:
+--   BOOSTER! (Config/GearShop.booster) at each of plan.bounces, ARMOR! at plan.pushed, and when plan.trap stops it the
+--   splat and a short camera jolt (Config/GearShop.trap), with TRAP! on top of the landing's pops.
 -- * Physics upgrade part 4 (2026-10-28, Config.HighwayFx; owner: "Yes, build part 4", added on top): HighwayFxController
 --   plays the design's wind-up (at the press), launch (at the release), zone themes (at each new zone), bounces, roll
 --   and fireworks finish (at the drawn landing). The drawn flight runs on its clock (held back by a slow motion, then
@@ -145,7 +145,9 @@ type Throw = {
 	eye: Vector3?,
 	look: Vector3?,
 	joltAt: number?, -- gear step 3: clock of a trap's camera jolt
-	bounced: boolean?, -- 2026-10-31 boosters: its BOOSTER! pop shown
+	bounced: number?, -- the course: how many of its BOOSTER! pops were shown
+	pushedShown: boolean?, -- the course: its ARMOR! pop shown
+	trapShown: boolean?, -- the course: its trap's splat and jolt played
 	fx: HighwayFxController.State?, -- physics upgrade part 4: the design's effects for this throw
 	fov0: number?, -- part 4: the camera's FOV when the throw shot took it
 }
@@ -166,6 +168,7 @@ local HIDE_REASON = "highwayThrow"
 local OVERLAY_BIG = "highwayBig"
 local CLIENT_FX = "SD_ClientFx"
 local RELEASE = H.flight.releaseSeconds
+local TRAP_POP_STUDS = 0.5 -- the course: TRAP! this close to the stop (the arc ends exactly there)
 local STAND_STILL = 0.1 -- Humanoid.MoveDirection below this: standing (ThrowMotion's legs)
 local BURST = Vector2.new(180, 180) -- every direction (CatchFx's bursts)
 local SILENT: { [string]: boolean } =
@@ -576,11 +579,15 @@ local function release(throw: Throw, now: number)
 		pop({ { text = Strings.highway.pop.perfect, big = true, color = U.pop.colors.perfect } })
 		play(U.sounds.perfect)
 	end
-	if plan.trap then -- gear step 3
-		pop({ { text = Strings.highway.pop.trap, big = true, color = GearShop.trap.color } })
-		play(GearShop.trap.sound)
-		throw.joltAt = now
+end
+
+-- The course: a trap's stop is the landing, so its TRAP! leads the landing's pops (they would replace it).
+local function trapLines(throw: Throw): { HighwayHud.Line }
+	local plan = throw.plan
+	if plan ~= nil and plan.trap then
+		return { { text = Strings.highway.pop.trap, big = true, color = GearShop.trap.color } }
 	end
+	return {}
 end
 
 -- The landing's pops with its payload (see the header).
@@ -591,7 +598,7 @@ local function landingPops(throw: Throw)
 	end
 	throw.popped = true
 	local s, colors = Strings.highway.pop, U.pop.colors
-	local lines: { HighwayHud.Line } = {}
+	local lines = trapLines(throw)
 	if landing.bullseye then
 		table.insert(lines, { text = s.bullseye, big = true, color = colors.bullseye })
 		play(U.sounds.bullseye)
@@ -639,7 +646,9 @@ local function land(throw: Throw, now: number, p: Vector3)
 		landingPops(throw)
 	else
 		local text = Strings.format(Strings.highway.pop.landed, { distance = Format.distance(plan.studs) })
-		pop({ { text = text, big = true, color = U.pop.colors.landed } })
+		local lines = trapLines(throw)
+		table.insert(lines, { text = text, big = true, color = U.pop.colors.landed })
+		pop(lines)
 	end
 end
 
@@ -690,7 +699,7 @@ local function drawCamera(throw: Throw, dt: number, now: number, p: Vector3?)
 end
 
 -- The flight lines for a squishy at d (lane-local), `boost` while it may boost.
-local function drawFlight(throw: Throw, d: number, boost: boolean)
+local function drawFlight(throw: Throw, d: number, boost: boolean, now: number)
 	local h = hud
 	if h == nil then
 		return
@@ -720,12 +729,24 @@ local function drawFlight(throw: Throw, d: number, boost: boolean)
 		end
 	end
 	local plan = throw.plan
-	-- 2026-10-31 boosters: BOOSTER! as the squishy reaches the bounce off its booster (the second arc's start).
-	local bounce = if plan and plan.booster then plan.arcs[2] else nil
-	if bounce and not throw.bounced and d >= bounce.from then
-		throw.bounced = true
-		pop({ { text = Strings.highway.pop.booster, big = true, color = GearShop.booster.color } })
-		play(GearShop.booster.sound)
+	if plan ~= nil then -- the course: each pop as the squishy gets there (see the header)
+		local bounced = throw.bounced or 0
+		local bounceAt = plan.bounces[bounced + 1]
+		if bounceAt ~= nil and d >= bounceAt then
+			throw.bounced = bounced + 1
+			pop({ { text = Strings.highway.pop.booster, big = true, color = GearShop.booster.color } })
+			play(GearShop.booster.sound)
+		end
+		if plan.pushed ~= nil and not throw.pushedShown and d >= plan.pushed then
+			throw.pushedShown = true
+			pop({ { text = Strings.highway.pop.armor, big = true, color = GearShop.booster.color } })
+			play(GearShop.booster.sound)
+		end
+		if plan.trap and not throw.trapShown and d >= plan.studs - TRAP_POP_STUDS then
+			throw.trapShown = true
+			play(GearShop.trap.sound)
+			throw.joltAt = now
+		end
 	end
 	h:setFlight({
 		studs = math.floor(d),
@@ -750,7 +771,7 @@ local function stepThrow(throw: Throw, dt: number, now: number, serverNow: numbe
 		if u >= 1 and plan ~= nil then
 			release(throw, now)
 		else
-			drawFlight(throw, 0, false)
+			drawFlight(throw, 0, false, now)
 			drawCamera(throw, dt, now, nil)
 			return
 		end
@@ -789,7 +810,7 @@ local function stepThrow(throw: Throw, dt: number, now: number, serverNow: numbe
 	if model then
 		model:PivotTo(WorldLayout.highwayCFrame(at.X, at.Y, at.Z) * CFrame.Angles(-throw.spin, math.pi, 0))
 	end
-	drawFlight(throw, math.max(at.Z, 0), not throw.landed and serverNow < HighwayMath.airEnd(p))
+	drawFlight(throw, math.max(at.Z, 0), not throw.landed and serverNow < HighwayMath.airEnd(p), now)
 	if not throw.landed then
 		HighwayFxController.flight(throw.fx, p, at, inAir, drawnNow) -- part 4: apex, speed lines, bounces, roll
 	end

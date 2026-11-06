@@ -49,16 +49,24 @@
 --   HighwayMath.boost(core, power, t) -> Core?: the plan after a boost at server time t (fuel is the service's
 --                                        check): nil before the release + afterReleaseSeconds, after airEnd -
 --                                        beforeCarrySeconds, or with no room ahead; else a new arc from planAt(core,
---                                        t) to max(landing(power x boost.power), core.studs), carrying at least
---                                        minAheadStuds farther, flying speedUp x faster than the arc in force (never
---                                        under minAirSeconds), after the arcs up to the one in force (a booster's
---                                        bounce still ahead is dropped: the boost flies over it); the roll and
---                                        landsAt again
---   HighwayMath.bounce(core, power)   -> Core?: boosters (plan step 6, 2026-10-31): a one-arc plan whose first arc
---                                        touches down on a booster: a second arc from that touchdown (the first
---                                        carry, at its startAt + air) to max(landing(power x boosters.power),
---                                        core.studs), carrying at least boost.minAheadStuds farther; the roll and
---                                        landsAt again; nil for a plan with more than one arc or no room ahead
+--                                        t) to core.studs + what boost.power adds to landing(power), at most gatesAt,
+--                                        carrying at least minAheadStuds farther, flying speedUp x faster than the arc
+--                                        in force (never under minAirSeconds), after the arcs up to the one in force
+--                                        (what was still ahead is flown over: run reach again); the roll and landsAt
+--                                        again
+--   HighwayMath.reach(core, armor, spots, bounced) -> Reached: the course (owner 2026-11-06, Config's course): what
+--                                        the plan's last arc reaches. Its touchdown within catchShare x a spot's biome
+--                                        length, of the nearest spot ahead of the arc's start, lands exactly on it (the
+--                                        arc's carry moves there). A booster, under maxBounces (`bounced` so far on this
+--                                        throw + this call's), adds an arc from it to bounceDistance x where the throw
+--                                        would stop (at most gatesAt, at least boost.minAheadStuds ahead), flying
+--                                        boost.speedUp x faster than the arc before (never under minAirSeconds), and
+--                                        looks again from that arc's touchdown: bounces = the spots bounced off. A trap
+--                                        stops it there (trap = true, no roll) unless armor >= the spot's biome: then
+--                                        it goes through (pushed = that spot). A booster over the limit does nothing.
+--                                        A roll never crosses a spot: the arc carries clearStuds past the last spot it
+--                                        would roll over, and stops there at the least. Plans are never changed in
+--                                        place; with no spot near, the same flight
 --   HighwayMath.ringsHit(core)        -> { number }: the WorldLayout.Highway.rings indices (ascending) the plan flies
 --                                        through: the arc in force at the ring's d is within ringRadius of its
 --                                        centre (rolling never hits)
@@ -88,6 +96,18 @@ local WorldLayout = require(Shared.World.WorldLayout)
 
 -- The flight part of Types.HighwayPlan (what the math reads and makes).
 export type Core = { x0: number, arcs: { Types.HighwayArc }, roll: number, studs: number, landsAt: number }
+-- The course (2026-11-06): one trap or booster on the lane, and a plan after HighwayMath.reach.
+export type Spot = { d: number, kind: string }
+export type Reached = {
+	x0: number,
+	arcs: { Types.HighwayArc },
+	roll: number,
+	studs: number,
+	landsAt: number,
+	bounces: { number },
+	trap: boolean,
+	pushed: number?,
+}
 
 -- Constants
 
@@ -95,6 +115,8 @@ local H = Config.Economy.Highway
 local F = H.flight
 local T = H.timing
 local B = H.boost
+local C = H.course
+local TRAP = "trap"
 local LAYOUT = WorldLayout.Highway
 local AREA = LAYOUT.throwArea
 local LANE_Y = 1 -- the lane's top (HighwayBuilder's lane tiles, y 0..1; P3D:136 LANE_Y)
@@ -276,7 +298,8 @@ function HighwayMath.boost(core: Core, power: number, t: number): Core?
 		return nil
 	end
 	local here = HighwayMath.planAt(core, t)
-	local studs = math.max(HighwayMath.landing(power * B.power), core.studs)
+	-- The boost's own gain on top of where the plan stops now (a bounce or a trap moved that from landing(power)).
+	local studs = math.min(core.studs + HighwayMath.landing(power * B.power) - HighwayMath.landing(power), H.gatesAt)
 	local new = HighwayMath.arc(here.Z, here.Y, studs, t, here.Z + B.minAheadStuds)
 	local index = arcAt(core, t)
 	local current = core.arcs[index]
@@ -285,26 +308,92 @@ function HighwayMath.boost(core: Core, power: number, t: number): Core?
 		return nil
 	end
 	new.air = math.max((new.carry - new.from) / (speed * B.speedUp), B.minAirSeconds)
-	local arcs = table.move(core.arcs, 1, index, 1, {}) -- boosters: a booster's bounce still ahead is flown over
+	local arcs = table.move(core.arcs, 1, index, 1, {}) -- the course: what was still ahead is flown over
 	table.insert(arcs, new)
 	local roll = HighwayMath.rollSeconds(new.carry, studs)
 	return { x0 = core.x0, arcs = arcs, roll = roll, studs = studs, landsAt = t + new.air + roll }
 end
 
--- Boosters (plan step 6, 2026-10-31): the plan after its first arc touches down on a booster (see the API).
-function HighwayMath.bounce(core: Core, power: number): Core?
-	if #core.arcs ~= 1 then
-		return nil
+-- The course: the nearest spot ahead of `from` whose catch holds a touchdown at `carry`.
+local function spotAt(spots: { Spot }, carry: number, from: number): Spot?
+	local found: Spot? = nil
+	local nearest = math.huge
+	for _, spot in spots do
+		local off = math.abs(spot.d - carry)
+		local biome = HighwayMath.biomeAt(spot.d)
+		if spot.d > from and off < nearest and off <= C.catchShare * (endOf(biome) - H.starts[biome]) then
+			found, nearest = spot, off
+		end
 	end
-	local first = core.arcs[1]
-	local t = first.startAt + first.air
-	local studs = math.max(HighwayMath.landing(power * H.boosters.power), core.studs)
-	local new = HighwayMath.arc(first.carry, CLEAR, studs, t, first.carry + B.minAheadStuds)
-	if new.carry <= first.carry then
-		return nil
+	return found
+end
+
+-- The course (see the API).
+function HighwayMath.reach(core: Core, armor: number, spots: { Spot }, bounced: number): Reached
+	local arcs = table.clone(core.arcs)
+	local studs = core.studs
+	local bounces: { number } = {}
+	local pushed: number? = nil
+	local last = arcs[#arcs]
+	local spot = spotAt(spots, last.carry, last.from)
+	while spot ~= nil do
+		local isTrap = spot.kind == TRAP
+		if isTrap and armor >= HighwayMath.biomeAt(spot.d) then
+			pushed = spot.d
+			break
+		end
+		if not isTrap and bounced + #bounces >= C.maxBounces then
+			break
+		end
+		local aimed = table.clone(last)
+		aimed.carry = spot.d
+		arcs[#arcs] = aimed
+		local touch = aimed.startAt + aimed.air
+		if isTrap then
+			return {
+				x0 = core.x0,
+				arcs = arcs,
+				roll = 0,
+				studs = spot.d,
+				landsAt = touch,
+				bounces = bounces,
+				trap = true,
+				pushed = pushed,
+			}
+		end
+		local ahead = spot.d + B.minAheadStuds
+		studs = math.min(math.max(math.floor(studs * C.bounceDistance), ahead), H.gatesAt)
+		local new = HighwayMath.arc(spot.d, CLEAR, studs, touch, ahead)
+		local speed = (last.carry - last.from) / last.air
+		new.air = math.max((new.carry - new.from) / (speed * B.speedUp), B.minAirSeconds)
+		table.insert(arcs, new)
+		table.insert(bounces, spot.d)
+		last = new
+		spot = spotAt(spots, last.carry, last.from)
 	end
-	local roll = HighwayMath.rollSeconds(new.carry, studs)
-	return { x0 = core.x0, arcs = { first, new }, roll = roll, studs = studs, landsAt = t + new.air + roll }
+	local past = last.carry
+	for _, ahead in spots do
+		if ahead.d > last.carry and ahead.d <= studs + C.clearStuds then
+			past = math.max(past, ahead.d + C.clearStuds)
+		end
+	end
+	if past > last.carry then
+		last = table.clone(last)
+		last.carry = past
+		arcs[#arcs] = last
+		studs = math.max(studs, past)
+	end
+	local roll = HighwayMath.rollSeconds(last.carry, studs)
+	return {
+		x0 = core.x0,
+		arcs = arcs,
+		roll = roll,
+		studs = studs,
+		landsAt = last.startAt + last.air + roll,
+		bounces = bounces,
+		trap = false,
+		pushed = pushed,
+	}
 end
 
 function HighwayMath.ringsHit(core: Core): { number }

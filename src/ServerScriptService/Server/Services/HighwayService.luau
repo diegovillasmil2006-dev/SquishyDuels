@@ -53,20 +53,17 @@
 --   start() writes the empty board (Strings highway.board.empty on the first row). The server's own memory: a new
 --   server starts empty.
 -- * Gear step 2 (2026-10-26; owner: "Build the gear next", "Traps + armor now", the prices of Config/Gear): a throw's
---   power is also x GearMath.multiplier(profile.gear) (before PERFECT). Then a trap: with GearMath.trapChance of the
---   zone that power would reach (deps.random), the throw keeps GearMath.trapKeep(zone, armor pieces) of its power;
---   plan.trap = true when it took some (the client's TRAP! pop). The flight's power is the trapped one, so a boost
---   keeps the trap. Traps you can see (plan step 5, 2026-10-31, owner: "Same luck, now you see it", "Everyone
---   nearby"): a trapped throw's settle stands the landing biome's trap (Art/HighwayTraps, the owner's concept sheet)
---   on the lane where it came to rest (HighwayMath.planAt at landsAt) in Workspace.SD_HighwayTraps for
---   Gear.trapShowSeconds (deps.showTrap; the server's parts, so every client streaming that spot sees it).
--- * Boosters (plan step 6, 2026-10-31; Claude's calls while the owner was away, Config.Economy.Highway.boosters): a
---   throw the trap roll missed rolls again (deps.random) against boosters.chance of the zone it would reach; a hit
---   bounces it off its first touchdown (HighwayMath.bounce: a second arc to landing(power x boosters.power)), the
---   touchdown biome's booster (Art/HighwayBoosters, the owner's concept sheet) stands there from the press until the
---   landing plus showSeconds (deps.showBooster) and plan.booster = true (the client's BOOSTER! pop). The flight's power
---   includes the bounce, so a later boost builds on it; a boost before the bounce flies over the booster (booster =
---   false). HighwayLanded's boosts never count the bounce.
+--   power is also x GearMath.multiplier(profile.gear) (before PERFECT).
+-- * The course (2026-11-06, owner: "investigate hit a golf ball and do it like them"; Config.Economy.Highway.course;
+--   replaces the trap and booster rolls of 2026-10-26 / 10-31): the traps and boosters stand on the lane all the time
+--   (start(): deps.buildCourse: Workspace.SD_HighwayCourse from Art/HighwayTraps and Art/HighwayBoosters, Persistent: the
+--   chase camera flies far from the character). A throw's power is x course.scatter^(-1..1) (deps.random), then
+--   HighwayMath.reach(plan, armor pieces, deps.spots(), 0) decides what it reaches: plan.bounces, plan.trap, plan.pushed
+--   (the client's pops). A boost flies over what is still ahead (only the bounces already passed stay) and reach runs
+--   again on its arc. HighwayLanded's boosts never count a bounce. A bounce pays by distance and counts for the best,
+--   but what the highway unlocks (the saved biome: the gifts and the level cap) goes by the throw's own power, cut by a
+--   trap: landing(flight.power) never counts a bounce. Money check: a doubled distance is 2 zones ahead, so a lucky
+--   bounce would hand out the 25-hour Divine Heaven gift in the first hour.
 -- * GearBuy(line, expectedPrice) (RF; Config.Net 2 a second, one in flight; PenBuySpot's shape and refusal order): (1)
 --   line not a GearMath line or expectedPrice not whole Coins -> net.invalid; (2) no READY profile -> data.notReady;
 --   (3) GearMath.buyDecision -> gear.max / gear.priceChanged (compared, never charged); (4) a pending failed save,
@@ -83,7 +80,6 @@
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Workspace = game:GetService("Workspace")
-local Debris = game:GetService("Debris")
 
 -- Requires
 
@@ -138,13 +134,11 @@ export type Deps = {
 	markDirty: (player: any, field: string) -> (), -- StateService.markDirty
 	nameOf: (player: any) -> string, -- the board's name: the player's DisplayName
 	writeBoard: (lines: { [string]: string }) -> (), -- the launch board's live lines, by name
-	random: () -> number, -- gear step 2: a number in [0, 1) (the trap roll)
+	random: () -> number, -- the course: a number in [0, 1) (the throw's scatter)
 	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?), -- EconomyService.trySpend
 	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
-	-- Traps you can see (2026-10-31): stands biome's trap (Art/HighwayTraps) at `at` for Gear.trapShowSeconds.
-	showTrap: (biome: number, at: CFrame) -> (),
-	-- Boosters (2026-10-31): stands biome's booster (Art/HighwayBoosters) at `at` for `seconds`.
-	showBooster: (biome: number, at: CFrame, seconds: number) -> (),
+	spots: () -> { HighwayMath.Spot }, -- the course: Config's spots
+	buildCourse: () -> (), -- the course: stands them on the lane
 }
 
 -- What the remote answers: NetService.ok(Types.HighwayPlan) or NetService.err(reason, false).
@@ -152,8 +146,8 @@ export type Reply = { ok: boolean, data: Types.HighwayPlan?, reason: string?, ch
 -- Gear step 2: what GearBuy answers: NetService.ok(Types.GearResult) or NetService.err(reason, false).
 export type GearReply = { ok: boolean, data: Types.GearResult?, reason: string?, charged: boolean? }
 
--- The open flight: the plan last sent (never changed: a boost makes a new one), the power so far (PERFECT and boosts
--- in), the press's server time and the number of its current settle schedule.
+-- The open flight: the plan last sent (never changed: a boost makes a new one), the power so far (the scatter, PERFECT
+-- and boosts in; never a bounce), the press's server time and the number of its current settle schedule.
 type Flight = { plan: Types.HighwayPlan, power: number, pressedAt: number, schedule: number }
 
 type Session = {
@@ -186,8 +180,9 @@ local CODE_NO_FUEL = "highway.noFuel"
 local CODE_NOT_IN_AREA = "highway.notInArea"
 local CODE_PAUSED = "highway.paused"
 local CODE_IN_DUEL = "inventory.lockedInDuel"
-local TRAP_FOLDER = "SD_HighwayTraps" -- traps you can see: the shown traps (Workspace)
-local REST_OVER_LANE = 1 -- a resting squishy's centre over the lane top (HighwayMath's CLEAR = LANE_Y + 1)
+local COURSE_FOLDER = "SD_HighwayCourse" -- the course: the traps and boosters on the lane (Workspace)
+local COURSE_TRAP = "trap"
+local LANE_TOP = 1 -- the lane top's height (HighwayMath's LANE_Y)
 local GEAR_REMOTE = "GearBuy" -- gear step 2
 local GEAR_REASON = "gear"
 local FIELD_GEAR = "gear"
@@ -239,20 +234,28 @@ local function writeBoardLines(lines: { [string]: string })
 	end
 end
 
--- Traps you can see and boosters (2026-10-31): a shown trap or booster stands in Workspace.SD_HighwayTraps for
--- `seconds` (nothing for no model).
-local function stand(model: Model?, seconds: number)
-	if model == nil then
-		return
+-- The course: every spot's trap or booster on the lane (see the header). A missing mesh is logged, not fatal.
+local function standCourse()
+	local folder = Instance.new("Folder")
+	folder.Name = COURSE_FOLDER
+	local missing = 0
+	for _, spot in H.course.spots do
+		local biome = HighwayMath.biomeAt(spot.d)
+		local at = WorldLayout.highwayCFrame(0, LANE_TOP, spot.d)
+		local model = if spot.kind == COURSE_TRAP
+			then HighwayTraps.build(biome, at)
+			else HighwayBoosters.build(biome, spot.kind, at)
+		if model == nil then
+			missing += 1
+			continue
+		end
+		model.ModelStreamingMode = Enum.ModelStreamingMode.Persistent
+		model.Parent = folder
 	end
-	local folder = Workspace:FindFirstChild(TRAP_FOLDER)
-	if folder == nil then
-		folder = Instance.new("Folder")
-		folder.Name = TRAP_FOLDER
-		folder.Parent = Workspace
+	if missing > 0 then
+		log:warn(`the course is missing {missing} models (ServerStorage.{HighwayTraps.PROPS})`)
 	end
-	model.Parent = folder
-	Debris:AddItem(model, seconds)
+	folder.Parent = Workspace
 end
 
 local function defaultDeps(): Deps
@@ -343,12 +346,10 @@ local function defaultDeps(): Deps
 		saveNow = function(player: any): boolean
 			return DataService.saveNowAsync(player)
 		end,
-		showTrap = function(biome: number, at: CFrame)
-			stand(HighwayTraps.build(biome, at), Config.Economy.Gear.trapShowSeconds)
+		spots = function(): { HighwayMath.Spot }
+			return H.course.spots
 		end,
-		showBooster = function(biome: number, at: CFrame, seconds: number)
-			stand(HighwayBoosters.build(biome, at), seconds)
-		end,
+		buildCourse = standCourse,
 	}
 end
 
@@ -450,7 +451,7 @@ local function settle(player: any, session: Session, fire: boolean)
 	local grip = deps.addGrip(player, H.pay.grip)
 
 	local before = savedHighway(profile)
-	local reached = HighwayMath.reached(studs)
+	local reached = HighwayMath.reached(math.min(studs, HighwayMath.landing(flight.power))) -- the course: see the header
 	session.thrownSeconds += plan.landsAt - flight.pressedAt
 	local bag: { id: string, count: number }? = nil
 	if session.thrownSeconds >= H.foodBag.seconds then
@@ -504,11 +505,6 @@ local function settle(player: any, session: Session, fire: boolean)
 	end
 	onBoard(deps.nameOf(player), studs)
 	deps.requestSave(player, SAVE_SOON)
-	if fire and plan.trap then
-		-- Traps you can see: the landing biome's trap where the squishy came to rest (the plan's end point).
-		local rest = HighwayMath.planAt(plan :: any, plan.landsAt)
-		deps.showTrap(plan.biome, WorldLayout.highwayCFrame(rest.X, rest.Y - REST_OVER_LANE, rest.Z))
-	end
 	if fire then
 		deps.fireLanded(player, {
 			id = plan.id,
@@ -524,7 +520,7 @@ local function settle(player: any, session: Session, fire: boolean)
 			rings = rings,
 			bullseye = HighwayMath.bullseye(studs),
 			perfect = plan.perfect,
-			boosts = #plan.arcs - 1 - (if plan.booster then 1 else 0), -- a booster's bounce is no boost
+			boosts = #plan.arcs - 1 - #plan.bounces, -- a booster's bounce is no boost
 		})
 	end
 end
@@ -542,16 +538,30 @@ local function schedule(player: any, session: Session, flight: Flight, now: numb
 	end)
 end
 
+-- The course: the armor pieces of a saved gear table (a broken one counts as none).
+local function armorOf(gear: any): number
+	return if type(gear) == "table" and isFinite(gear.armor) then gear.armor else 0
+end
+
 -- (4) A press during the own flight: the boost (see the header).
 local function boost(player: any, session: Session, flight: Flight, now: number): Reply
 	local plan = flight.plan
 	if plan.fuel <= 0 then
 		return NetService.err(CODE_NO_FUEL, false)
 	end
-	local core = HighwayMath.boost(plan, flight.power, now)
-	if core == nil then
+	local flown = HighwayMath.boost(plan, flight.power, now)
+	if flown == nil then
 		return NetService.err(CODE_IN_FLIGHT, false)
 	end
+	-- The course: the bounces already passed stay, what was ahead is flown over, the new arc looks again.
+	local bounces: { number } = {}
+	for _, d in plan.bounces do
+		if d <= flown.arcs[#flown.arcs].from then
+			table.insert(bounces, d)
+		end
+	end
+	local core = HighwayMath.reach(flown, armorOf(deps.profileOf(player).gear), deps.spots(), #bounces)
+	table.move(core.bounces, 1, #core.bounces, #bounces + 1, bounces)
 	local boosted: Types.HighwayPlan = {
 		id = plan.id,
 		perfect = plan.perfect,
@@ -563,8 +573,9 @@ local function boost(player: any, session: Session, flight: Flight, now: number)
 		landsAt = core.landsAt,
 		fuel = plan.fuel - 1,
 		boosted = true,
-		trap = plan.trap, -- gear step 2: the flight's power is the trapped one
-		booster = plan.booster == true and core.arcs[2] == plan.arcs[2], -- boosters: kept unless flown over
+		trap = core.trap,
+		bounces = bounces,
+		pushed = core.pushed,
 		charged = false,
 		savePending = deps.savePending(player),
 	}
@@ -580,29 +591,15 @@ local function launch(player: any, session: Session, root: Vector3, now: number)
 	local oneWay = if isFinite(ping) then math.clamp(ping / 2, 0, H.timing.maxOneWaySeconds) else 0
 	local perfect = HighwayMath.isPerfect(now - oneWay)
 	local gear = deps.profileOf(player).gear
-	local power = HighwayMath.power(deps.gripLevel(player), gear) * (if perfect then H.timing.perfectPower else 1)
-	-- Gear step 2: a trap of the zone this throw would reach takes some of its power (each armor piece halves less).
-	local zone = HighwayMath.biomeAt(HighwayMath.landing(power))
-	local armor = if type(gear) == "table" and isFinite(gear.armor) then gear.armor else 0
-	local trapped = deps.random() < GearMath.trapChance(zone)
-	local keep = if trapped then GearMath.trapKeep(zone, armor) else 1
-	power *= keep
-	local core = HighwayMath.newPlan(power, LAYOUT.origin:PointToObjectSpace(root), now + H.flight.releaseSeconds)
-	-- 2026-10-31 boosters: a throw the trap missed may bounce off its first touchdown's booster (see the header).
-	local bounced = if not trapped and deps.random() < H.boosters.chance[zone]
-		then HighwayMath.bounce(core, power)
-		else nil
-	if bounced ~= nil then
-		local touchdown = core.arcs[1]
-		local at = HighwayMath.planAt(core, touchdown.startAt + touchdown.air)
-		deps.showBooster(
-			HighwayMath.biomeAt(touchdown.carry),
-			WorldLayout.highwayCFrame(at.X, at.Y - REST_OVER_LANE, at.Z),
-			bounced.landsAt - now + H.boosters.showSeconds
-		)
-		core = bounced
-		power *= H.boosters.power
-	end
+	local power = HighwayMath.power(deps.gripLevel(player), gear)
+		* (if perfect then H.timing.perfectPower else 1)
+		* H.course.scatter ^ (2 * deps.random() - 1) -- the course: no two throws fly the same
+	local core = HighwayMath.reach(
+		HighwayMath.newPlan(power, LAYOUT.origin:PointToObjectSpace(root), now + H.flight.releaseSeconds),
+		armorOf(gear),
+		deps.spots(),
+		0
+	)
 	session.throws += 1
 	local plan: Types.HighwayPlan = {
 		id = session.throws,
@@ -615,8 +612,9 @@ local function launch(player: any, session: Session, root: Vector3, now: number)
 		landsAt = core.landsAt,
 		fuel = H.boost.fuel,
 		boosted = false,
-		trap = keep < 1,
-		booster = bounced ~= nil,
+		trap = core.trap,
+		bounces = core.bounces,
+		pushed = core.pushed,
 		charged = false,
 		savePending = deps.savePending(player),
 	}
@@ -748,6 +746,7 @@ end
 
 function HighwayService.start()
 	deps.writeBoard(boardLines())
+	deps.buildCourse()
 end
 
 function HighwayService.playerAdded(player: Player)

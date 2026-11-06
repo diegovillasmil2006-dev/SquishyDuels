@@ -30,7 +30,8 @@
 --   numbers), flight.releaseUp >= 0; timing.periodSeconds > 0, 0 < perfectHalfWidth < 0.5, perfectPower >= 1,
 --   maxOneWaySeconds >= 0; boost.fuel a whole number >= 0, boost.power >= 1, afterReleaseSeconds,
 --   beforeCarrySeconds and minAheadStuds >= 0, speedUp and minAirSeconds > 0; pay.ringShare >= 0. Every number finite.
--- 2026-10-31 boosters (plan step 6): boosters.chance one number in [0, 1) a biome, power above 1, showSeconds >= 0.
+-- The course (2026-11-06): scatter >= 1, catchShare in (0, 1), bounceDistance above 1, maxBounces a whole number >= 0,
+--   clearStuds >= 0, spots rising distances inside the lane, each of kind "a", "b" or "trap".
 
 local H = "Config.Economy.Highway"
 local MIN_BLOCKS = 10 -- = Config/ValidateAutoClick's: the spread of fewer block means is too noisy to trust
@@ -226,24 +227,39 @@ return function(config: any, catalog: any?): { string }
 	atLeast("boost", "minAheadStuds", boost.minAheadStuds, 0)
 	above("boost", "speedUp", boost.speedUp, 0)
 	above("boost", "minAirSeconds", boost.minAirSeconds, 0)
-	-- 2026-10-31 boosters (plan step 6): one chance a biome in [0, 1), power above 1, showSeconds >= 0.
-	local boosters = section("boosters")
-	local chances = boosters.chance
-	local biomeCount = if type(starts) == "table" then #starts else 0
+	-- The course (2026-11-06).
+	local course = section("course")
+	atLeast("course", "scatter", course.scatter, 1)
+	above("course", "catchShare", course.catchShare, 0)
 	expect(
-		type(chances) == "table" and #chances == biomeCount,
-		`{H}.boosters.chance must list one chance a biome ({biomeCount}, got {show(chances)})`
+		not isNumber(course.catchShare) or course.catchShare < 1,
+		`{H}.course.catchShare must be under 1 (got {show(course.catchShare)})`
 	)
-	if type(chances) == "table" then
-		for index, chance in chances do
+	above("course", "bounceDistance", course.bounceDistance, 1)
+	expect(
+		isWhole(course.maxBounces) and course.maxBounces >= 0,
+		`{H}.course.maxBounces must be a whole number >= 0 (got {show(course.maxBounces)})`
+	)
+	atLeast("course", "clearStuds", course.clearStuds, 0)
+	if type(course.spots) ~= "table" then
+		table.insert(problems, `{H}.course.spots must be a list (got {show(course.spots)})`)
+	else
+		local before = 0
+		local gates = if isNumber(c.gatesAt) then c.gatesAt else math.huge
+		for index, spot in course.spots do
+			local d = if type(spot) == "table" then spot.d else nil
+			local kind = if type(spot) == "table" then spot.kind else nil
 			expect(
-				isNumber(chance) and chance >= 0 and chance < 1,
-				`{H}.boosters.chance[{index}] must be in [0, 1) (got {show(chance)})`
+				isNumber(d) and d > before and d < gates,
+				`{H}.course.spots[{index}].d must rise inside the lane (got {show(d)})`
 			)
+			expect(
+				kind == "a" or kind == "b" or kind == "trap",
+				`{H}.course.spots[{index}].kind must be "a", "b" or "trap" (got {show(kind)})`
+			)
+			before = if isNumber(d) then d else before
 		end
 	end
-	above("boosters", "power", boosters.power, 1)
-	atLeast("boosters", "showSeconds", boosters.showSeconds, 0)
 	atLeast("pay", "ringShare", pay.ringShare, 0)
 
 	local a = section("autoClick")

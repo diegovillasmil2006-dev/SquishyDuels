@@ -56,9 +56,18 @@ if #problems > 0 then
 	folder:Destroy()
 	return "NOT DONE:\n" .. table.concat(problems, "\n")
 end
-if old then
-	old:Destroy()
+local pieces = #folder:GetChildren()
+if old then -- a partial import (HIGHWAY_PROPS_ONLY) keeps the other pieces
+	for _, model in folder:GetChildren() do
+		local same = old:FindFirstChild(model.Name)
+		if same then
+			same:Destroy()
+		end
+		model.Parent = old
+	end
+	folder:Destroy()
+else
+	folder.Parent = ServerStorage
 end
-folder.Parent = ServerStorage
 import:Destroy()
-return ("placed %d mesh parts in %d pieces"):format(placed, #folder:GetChildren())
+return ("placed %d mesh parts in %d pieces"):format(placed, pieces)

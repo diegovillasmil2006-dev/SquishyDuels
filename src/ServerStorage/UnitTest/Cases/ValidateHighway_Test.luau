@@ -60,6 +60,31 @@ return function(t: Context)
 		expect.deepEqual(lengths, { 300, 500, 700, 1000, 1500, 2000, 2500 }) -- PLAN phase 13 (V4:76)
 	end)
 
+	t.test("the course: each broken value is named", function()
+		local function course(changes: { [string]: any }): any
+			local section = table.clone(Config.Economy.Highway.course)
+			for key, value in changes do
+				section[key] = value
+			end
+			return broken({ course = section })
+		end
+		local cases: { { changes: { [string]: any }, field: string } } = {
+			{ changes = { scatter = 0.5 }, field = "scatter" },
+			{ changes = { catchShare = 0 }, field = "catchShare" },
+			{ changes = { catchShare = 1 }, field = "catchShare" },
+			{ changes = { bounceDistance = 1 }, field = "bounceDistance" },
+			{ changes = { maxBounces = 1.5 }, field = "maxBounces" },
+			{ changes = { clearStuds = -1 }, field = "clearStuds" },
+			{ changes = { spots = "x" }, field = "spots" },
+			{ changes = { spots = { { d = 50, kind = "a" }, { d = 40, kind = "b" } } }, field = "spots[2].d" },
+			{ changes = { spots = { { d = 9000, kind = "a" } } }, field = "spots[1].d" },
+			{ changes = { spots = { { d = 50, kind = "c" } } }, field = "spots[1].kind" },
+		}
+		for _, case in cases do
+			expect.truthy(mentions(validate(course(case.changes)), case.field))
+		end
+	end)
+
 	t.test("a missing section is one problem", function()
 		local problems = validate({ Economy = {} })
 		expect.equal(#problems, 1)

@@ -16,10 +16,6 @@
 --   GearMath.multiplier(gear)            -> number: the throw power x of the three power lines' steps (a step of a
 --                                           tier of n steps is x tierPower^(1/n)); armor adds none; a missing or
 --                                           broken line counts as none, past the last step as the last
---   GearMath.trapChance(zone)            -> number: the chance a throw reaching that zone is trapped (zones clamped
---                                           to the list)
---   GearMath.trapKeep(zone, armor)       -> number: the share of the power a trap leaves, 2^-(zone + trapBase -
---                                           armor), at most 1
 --   GearMath.buyDecision(gear, line, expectedPrice) -> ({step, price}?, code?): the next step of the line and its
 --                                           price, or nil and net.invalid (not a line) / gear.max (all bought) /
 --                                           gear.priceChanged (the price is compared, never charged)
@@ -93,14 +89,6 @@ function GearMath.multiplier(gear: any): number
 		end
 	end
 	return G.tierPower ^ exponent
-end
-
-function GearMath.trapChance(zone: number): number
-	return G.trapChance[math.clamp(math.floor(zone), 1, #G.trapChance)]
-end
-
-function GearMath.trapKeep(zone: number, armor: number): number
-	return 2 ^ -math.max(0, zone + G.trapBase - armor)
 end
 
 function GearMath.buyDecision(gear: any, line: any, expectedPrice: any): ({ step: number, price: number }?, string?)

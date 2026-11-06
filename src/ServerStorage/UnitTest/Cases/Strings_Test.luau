@@ -1205,8 +1205,9 @@ return function(t: Context)
 			rings = "{hit}/{total} RINGS",
 			landed = "{distance} studs!",
 			newBest = "NEW BEST!",
-			trap = "TRAP!", -- gear step 3
-			booster = "BOOSTER!", -- 2026-10-31 boosters
+			trap = "TRAP!", -- the course
+			booster = "BOOSTER!", -- the course
+			armor = "ARMOR!", -- the course
 		})
 		expect.equal(Strings.format(p.rings, { hit = 2, total = 3 }), "2/3 RINGS")
 		expect.equal(Strings.format(p.landed, { distance = "1,117" }), "1,117 studs!")

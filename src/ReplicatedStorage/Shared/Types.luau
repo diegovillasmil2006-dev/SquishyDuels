@@ -654,16 +654,17 @@ export type HighwayPlan = {
 	id: number, -- this throw's number in the player's server session (HighwayLanded names it)
 	perfect: boolean,
 	x0: number, -- lane-local x of the release
-	arcs: { HighwayArc }, -- 1 + the boosts so far, in order
+	arcs: { HighwayArc }, -- 1 + the bounces and boosts so far, in order
 	roll: number, -- seconds rolling after the last arc's carry
 	studs: number, -- where it stops (whole studs, 0..gatesAt)
 	biome: number, -- HighwayMath.biomeAt(studs)
 	landsAt: number, -- server time it stops
 	fuel: number, -- boosts left
 	boosted: boolean,
-	trap: boolean, -- gear step 2: a trap took some of this throw's power (a boost keeps it)
-	-- 2026-10-31 boosters: arcs[2] is a booster's bounce (HighwayMath.bounce; a boost before it flies over it: false)
-	booster: boolean?,
+	-- The course (2026-11-06; HighwayMath.reach, each by the plan's last arc: a boost looks again):
+	trap: boolean, -- a trap stops it at `studs`
+	bounces: { number }, -- studs of the boosters it bounces off, in order
+	pushed: number?, -- studs of the trap its armor goes through
 	charged: boolean, -- false
 	savePending: boolean,
 }

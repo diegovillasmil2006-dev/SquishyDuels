@@ -23,9 +23,10 @@
 --     sent; the biome gifts once each, in the throw that first reaches the biome; the Food Bag every 150 s of flight
 --     time; the launch board (the last 3 throws of anyone, newest first, and the server best; start() writes the empty
 --     board); then HighwayLanded to the owner. playerRemoving settles an open flight without firing.
---   * gear step 2 (2026-10-26): a throw's power is x GearMath.multiplier(profile.gear) (no gear = x1); a trap may hit
---     it (GearMath.trapChance of the zone it would reach, deps.random), leaving GearMath.trapKeep(zone, armor) of the
---     power (plan.trap = true when it took some); a boost keeps the trap. GearBuy(line, expectedPrice) (RF; Config.Net
+--   * the course (owner 2026-11-06): a throw's power is x scatter^(-1..1) (deps.random); HighwayMath.reach decides what it
+--     reaches (plan.bounces, plan.trap, plan.pushed); a boost looks again from its new arc; a bounce pays by distance and
+--     counts for the best, the saved biome only by the throw's own power; start() stands the course;
+--   * gear step 2 (2026-10-26): a throw's power is x GearMath.multiplier(profile.gear) (no gear = x1); GearBuy(line, expectedPrice) (RF; Config.Net
 --     one in flight): (1) not a gear line or not whole Coins -> net.invalid; (2) data.notReady; (3)
 --     GearMath.buyDecision -> gear.max / gear.priceChanged; (4) a pending failed save, closing or a restart ->
 --     gear.paused; (5) inventory.lockedInDuel; (6) the "gear" spend -> economy.notEnoughCoins. Then gear[line] = the
@@ -84,9 +85,9 @@ return function(t: Context)
 		boards: { { [string]: string } },
 		timers: { Timer },
 		landed: { { player: any, landing: any } },
-		random: number, -- gear step 2: what deps.random answers (1 = never a trap)
-		traps: { { biome: number, at: CFrame } }, -- 2026-10-31 traps you can see: deps.showTrap calls
-		boosters: { { biome: number, at: CFrame, seconds: number } }, -- 2026-10-31 boosters: deps.showBooster calls
+		random: number, -- the course: what deps.random answers (0.5 = no scatter)
+		spots: { any }, -- the course: what deps.spots answers (none by default)
+		courses: number, -- the course: deps.buildCourse calls
 		spends: { { player: any, amount: number, reason: string } },
 		nowSaves: number,
 		saveOk: boolean,
@@ -143,9 +144,9 @@ return function(t: Context)
 			boards = {},
 			timers = {},
 			landed = {},
-			random = 1,
-			traps = {},
-			boosters = {},
+			random = 0.5,
+			spots = {},
+			courses = 0,
 			spends = {},
 			nowSaves = 0,
 			saveOk = true,
@@ -245,11 +246,11 @@ return function(t: Context)
 				w.nowSaves += 1
 				return w.saveOk
 			end,
-			showTrap = function(biome: number, at: CFrame)
-				table.insert(w.traps, { biome = biome, at = at })
+			spots = function(): { any }
+				return w.spots
 			end,
-			showBooster = function(biome: number, at: CFrame, seconds: number)
-				table.insert(w.boosters, { biome = biome, at = at, seconds = seconds })
+			buildCourse = function()
+				w.courses += 1
 			end,
 		})
 		for _, player in { w.a, w.b } do
@@ -366,7 +367,7 @@ return function(t: Context)
 			fuel = 1,
 			boosted = false,
 			trap = false,
-			booster = false, -- 2026-10-31 boosters
+			bounces = {}, -- the course
 			charged = false,
 			savePending = false,
 		})
@@ -835,7 +836,7 @@ return function(t: Context)
 		finish()
 	end)
 
-	-- Gear step 2 (2026-10-26): gear, traps and armor ---------------------------------------------------------------
+	-- Gear step 2 (2026-10-26): gear; the course (2026-11-06): traps, boosters and armor -----------------------------
 
 	t.test("gear: a throw's power is x the gear (a whole tier x16); no gear saved counts as none", function()
 		local w = fresh()
@@ -850,81 +851,86 @@ return function(t: Context)
 		finish()
 	end)
 
-	t.test("traps: the zone's chance, the zone's cut; armor makes it smaller; a boost keeps it", function()
+	t.test("course: no two throws fly the same: the power is x scatter^(-1..1)", function()
 		local w = fresh()
-		w.random = 0 -- every throw trapped
+		expect.equal(throwAndLand(w, w.a).studs, 213)
+		w.random = 0
+		expect.equal(throwAndLand(w, w.a).studs, HighwayMath.landing(900 / H.course.scatter))
+		w.random = 1
+		expect.equal(throwAndLand(w, w.a).studs, HighwayMath.landing(900 * H.course.scatter))
+		finish()
+	end)
+
+	t.test("course: a booster bounces: pays by the distance, the best rises, what it unlocks does not", function()
+		local w = fresh()
+		w.spots = { { d = 190, kind = "a" } }
+		local plan = throwAndLand(w, w.a)
+		expect.deepEqual(plan.bounces, { 190 })
+		expect.equal(#plan.arcs, 2)
+		expect.equal(plan.studs, 426)
+		expect.equal(plan.biome, 2)
+		expect.equal(plan.trap, false)
+		local landing = w.landed[#w.landed].landing
+		expect.equal(landing.studs, 426)
+		expect.equal(landing.boosts, 0) -- a bounce is no boost
+		expect.equal(landing.reached, nil) -- its own power lands in zone 1
+		expect.equal(w.profiles[w.a].highway.best, 426)
+		expect.equal(w.profiles[w.a].highway.biome, 1)
+		local sv = PenMath.squeezeValue(w.profiles[w.a].pen)
+		expect.equal(landing.coins, HighwayMath.landingCoins(sv, 426, #landing.rings))
+		finish()
+	end)
+
+	t.test("course: a trap stops the throw there; armor for its zone goes through; a boost escapes it", function()
+		local w = fresh()
+		w.spots = { { d = 190, kind = "trap" } }
 		local plan = throwAndLand(w, w.a)
 		expect.equal(plan.trap, true)
-		expect.equal(plan.studs, HighwayMath.landing(900 / 4)) -- zone 1, no armor: a quarter left
+		expect.equal(plan.studs, 190)
+		expect.equal(plan.roll, 0)
+		expect.equal(w.landed[#w.landed].landing.studs, 190)
 		w.profiles[w.a].gear.armor = 1
-		expect.equal(throwAndLand(w, w.a).studs, HighwayMath.landing(900 / 2))
-		w.profiles[w.a].gear.armor = 2 -- enough armor for zone 1: the trap takes nothing
 		local safe = throwAndLand(w, w.a)
-		expect.equal(safe.studs, 213)
 		expect.equal(safe.trap, false)
-		-- The chance is the zone's the throw would reach: x256 lands in zone 2 (11 %).
-		w.profiles[w.a].gear = { held = 8, platform = 0, arm = 0, armor = 0 }
-		local power = 900 * 256
-		expect.equal(HighwayMath.biomeAt(HighwayMath.landing(power)), 2)
-		w.random = 0.10
-		local hit = throwAndLand(w, w.a)
-		expect.equal(hit.trap, true)
-		expect.equal(hit.studs, HighwayMath.landing(power / 8)) -- zone 2, no armor: 2^-3
-		w.random = 0.12
-		expect.equal(throwAndLand(w, w.a).trap, false)
-		-- A boost keeps the trap: x4 of what the trap left.
-		w.profiles[w.a].gear = { held = 0, platform = 0, arm = 0, armor = 0 }
-		w.random = 0
-		local trapped = HighwayService.throw(w.a, w.serverNow).data
+		expect.equal(safe.pushed, 190)
+		expect.equal(safe.studs, 213)
+		-- A boost before it flies over; the plan looks again from the new arc.
+		w.profiles[w.a].gear.armor = 0
+		local gain = HighwayMath.landing(3600) - HighwayMath.landing(900)
+		expect.equal(HighwayService.throw(w.a, w.serverNow).data.trap, true)
 		advance(w, H.flight.releaseSeconds + 0.5)
 		local boosted = HighwayService.throw(w.a, w.serverNow).data
 		expect.equal(boosted.boosted, true)
-		expect.equal(boosted.trap, true)
-		expect.equal(boosted.studs, math.max(HighwayMath.landing(900 / 4 * 4), trapped.studs))
+		expect.equal(boosted.trap, false)
+		expect.equal(boosted.studs, 190 + gain)
 		finish()
 	end)
 
-	t.test("traps you can see: a trapped landing stands its biome's trap where it rests; others show none", function()
+	t.test("course: a boost keeps the bounces it passed, drops the ones ahead, and can bounce again", function()
 		local w = fresh()
-		throwAndLand(w, w.a)
-		expect.equal(#w.traps, 0) -- not trapped (random 1)
-		w.random = 0
-		local plan = throwAndLand(w, w.a)
-		expect.equal(plan.trap, true)
-		expect.equal(#w.traps, 1)
-		expect.equal(w.traps[1].biome, plan.biome)
-		-- On the lane top (1 stud under a resting squishy's centre), at the plan's rest point.
-		local rest = HighwayMath.planAt(plan, plan.landsAt)
-		local want = WorldLayout.highwayCFrame(rest.X, rest.Y - 1, rest.Z)
-		expect.near((w.traps[1].at.Position - want.Position).Magnitude, 0, 1e-6)
-		expect.near((w.traps[1].at.Position - WorldLayout.highwayCFrame(rest.X, 1, plan.studs).Position).Magnitude, 0, 1e-6)
+		w.spots = { { d = 190, kind = "a" } }
+		local plan = HighwayService.throw(w.a, w.serverNow).data
+		expect.deepEqual(plan.bounces, { 190 })
+		advance(w, H.flight.releaseSeconds + 0.5) -- before the touchdown: flies over it
+		local over = HighwayService.throw(w.a, w.serverNow).data
+		expect.deepEqual(over.bounces, {})
+		finish()
+		local x = fresh()
+		x.spots = { { d = 190, kind = "a" } }
+		local first = HighwayService.throw(x.a, x.serverNow).data
+		advance(x, first.arcs[2].startAt - x.serverNow + 0.5) -- after the bounce
+		local after = HighwayService.throw(x.a, x.serverNow).data
+		expect.deepEqual(after.bounces, { 190 })
+		expect.truthy(after.studs > first.studs)
+		land(x, after)
+		expect.equal(lastLanding(x).boosts, 1)
 		finish()
 	end)
 
-	t.test("boosters: a throw the trap missed may bounce off its touchdown's booster, shown there", function()
+	t.test("course: start stands it on the lane once; the default spots are Config's", function()
 		local w = fresh()
-		-- Zone 1: a roll of 0.09 misses the trap (8 %) and hits the booster (10 %).
-		expect.truthy(0.09 >= Config.Economy.Gear.trapChance[1] and 0.09 < H.boosters.chance[1])
-		w.random = 0.09
-		local plan = throwAndLand(w, w.a)
-		expect.equal(plan.trap, false)
-		expect.equal(plan.booster, true)
-		expect.equal(#plan.arcs, 2)
-		expect.equal(plan.studs, math.max(HighwayMath.landing(900 * H.boosters.power), 213))
-		expect.equal(#w.boosters, 1)
-		local first = plan.arcs[1]
-		expect.equal(w.boosters[1].biome, HighwayMath.biomeAt(first.carry))
-		local touch = HighwayMath.planAt(plan, first.startAt + first.air)
-		expect.near((w.boosters[1].at.Position - WorldLayout.highwayCFrame(touch.X, touch.Y - 1, touch.Z).Position).Magnitude, 0, 1e-3)
-		expect.truthy(w.boosters[1].seconds > H.boosters.showSeconds)
-		expect.equal(w.landed[#w.landed].landing.boosts, 0) -- a bounce is no boost
-		-- No booster on a trapped throw, nor on a miss of both rolls.
-		w.random = 0
-		local trapped = throwAndLand(w, w.a)
-		expect.equal(trapped.booster, false)
-		w.random = 1
-		expect.equal(throwAndLand(w, w.a).booster, false)
-		expect.equal(#w.boosters, 1)
+		HighwayService.start()
+		expect.equal(w.courses, 1)
 		finish()
 	end)
 

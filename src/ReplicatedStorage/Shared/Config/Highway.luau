@@ -108,14 +108,75 @@ local Highway = {
 		speedUp = 1.25,
 		minAirSeconds = 0.5,
 	},
-	-- Boosters (plan step 6, 2026-10-31; [P] Claude's call while the owner is away, built like the traps you can see):
-	-- a throw the trap missed hits a booster with `chance` of the zone it would reach; its first arc's touchdown then
-	-- stands that biome's booster (Art/HighwayBoosters, the owner's concept sheet) and bounces it into a second arc to
-	-- landing(power x `power`) (HighwayMath.bounce), the booster shown for its flight plus showSeconds.
-	boosters = {
-		chance = { 0.10, 0.10, 0.10, 0.12, 0.12, 0.14, 0.14 },
-		power = 2,
-		showSeconds = 4,
+	-- The course (owner 2026-11-06: "investigate hit a golf ball and do it like them": their cannons and rockets stand on
+	-- the runway, a late one can double a shot, obstacles stop it): traps and boosters stand on the lane all the time at
+	-- `spots`, in the order of the owner's "Launchers & Biomes" sheet (booster a, booster b, trap, again and again; on the
+	-- lane's centre, where the squishy flies, and off the BULLSEYE pads). HighwayMath.reach decides what a throw reaches: a
+	-- touchdown within catchShare x the spot's biome length lands on it. A booster bounces it to bounceDistance x where it
+	-- would stop (maxBounces a throw, so one can lead into the next), flying like a boost (boost.speedUp); a trap stops it
+	-- there unless the armor pieces reach the trap's zone. A roll never crosses a spot: the flight carries clearStuds past
+	-- it. Every throw's power is x scatter^(-1..1), so no two fly the same and a throw meets different spots.
+	-- [P] Money check (owner "Yes, build it", old throws vs these from Lv 1 to the Golden Gates, with PERFECT 1 in 5 and a
+	-- 1.5 s pause a throw): Coins a second +1 % .. +31 %, +13 % in the middle; a bounce on 4-35 % of the throws, a trap on
+	-- 0-28 %.
+	course = {
+		scatter = 4,
+		catchShare = 0.021,
+		bounceDistance = 2,
+		maxBounces = 2,
+		clearStuds = 14,
+		-- d = studs from the start line; kind = "a" | "b" (the biome's two boosters, Art/HighwayBoosters) | "trap".
+		spots = {
+			{ d = 50, kind = "a" },
+			{ d = 85, kind = "b" },
+			{ d = 105, kind = "trap" },
+			{ d = 165, kind = "a" },
+			{ d = 195, kind = "b" },
+			{ d = 225, kind = "trap" },
+			{ d = 285, kind = "a" },
+			{ d = 345, kind = "a" },
+			{ d = 420, kind = "b" },
+			{ d = 490, kind = "trap" },
+			{ d = 570, kind = "a" },
+			{ d = 640, kind = "b" },
+			{ d = 690, kind = "trap" },
+			{ d = 770, kind = "a" },
+			{ d = 880, kind = "b" },
+			{ d = 980, kind = "a" },
+			{ d = 1_060, kind = "trap" },
+			{ d = 1_180, kind = "b" },
+			{ d = 1_280, kind = "a" },
+			{ d = 1_350, kind = "trap" },
+			{ d = 1_450, kind = "b" },
+			{ d = 1_600, kind = "a" },
+			{ d = 1_740, kind = "b" },
+			{ d = 1_880, kind = "trap" },
+			{ d = 2_040, kind = "a" },
+			{ d = 2_180, kind = "b" },
+			{ d = 2_290, kind = "trap" },
+			{ d = 2_440, kind = "a" },
+			{ d = 2_650, kind = "b" },
+			{ d = 2_860, kind = "a" },
+			{ d = 3_080, kind = "trap" },
+			{ d = 3_300, kind = "b" },
+			{ d = 3_500, kind = "a" },
+			{ d = 3_690, kind = "trap" },
+			{ d = 3_900, kind = "b" },
+			{ d = 4_200, kind = "a" },
+			{ d = 4_480, kind = "b" },
+			{ d = 4_760, kind = "trap" },
+			{ d = 5_060, kind = "a" },
+			{ d = 5_320, kind = "b" },
+			{ d = 5_560, kind = "trap" },
+			{ d = 5_850, kind = "a" },
+			{ d = 6_300, kind = "b" },
+			{ d = 6_650, kind = "a" },
+			{ d = 6_980, kind = "trap" },
+			{ d = 7_400, kind = "b" },
+			{ d = 7_700, kind = "a" },
+			{ d = 7_950, kind = "trap" },
+			{ d = 8_300, kind = "b" },
+		} :: { { d: number, kind: string } },
 	},
 	-- [P] The next throw may start this much before the server's landing (the client times its landing on the server
 	-- clock it reads, a few ms off).

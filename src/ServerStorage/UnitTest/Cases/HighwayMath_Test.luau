@@ -17,6 +17,9 @@
 --     from a lane-local root (the release 1.5 above it), planAt (the release point before the release, the arcs, the
 --     roll, on the lane (y 2) at the carry and the landing, x easing to the centre over 60 studs), boost (x4 power,
 --     only from 0.2 s after the release to 0.15 s before the air ends, continuous, faster), ringsHit, bullseye;
+--   * the course (owner 2026-11-06): reach lands a touchdown on a spot within catchShare x its biome's length; a booster
+--     adds an arc to 2 x the stop (2 a throw, faster, continuous), a trap stops it there unless the armor reaches the
+--     zone, a roll carries past the spots it would cross; a boost flies over what is ahead;
 --   * inArea(lane-local point, margin): inside WorldLayout.Highway.throwArea (the deck top, L:20 30 x 15), grown by
 --     the margin; inThrowArea(world point, margin) the same from a world position;
 --   * foodBag(pen, sv): the band food of the weakest placed squishy (the lowest level: its band decides the food),
@@ -276,29 +279,160 @@ return function(t: Context)
 		expect.truthy(late.arcs[2].air >= 0.5)
 	end)
 
-	t.test("boosters: bounce adds a second arc from the first touchdown; a boost before it flies over it", function()
+	-- The course (owner 2026-11-06): a Lv 1 throw (power 900) stops at 213 and first touches down at 191.7; catch 6.3
+	-- studs in Candy Meadow (0.021 x 300), 10.5 in Bakery Town (0.021 x 500).
+	local function spots(...: any): { any }
+		local list = {}
+		local args = { ... }
+		for index = 1, #args, 2 do
+			table.insert(list, { d = args[index], kind = args[index + 1] })
+		end
+		return list
+	end
+
+	t.test("course: no spot near: the same flight, and reach changes no plan in place", function()
 		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
-		local bounced = HighwayMath.bounce(plain, 900)
-		assert(bounced ~= nil, "a Lv 1 throw bounces")
-		local first, second = plain.arcs[1], bounced.arcs[2]
-		expect.equal(#bounced.arcs, 2)
-		expect.equal(bounced.arcs[1], first)
-		expect.near(second.from, first.carry, 1e-9)
+		local carry = plain.arcs[1].carry
+		expect.near(carry, 191.7, 1e-6)
+		for _, list in { {}, spots(184, "a"), spots(50, "a", 100, "trap") } do -- 184 is 7.7 from the touchdown
+			local r = HighwayMath.reach(plain, 0, list, 0)
+			expect.equal(r.studs, 213)
+			expect.equal(r.arcs[1].carry, carry)
+			expect.near(r.landsAt, plain.landsAt, 1e-9)
+			expect.deepEqual(r.bounces, {})
+			expect.equal(r.trap, false)
+			expect.equal(r.pushed, nil)
+		end
+		HighwayMath.reach(plain, 0, spots(190, "a"), 0)
+		HighwayMath.reach(plain, 0, spots(205, "a"), 0)
+		expect.equal(plain.arcs[1].carry, carry)
+		expect.equal(#plain.arcs, 1)
+	end)
+
+	t.test("course: a booster near the touchdown: lands exactly on it, doubles the stop, faster, continuous", function()
+		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
+		local first = plain.arcs[1]
+		local r = HighwayMath.reach(plain, 0, spots(190, "a"), 0)
+		expect.deepEqual(r.bounces, { 190 })
+		expect.equal(r.studs, 426)
+		expect.equal(#r.arcs, 2)
+		expect.equal(r.arcs[1].carry, 190)
+		local second = r.arcs[2]
+		expect.equal(second.from, 190)
 		expect.near(second.startAt, first.startAt + first.air, 1e-9)
-		expect.equal(bounced.studs, math.max(HighwayMath.landing(900 * H.boosters.power), plain.studs))
-		expect.truthy(bounced.studs > plain.studs)
-		expect.truthy(second.carry >= second.from + H.boost.minAheadStuds - 1e-9 or second.carry == bounced.studs)
-		expect.near(bounced.landsAt, second.startAt + second.air + bounced.roll, 1e-9)
-		-- Continuous at the touchdown.
+		expect.near(second.carry, 0.9 * 426, 1e-6)
+		local speed = (first.carry - first.from) / first.air
+		expect.near((second.carry - second.from) / second.air, 1.25 * speed, 1e-9)
+		expect.near(r.landsAt, second.startAt + second.air + r.roll, 1e-9)
 		local touch = first.startAt + first.air
-		expect.truthy((HighwayMath.planAt(plain, touch - 1e-6) - HighwayMath.planAt(bounced, touch + 1e-6)).Magnitude < 0.01)
-		expect.equal(HighwayMath.bounce(bounced, 900), nil) -- only a one-arc plan bounces
-		-- A boost during the first arc drops the bounce still ahead (the arcs stay in order).
-		local boosted = HighwayMath.boost(bounced, 900 * H.boosters.power, RELEASE + 0.5)
+		expect.truthy((HighwayMath.planAt(r, touch - 1e-6) - HighwayMath.planAt(r, touch + 1e-6)).Magnitude < 0.01)
+		expect.near(HighwayMath.planAt(r, touch).Z, 190, 1e-3)
+		-- The nearest spot wins; "b" is a booster too.
+		expect.deepEqual(HighwayMath.reach(plain, 0, spots(187, "a", 193, "b"), 0).bounces, { 193 })
+	end)
+
+	t.test("course: one booster can lead into the next, up to maxBounces; never off the same spot twice", function()
+		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
+		-- 426 touches down at 383.4, 852 at 766.8.
+		local list = spots(190, "a", 380, "b", 770, "a")
+		local r = HighwayMath.reach(plain, 0, list, 0)
+		expect.deepEqual(r.bounces, { 190, 380 })
+		expect.equal(r.studs, 852)
+		expect.equal(#r.arcs, 3)
+		-- The third booster is over the limit: nothing happens, and the roll carries past it.
+		expect.equal(r.arcs[3].carry, 784)
+		expect.deepEqual(HighwayMath.reach(plain, 0, list, H.course.maxBounces - 1).bounces, { 190 })
+		expect.deepEqual(HighwayMath.reach(plain, 0, list, H.course.maxBounces).bounces, {})
+		expect.equal(HighwayMath.reach(plain, 0, list, H.course.maxBounces).studs, 213)
+		-- A far bounce stops at the Golden Gates.
+		local far = HighwayMath.newPlan(H.walls[7], ROOT, RELEASE) -- stops at 6,000, touches down at 5,400
+		local gates = HighwayMath.reach(far, 0, spots(5400, "a"), 0)
+		expect.equal(gates.studs, H.gatesAt)
+		expect.near(gates.arcs[2].carry, 0.9 * H.gatesAt, 1e-6)
+	end)
+
+	t.test("course: a trap stops the throw on it, unless the armor reaches its zone", function()
+		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
+		local first = plain.arcs[1]
+		local r = HighwayMath.reach(plain, 0, spots(190, "trap"), 0)
+		expect.equal(r.trap, true)
+		expect.equal(r.studs, 190)
+		expect.equal(r.roll, 0)
+		expect.equal(r.arcs[1].carry, 190)
+		expect.near(r.landsAt, first.startAt + first.air, 1e-9)
+		expect.near(HighwayMath.planAt(r, r.landsAt).Z, 190, 1e-3)
+		-- 1 armor piece goes through zone 1's traps: the same flight, with the ARMOR! pop's spot.
+		local through = HighwayMath.reach(plain, 1, spots(190, "trap"), 0)
+		expect.equal(through.trap, false)
+		expect.equal(through.pushed, 190)
+		expect.equal(through.studs, 213)
+		-- ... but not zone 2's: a bounce into a trap stops there.
+		local list = spots(190, "a", 380, "trap")
+		local stopped = HighwayMath.reach(plain, 1, list, 0)
+		expect.deepEqual(stopped.bounces, { 190 })
+		expect.equal(stopped.trap, true)
+		expect.equal(stopped.studs, 380)
+		expect.equal(HighwayMath.reach(plain, 2, list, 0).trap, false)
+	end)
+
+	t.test("course: a roll never crosses a spot: the flight carries past it and stops past it", function()
+		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
+		local clear = H.course.clearStuds
+		local r = HighwayMath.reach(plain, 0, spots(205, "trap"), 0) -- 13.3 from the touchdown, 8 before the stop
+		expect.equal(r.trap, false)
+		expect.equal(r.arcs[1].carry, 205 + clear)
+		expect.equal(r.studs, 205 + clear)
+		expect.equal(r.roll, 0)
+		-- The last spot it would cross wins; the stop stays when it is farther (a PERFECT: touches down at 231.3, stops at 257).
+		local perfect = HighwayMath.newPlan(3600, ROOT, RELEASE)
+		local two = HighwayMath.reach(perfect, 0, spots(240, "a", 245, "a"), 0)
+		expect.equal(two.studs, 245 + clear)
+		expect.equal(two.arcs[1].carry, 245 + clear)
+		local one = HighwayMath.reach(perfect, 0, spots(240, "a"), 0)
+		expect.equal(one.studs, 257)
+		expect.equal(one.arcs[1].carry, 240 + clear)
+		-- A spot just past the stop counts too (it would stop on it).
+		expect.equal(HighwayMath.reach(plain, 0, spots(220, "a"), 0).studs, 220 + clear)
+		-- A spot far past it does not.
+		expect.equal(HighwayMath.reach(plain, 0, spots(213 + clear + 1, "a"), 0).studs, 213)
+	end)
+
+	t.test("course: a boost flies over what is ahead, adds its own gain, and escapes a trap", function()
+		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
+		local gain = HighwayMath.landing(3600) - HighwayMath.landing(900)
+		local bounced = HighwayMath.reach(plain, 0, spots(190, "a"), 0)
+		local boosted = HighwayMath.boost(bounced, 900, RELEASE + 0.5)
 		assert(boosted ~= nil, "a boost before the bounce goes")
 		expect.equal(#boosted.arcs, 2)
-		expect.truthy(boosted.arcs[2] ~= second)
-		expect.truthy(boosted.arcs[2].startAt > boosted.arcs[1].startAt)
+		expect.truthy(boosted.arcs[2] ~= bounced.arcs[2])
+		expect.near(boosted.arcs[2].startAt, RELEASE + 0.5, 1e-9)
+		expect.equal(boosted.studs, 426 + gain)
+		local trapped = HighwayMath.reach(plain, 0, spots(190, "trap"), 0)
+		local away = HighwayMath.boost(trapped, 900, RELEASE + 0.5)
+		assert(away ~= nil, "a boost before the trap goes")
+		expect.equal(away.studs, 190 + gain)
+		-- Never past the Golden Gates.
+		local high = HighwayMath.reach(HighwayMath.newPlan(H.walls[7], ROOT, RELEASE), 0, spots(5400, "a"), 0)
+		local capped = HighwayMath.boost(high, H.walls[7], RELEASE + 0.5)
+		assert(capped ~= nil, "a boost before the bounce goes")
+		expect.equal(capped.studs, H.gatesAt)
+	end)
+
+	t.test("course: Config's spots rise in every biome, hold both boosters and a trap, and keep off the pads", function()
+		local kinds: { { [string]: boolean } } = {}
+		for index, spot in H.course.spots do
+			local before = H.course.spots[index - 1]
+			expect.truthy(before == nil or spot.d > before.d)
+			local biome = HighwayMath.biomeAt(spot.d)
+			kinds[biome] = kinds[biome] or {}
+			kinds[biome][spot.kind] = true
+			for _, pad in WorldLayout.Highway.pads do
+				expect.truthy(math.abs(spot.d - pad.d) >= WorldLayout.Highway.padRadius + H.course.clearStuds)
+			end
+		end
+		for biome = 1, #H.starts do
+			expect.deepEqual(kinds[biome], { a = true, b = true, trap = true })
+		end
 	end)
 
 	t.test("p13v4 ringsHit: Lv 1 plain none, PERFECT ring 1, PERFECT + a boost at +1 s rings 1-3", function()
