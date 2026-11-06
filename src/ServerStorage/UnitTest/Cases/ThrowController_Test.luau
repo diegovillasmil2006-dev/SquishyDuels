@@ -423,15 +423,6 @@ return function(t: Context)
 		expect.equal(full, false)
 	end)
 
-	-- User bug 2026-11-06: Throw held through a knock-out kept the aim from before the respawn, far from the new spot.
-	t.test("a held press loses its aim without a throw context or a body, never while charging", function()
-		-- charging, hasContext, alive
-		expect.equal(ThrowController.pressAimLost(false, true, true), false) -- held through the cooldown: the press's aim
-		expect.equal(ThrowController.pressAimLost(true, true, true), false) -- a running charge
-		expect.equal(ThrowController.pressAimLost(false, false, true), true) -- knocked out in a match, a round's countdown
-		expect.equal(ThrowController.pressAimLost(false, true, false), true) -- no living body
-	end)
-
 	t.test("a ThrowRejected nextThrowAt is adopted only when finite and not far ahead", function()
 		local ahead = Config.Duel.Rules.CooldownClamp.Max + 1
 		expect.equal(ThrowController.acceptedNextThrowAt(101.2, 100, ahead), 101.2)

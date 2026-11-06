@@ -1016,7 +1016,7 @@ function DuelFormat.reticleLabelOffset(
 end
 
 -- The reticle's point on its full-bleed overlay. `screen` is a viewport pixel (ThrowController's screenPosition: the
--- mouse, the view's centre or the spot of a held Throw), `inset` GuiService:GetGuiInset() and `origin` the overlay's
+-- mouse or the view's centre), `inset` GuiService:GetGuiInset() and `origin` the overlay's
 -- AbsolutePosition. On phones with safe areas the viewport is smaller than the overlay and starts inside it, so drawn
 -- raw the ring sat left of the throw (user bugs 2026-10-24, and 2026-11-06 while Throw is held). PC: unchanged.
 function DuelFormat.reticlePoint(screen: Vector2, inset: Vector2, origin: Vector2): Vector2
