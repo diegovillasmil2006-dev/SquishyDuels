@@ -6,6 +6,12 @@
 		"container": "Workspace"
 	},
 	{
+		"file": "Workspace/SD_KittyBreadCheck_.rbxm",
+		"class": "Model",
+		"name": "SD_KittyBreadCheck\t",
+		"container": "Workspace"
+	},
+	{
 		"file": "Workspace/SquishyDuelsLobby.rbxm",
 		"class": "Model",
 		"name": "SquishyDuelsLobby",
