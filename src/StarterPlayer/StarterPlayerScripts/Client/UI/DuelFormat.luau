@@ -63,6 +63,7 @@
 --   resultLayout(..., barBottom?)               the result card starts under the top bar when its lines fit there
 --                                               whole, else clearsBar = false
 --   reticleLabelOffset(aimX, textW, screenW, scale, margin)   the reticle's state text moved in from a screen edge
+--   reticlePoint(screen, inset, origin)                       the reticle's point on its full-bleed overlay
 -- Foam fix 2 (2026-10-09; look and layout only):
 --   sideNeed(input)                             what a side card needs on either layout: its widest content (regular:
 --                                               the name on one line or the lives row; compact: the lives row with
@@ -1014,17 +1015,36 @@ function DuelFormat.reticleLabelOffset(
 	return (centre - aimX) / scale
 end
 
+-- The reticle's point on its full-bleed overlay. `screen` is a viewport pixel (ThrowController's screenPosition: the
+-- mouse, the view's centre or the spot of a held Throw), `inset` GuiService:GetGuiInset() and `origin` the overlay's
+-- AbsolutePosition. On phones with safe areas the viewport is smaller than the overlay and starts inside it, so drawn
+-- raw the ring sat left of the throw (user bugs 2026-10-24, and 2026-11-06 while Throw is held). PC: unchanged.
+function DuelFormat.reticlePoint(screen: Vector2, inset: Vector2, origin: Vector2): Vector2
+	return screen - inset - origin
+end
+
 -- Foam fix 2: whether a reticle must hide because its point sits on a HUD control or an open dialog. `objects` are
 -- PlayerGui:GetGuiObjectsAtPosition's at that point; one counts when it shows (its own Visible) and is a button or a
 -- text box, or an Active surface that is not fully transparent (a dialog's panel; a clear click catcher does not). The
--- reticles' own pieces are never Active, so they never count.
+-- reticles' own pieces are never Active, so they never count. A button that draws nothing does not count either
+-- (user bug 2026-11-06: Roblox's thumbstick zone, on the left of a phone's screen, hid the ring of a held aim).
 function DuelFormat.aimBlocked(objects: { GuiObject }): boolean
 	for _, object in objects do
 		if not object.Visible then
 			continue
 		end
-		if object:IsA("GuiButton") or object:IsA("TextBox") then
+		if object:IsA("TextBox") then
 			return true
+		elseif object:IsA("GuiButton") then
+			local clear = object.BackgroundTransparency >= 1 and #object:GetChildren() == 0
+			if object:IsA("ImageButton") then
+				clear = clear and (object.Image == "" or object.ImageTransparency >= 1)
+			elseif object:IsA("TextButton") then
+				clear = clear and (object.Text == "" or object.TextTransparency >= 1)
+			end
+			if not clear then
+				return true
+			end
 		elseif object.Active and object.BackgroundTransparency < 1 then
 			return true
 		end

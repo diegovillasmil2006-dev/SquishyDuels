@@ -1071,6 +1071,18 @@ return function(t: Context)
 		expect.equal(DuelFormat.reticleLabelOffset(1900, 180, 1920, 0, 12), 0)
 	end)
 
+	t.test("reticle place (user bug 2026-11-06): a held aim stays on the throw on phones with side safe areas", function()
+		-- A PC: the overlay starts at the window's top left, so a viewport pixel is an overlay pixel.
+		local inset = Vector2.new(0, 58)
+		expect.equal(DuelFormat.reticlePoint(Vector2.new(300, 200), inset, Vector2.new(0, -58)), Vector2.new(300, 200))
+		-- iPhone 17 Pro, measured in Studio's Device Simulator (2026-11-06): viewport 750 x 381, overlay 874 x 401 at
+		-- AbsolutePosition (-62, -78). The camera's centre is at (437, 210.5) on the overlay; drawn raw it sat 62 px left.
+		local origin = Vector2.new(-62, -78)
+		expect.equal(DuelFormat.reticlePoint(Vector2.new(375, 190.5), inset, origin), Vector2.new(437, 210.5))
+		-- A spot that moved on screen (walking or turning) keeps the same offset.
+		expect.equal(DuelFormat.reticlePoint(Vector2.new(475, 170.5), inset, origin), Vector2.new(537, 190.5))
+	end)
+
 	-- Foam fix 2 (2026-10-09) ------------------------------------------------------------------------------------------
 
 	t.test("side cards (foam fix 2): the need is the widest content, from the texts, on both layouts", function()
@@ -1189,6 +1201,23 @@ return function(t: Context)
 		expect.equal(DuelFormat.aimBlocked({ dialog }), true)
 		expect.equal(DuelFormat.aimBlocked({ Instance.new("ImageButton") }), true)
 		expect.equal(DuelFormat.aimBlocked({ Instance.new("TextBox") }), true)
+		-- User bug 2026-11-06: Roblox's thumbstick zone, a button that draws nothing, covers the left of a phone's screen;
+		-- a held aim sliding over it keeps its ring. A clear button with a face, text or picture still hides the ring.
+		local zone: GuiObject = Instance.new("ImageButton")
+		zone.BackgroundTransparency = 1
+		expect.equal(DuelFormat.aimBlocked({ zone }), false)
+		local faced: GuiObject = Instance.new("TextButton")
+		faced.BackgroundTransparency = 1
+		faced.Text = ""
+		Instance.new("Frame").Parent = faced
+		expect.equal(DuelFormat.aimBlocked({ faced }), true)
+		local labelled: GuiObject = Instance.new("TextButton")
+		labelled.BackgroundTransparency = 1
+		expect.equal(DuelFormat.aimBlocked({ labelled }), true)
+		local pictured: ImageButton = Instance.new("ImageButton")
+		pictured.BackgroundTransparency = 1
+		pictured.Image = "rbxassetid://1"
+		expect.equal(DuelFormat.aimBlocked({ pictured }), true)
 	end)
 
 	t.test("phases: forfeit from Preparing to SuddenDeath; live in Active and SuddenDeath", function()

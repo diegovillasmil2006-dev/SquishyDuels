@@ -38,8 +38,8 @@
 -- leaves an arena's Bounds (the server expires it there). The server sweeps Include lists (a duel: the slot's Geometry
 -- without Barriers, its query-only floor paint included; a match: the map's collidable parts; practice: the range's
 -- parts and a flat floor at its height); this cast takes every collidable part instead, so it lands on the floor
--- right under a duel's paint (a fraction of a stud) and would stop on a collidable lobby part in the practice lane
--- that is not a range part (none known).
+-- right under a duel's paint (a fraction of a stud). User bug 2026-11-06: not in practice, where the line stopped on
+-- lollipops and gems the real throw flies through: there it casts what the server meets (practiceSolids).
 
 -- Services
 
@@ -61,6 +61,7 @@ local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
 local StateController = require(script.Parent.StateController)
 local ThrowController = require(script.Parent.ThrowController)
+local WorldLayout = require(Shared.World.WorldLayout)
 
 -- Types
 
@@ -90,6 +91,8 @@ local DEFAULT_GROUP = "Default"
 local MIN_CHORD = 1e-6 -- studs: a shorter chord is not cast
 local BOTS_FOLDER = "SD_Bots" -- BotService: the practice bot's and the match bots' rigs
 local TEAM_ATTR = "SD_Team" -- MatchService: a TDM fighter's team, on the Player or (BotService) on a bot's rig
+local LOBBY_NAME = "SquishyDuelsLobby"
+local ARENA_NAME = "PracticeArena"
 
 -- Module table
 
@@ -117,6 +120,9 @@ local paramsList: { Instance } = {} -- what `params` leaves out (castParams rebu
 local castCharacters: { Instance } = {}
 local castEnemies: { Instance } = {}
 local castList: { Instance } = {}
+local practiceThrow = false -- the arc shown now is a practice throw's
+local practiceArena: Instance? = nil
+local practiceParams: RaycastParams? = nil
 
 -- Public (pure)
 
@@ -276,6 +282,25 @@ function AimArcController.botIsEnemy(myTeam: unknown, botTeam: unknown): boolean
 	return myTeam == nil or botTeam ~= myTeam
 end
 
+-- User bug 2026-11-06: what a practice throw meets in Diego's arena, as the server: its solid folders (the shared list)
+-- and its targets and dummies (found by name as PracticeService finds them; the server hits their balls, this cast their
+-- parts). The real throw flies through the rest (lollipops, gems, crystals, the portal, the wheel's hub), so the line does.
+function AimArcController.practiceSolids(arena: Instance): { Instance }
+	local list: { Instance } = {}
+	for _, name in WorldLayout.PracticeRange.arenaGeometry do
+		local child = arena:FindFirstChild(name)
+		if child then
+			table.insert(list, child)
+		end
+	end
+	for _, model in arena:GetDescendants() do
+		if model:IsA("Model") and (string.match(model.Name, "^Target_") or string.match(model.Name, "^Dummy_")) then
+			table.insert(list, model)
+		end
+	end
+	return list
+end
+
 -- Private
 
 -- The enemies' characters now (see the header): the duel opponent, a match's live enemies; none in practice.
@@ -307,8 +332,34 @@ local function sameList(a: { Instance }, b: { Instance }): boolean
 	return true
 end
 
+-- A practice throw's cast params (practiceSolids), made once for the arena; nil without an arena.
+local function practiceCastParams(): RaycastParams?
+	local lobby = Workspace:FindFirstChild(LOBBY_NAME)
+	local arena = lobby and lobby:FindFirstChild(ARENA_NAME)
+	if arena == nil then
+		return nil
+	end
+	if practiceParams == nil or practiceArena ~= arena then
+		local p = RaycastParams.new()
+		p.FilterType = Enum.RaycastFilterType.Include
+		p.CollisionGroup = DEFAULT_GROUP
+		p.IgnoreWater = true
+		p.RespectCanCollide = true
+		p.FilterDescendantsInstances = AimArcController.practiceSolids(arena)
+		practiceParams = p
+		practiceArena = arena
+	end
+	return practiceParams
+end
+
 -- The cast's params, made again only when what it leaves out changed (a respawn, a join, an enemy K.O.'d).
 local function castParams(): RaycastParams
+	if practiceThrow then
+		local practice = practiceCastParams()
+		if practice then
+			return practice
+		end
+	end
 	table.clear(castCharacters)
 	for _, player in Players:GetPlayers() do
 		if player.Character then
@@ -505,6 +556,7 @@ local function step(dt: number, now: number): boolean
 	local reduced = Tweens.reducedMotion()
 	alpha = AimArcController.fade(alpha, on, dt, reduced)
 	if on and preview then
+		practiceThrow = preview.kind == "practice"
 		local endTime, hit, normal = AimArcController.landing(
 			preview.origin,
 			preview.velocity,

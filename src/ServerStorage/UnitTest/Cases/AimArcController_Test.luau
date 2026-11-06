@@ -205,6 +205,39 @@ return function(t: Context)
 		expect.falsy(AimArc.botIsEnemy("Red", "Red"))
 	end)
 
+	-- User bug 2026-11-06: in the practice range the line stopped on a lollipop, the real throw flew on to the wall.
+	t.test("practiceSolids: what a practice throw meets (the server's list, targets, dummies), no decorations", function()
+		local arena = Instance.new("Folder")
+		local function add(class: string, name: string, parent: Instance?): Instance
+			local made = Instance.new(class :: any)
+			made.Name = name
+			made.Parent = parent or arena
+			return made
+		end
+		local floor = add("Folder", "Floor")
+		local counters = add("Folder", "CounterTops")
+		local target = add("Model", "Target_01")
+		local dummy = add("Model", "Dummy_Frog")
+		local wheel = add("Model", "TargetWheel")
+		local wheelTarget = add("Model", "Target_W1", wheel)
+		local decorations = {
+			add("Folder", "Lollipop"),
+			add("Folder", "Gems"),
+			add("Model", "FloatCrystal_01"),
+			add("Model", "ReturnPortal"),
+			wheel, -- its hub: only the targets on it are hit
+		}
+		local list = AimArc.practiceSolids(arena)
+		for _, solid in { floor, counters, target, dummy, wheelTarget } do
+			expect.truthy(table.find(list, solid))
+		end
+		for _, decoration in decorations do
+			expect.falsy(table.find(list, decoration))
+		end
+		expect.equal(#list, 5)
+		arena:Destroy()
+	end)
+
 	t.test("layout: from startStuds + phase · gap, gapStuds apart, the design's sizes", function()
 		local points, dists, out = {}, {}, {}
 		local o = Vector3.new(0, 3, 0)

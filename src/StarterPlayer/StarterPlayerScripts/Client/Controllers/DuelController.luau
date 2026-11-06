@@ -20,9 +20,8 @@
 --   ("READY" + a 0.9 s pulse, static under ReducedMotion) on mouse / gamepad (touch has ControlsController's Throw /
 --   Ult buttons instead). Lives pop when lost (UI/Components/Pips).
 -- * Reticle and edge arrow (reading: a full-bleed overlay SD_DuelReticle, DisplayOrder of SD_DuelHud, ScreenInsets
---   None, so its pixels are viewport pixels like ThrowController's screenPosition and Camera:WorldToViewportPoint): in
---   Active / SuddenDeath a dot + ring at ThrowController.getAimState().screenPosition (the mouse; the centre on touch,
---   gamepad and shift lock), the cooldown arc while cooling (a clockwise pie: two UIGradient half discs, no images)
+--   None): in Active / SuddenDeath a dot + ring at ThrowController.getAimState().screenPosition (the mouse; the centre
+--   on touch, gamepad and shift lock; DuelFormat.reticlePoint turns it into the overlay's pixels), the cooldown arc while cooling (a clockwise pie: two UIGradient half discs, no images)
 --   and the state as text (ready / seconds left / rooted / can't throw here, §5.10). An own hit
 --   (ThrowController.HitConfirmed) pops the ring 1.3 -> 1 (250 ms) and shows "Hit!" for 400 ms (§9.8). The off-screen
 --   arrow points to the opponent, in Danger while their Dragon Rush telegraph runs (the lane starts at them).
@@ -2178,12 +2177,10 @@ local function updateReticle(h: Hud, view: StateController.DuelView, aim: ThrowC
 		return
 	end
 	r.root.Visible = true
-	-- A centred aim (touch, gamepad, shift lock) throws through the middle of the screen; on phones with side safe
-	-- areas Camera.ViewportSize is narrower than this full-bleed overlay, so viewport / 2 drew the ring left of where
-	-- the throw went (user bug 2026-10-24). The overlay's own middle is the screen's.
-	r.root.Position = if aim.centered
-		then UDim2.fromScale(0.5, 0.5)
-		else UDim2.fromOffset(aim.screenPosition.X, aim.screenPosition.Y)
+	-- The point on this full-bleed overlay, not the raw viewport pixel: on phones with side safe areas the viewport is
+	-- narrower, so the ring sat left of where the throw went (user bugs 2026-10-24, and 2026-11-06 while Throw is held).
+	local point = DuelFormat.reticlePoint(aim.screenPosition, GuiService:GetGuiInset(), h.overlay.AbsolutePosition)
+	r.root.Position = UDim2.fromOffset(point.X, point.Y)
 	-- Feature 1: "Catch!" with its key in place of the state text while an opponent's throw comes at you and the
 	-- catch is ready (design: html:88, 673-674), pulsing (DuelFormat.catchPrompt).
 	local promptFade = 0
@@ -2207,7 +2204,7 @@ local function updateReticle(h: Hud, view: StateController.DuelView, aim: ThrowC
 		stateTextWidth = math.min(LAYOUT.RETICLE_LABEL_WIDTH, Theme.textWidth(text, "Chip") + 2 * Theme.Stroke.thin)
 	end
 	local offset = DuelFormat.reticleLabelOffset(
-		aim.screenPosition.X,
+		point.X,
 		stateTextWidth,
 		h.overlay.AbsoluteSize.X,
 		UIController.scale(),

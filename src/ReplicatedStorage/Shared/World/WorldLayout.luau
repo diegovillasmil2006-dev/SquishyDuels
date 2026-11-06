@@ -749,6 +749,12 @@ local PracticeRange = {
 	-- range_board (design: lobby.js:415): reading, its front (local +Z, the plates' side) toward the throw spot.
 	boardFrame = CFrame.lookAt(RANGE_BOARD, 2 * RANGE_BOARD - THROW_SPOT),
 	approach = ARENA_APPROACH,
+	-- Diego's arena's solid folders that practice throws splat on: the server's sweep (PracticeService) and the aim
+	-- line's cast (AimArcController) read the same list. His targets and dummies are hit by their balls, so not here.
+	arenaGeometry = {
+		"Floor", "Grout", "BackWall", "Counters", "CounterTops", "Barrier", "WheelPost", "SlideRails", "DummyPads",
+		"Rails", "RailPosts", "ScoreBoard", "ScoreFrame", "WallTargets", "Crenels",
+	},
 }
 
 -- Private: stations list (§6.3, §17.6) -----------------------------------------------------------------------------

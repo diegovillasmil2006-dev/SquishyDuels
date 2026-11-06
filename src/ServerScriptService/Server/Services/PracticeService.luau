@@ -77,10 +77,7 @@ local ARENA_MODEL = "PracticeArena" -- Diego's arena, a child of the lobby
 local ATTR_MATCH_ID = "SD_MatchId"
 -- His arena's solid parts that practice projectiles splat on (his rbxmx folder names). His targets and dummies are hit
 -- by their balls and the throw box is a volume, so none of those is in the list.
-local ARENA_GEOMETRY = {
-	"Floor", "Grout", "BackWall", "Counters", "CounterTops", "Barrier", "WheelPost", "SlideRails", "DummyPads",
-	"Rails", "RailPosts", "ScoreBoard", "ScoreFrame", "WallTargets", "Crenels",
-}
+local ARENA_GEOMETRY = WorldLayout.PracticeRange.arenaGeometry
 local THROW_LINE_Z = 14 -- the middle of his counter line (Z 13..15): a target's distance is measured from it
 local REMOTE_HIT = "PracticeHit"
 local WATCH_SECONDS = 0.5 -- how often sessions are checked for "left the zone" / "match started"

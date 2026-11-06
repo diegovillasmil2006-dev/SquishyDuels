@@ -1138,11 +1138,10 @@ local function stepReticle(now: number)
 	if not visible then
 		return
 	end
-	-- A centred aim throws through the screen's middle: the full-bleed overlay's middle, not viewport / 2 (narrower
-	-- than the overlay on phones with side safe areas; user bug 2026-10-24, as DuelController's reticle).
-	r.root.Position = if aim.centered
-		then UDim2.fromScale(0.5, 0.5)
-		else UDim2.fromOffset(aim.screenPosition.X, aim.screenPosition.Y)
+	-- The point on this full-bleed overlay, as DuelController's reticle (phones with side safe areas; user bugs
+	-- 2026-10-24 and 2026-11-06).
+	local point = DuelFormat.reticlePoint(aim.screenPosition, GuiService:GetGuiInset(), r.gui.AbsolutePosition)
+	r.root.Position = UDim2.fromOffset(point.X, point.Y)
 	r.dot.Visible = shown.icon ~= "cross"
 	r.cross.Visible = shown.icon == "cross"
 	-- Feature 1: while charging the fill grows to c in the toy's colour (the top c filled) and the ring pulses at full.
@@ -1172,7 +1171,7 @@ local function stepReticle(now: number)
 	end
 	-- Overlays fix: the state text moves in from a screen edge (it ran off the right edge by the Settings tile).
 	local offset = DuelFormat.reticleLabelOffset(
-		aim.screenPosition.X,
+		point.X,
 		r.labelWidth,
 		r.gui.AbsoluteSize.X,
 		UIController.scale(),

@@ -17,7 +17,8 @@
 --     press until no press is left (held, charging or buffered) the aim is the camera ray of that press (pressRay:
 --     its spot AND its direction; owner 2026-11-02 "lock it": keeping only the spot sent a strafing charge 30° beside
 --     the crosshair), so walking or turning no longer moves the landing spot; the reticle follows that spot on
---     screen. The ultimate keeps the live camera.
+--     screen. The ultimate keeps the live camera. User bug 2026-11-06: a press held with no throw context or no body (a
+--     knock-out and respawn, a round's countdown) loses that aim (pressAimLost); its charge locks the camera ray of then.
 --   * Aim assist (Config.Combat.AimAssist; gamepad 4°, touch 5°, 50%; off for keyboard/mouse), applied once at throw
 --     time: when the opponent's capsule centre (practice: the nearest practice target, reading; a duel bot: its rig in
 --     Workspace.SD_Bots) is inside the cone and in line of sight, the aim point moves `strength` of the way toward it.
@@ -193,6 +194,7 @@ export type ChargePreview = {
 	radius: number,
 	charge: number,
 	color: Color3?,
+	kind: string, -- the throw's context: "duel", "match" or "practice" (what the arc's cast may meet)
 }
 
 export type UltState = {
@@ -807,6 +809,12 @@ function ThrowController.holdStep(
 		return "drop"
 	end
 	return if ready then "throw" else nil
+end
+
+-- User bug 2026-11-06 (pure): whether a held press's aim is gone: no charge runs and there is no throw context or no
+-- living body, so the camera may be anywhere by the time it can charge (see the header).
+function ThrowController.pressAimLost(charging: boolean, hasContext: boolean, alive: boolean): boolean
+	return not charging and not (hasContext and alive)
 end
 
 -- The sound of a held squishy popping back in (§18.6): sfx.pop for the local player's own throw only.
@@ -2314,6 +2322,12 @@ end
 local function step(dt: number, _clock: number): boolean
 	local now = serverNow()
 	stepCharge(now)
+	if
+		holdDown
+		and ThrowController.pressAimLost(charge ~= nil, throwContext(now) ~= nil, aliveRoot(localPlayer()) ~= nil)
+	then
+		pressRay = nil
+	end
 	updateAim(now)
 	-- Hold to charge and the input buffer (§5.2; feature 1, ThrowController.holdStep).
 	if bufferedAt ~= nil or (holdDown and charge == nil and RULES.HoldToCharge) then
@@ -2333,6 +2347,10 @@ local function step(dt: number, _clock: number): boolean
 				)
 			local action = ThrowController.holdStep(held, charge ~= nil, canCharge(ctx, now), pressed ~= nil, keeps)
 			if action == "start" then
+				if pressRay == nil then
+					local _, _, _, liveRay = cameraAim(nil)
+					pressRay = liveRay
+				end
 				startCharge(ctx, now)
 			elseif action == "throw" then
 				bufferedAt = nil
@@ -2438,6 +2456,7 @@ function ThrowController.chargePreview(): ChargePreview?
 		radius = throw.radius,
 		charge = c,
 		color = running.color,
+		kind = ctx.kind,
 	}
 end
 
