@@ -110,6 +110,8 @@ type Reply = { [string]: any }
 -- Constants
 
 local FUNCTION_NAME = "SD_DebugServer"
+local TEST_MODELS = "SD_ModelsTest" -- ServerStorage: test models, a slot folder in Studio tests only
+local SLOT_FOLDER = "SD_Models" -- Client/Models/SquishyCache's model slots
 local ATTR_SCENARIO = "SD_TestScenario"
 local ATTR_GRIP_LEVEL = "SD_GripLevel"
 local DUMMY_KIND = "dummy"
@@ -655,6 +657,15 @@ function DebugHooks.init()
 	bindable.Name = FUNCTION_NAME
 	bindable.OnInvoke = onInvoke
 	bindable.Parent = ServerStorage
+	-- Test models (Kitty Bread test 2026-11-06): in Studio tests only, ServerStorage.SD_ModelsTest acts as the model slot
+	-- folder (Client/Models/SquishyCache), so a publish never shows them. Moving it to ReplicatedStorage.SD_Models and
+	-- renaming it makes them real.
+	local testModels = ServerStorage:FindFirstChild(TEST_MODELS)
+	if testModels and not ReplicatedStorage:FindFirstChild(SLOT_FOLDER) then
+		local copy = testModels:Clone()
+		copy.Name = SLOT_FOLDER
+		copy.Parent = ReplicatedStorage
+	end
 end
 
 -- Owners own all (see the header). Never yields: the wait for the profile runs in its own thread.

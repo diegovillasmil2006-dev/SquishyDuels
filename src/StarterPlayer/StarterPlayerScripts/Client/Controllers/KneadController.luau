@@ -11,7 +11,7 @@
 --   sparkle (Anim/FlakePool), the 2D layer (UI/KneadOverlay: vignette, wax HUD, fingertip ring), the panel's knead rows
 --   and help (onView) and the wax sound (Controllers/KneadAudio).
 --
---   KneadController.start(args) -> Handle?   nil when the toy has no shell body (no SD_Body part of shape E, B or RB)
+--   KneadController.start(args) -> Handle?   nil when the toy has no shell body (no SD_Body part of shape E, B, RB or M)
 --       or MeshQuota refuses the slot: Inspect keeps today's squeeze preview. The build runs on its own thread
 --       (CreateMeshPartAsync yields); the first step() after it finishes swaps the toy to the shell ("live"). Any
 --       failure, before or after (engine, budget, an error in a frame), undoes all of it and leaves today's Inspect with
@@ -27,7 +27,8 @@
 --   handle:cancel()        every hold and press ends (focus lost, Cancel, the context off)
 --   handle:debugState()    Studio checks: cracks/s, solver ms, build ms, the network, the quota, the wax switch
 --   handle:destroy()       everything goes (the shell, its mesh and image, the quota slot, flakes, sounds, the rows)
--- Pure (unit-tested): readModel, nearestVertices, rides, restRay, inputKind, view, tiltTarget.
+-- Pure (unit-tested): readModel, meshUri, shareAnchors, riderBox, nearestVertices, rides, restRay, inputKind, view,
+-- tiltTarget.
 -- Tests: useDeps(overrides) swaps the engine-only surfaces (the shell's EditableMesh, the atlas' EditableImage, putting
 -- the atlas on the shell, the sound player), so KneadWax_Test runs a handle in Edit mode.
 --
@@ -61,6 +62,14 @@
 -- * The help caption follows the last input type (Touch / Gamepad / else the keyboard). Gamepads have no finger knead
 --   (no pointer); touch kneads with one finger and shows no ring (spec §3.6).
 -- * Compact layout (Layout.layoutClass of the screen): the HUD shows the bar and the state only.
+-- * A mesh body (a model slot's uploaded toy, Kitty Bread test 2026-11-06): SD_Shape "M" on a MeshPart whose mesh has its
+--   colours stored in it. The build reads that mesh (on Low the lighter one in SD_ShellLow) into the shell
+--   (ShellGeometry.fromMesh): no atlas and no wax (a stored fade would be lost on a tile). The part with SD_Outline is
+--   its dark shell: it hides while live and the shell carries a copy of it that follows the dents (SD_OutlineShells: how
+--   many of the biggest closed shells it covers). Its still bits (paws, stripes) are in the mesh, so such a model has
+--   no other plain still part. A section's parts share one anchor vertex (shareAnchors), so an ear and its rim never
+--   slip apart under a dent. A second shell part, an outline no bigger than the body or a mesh over its quality's vertex
+--   budget stop the knead with one warning (today's squeeze). The body is not turned (readModel's rest size assumes it).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -111,14 +120,18 @@ export type BodyPart = {
 }
 
 -- point: its anchor, pivot space; group: its hinged section, else its name (owner 2026-10-26: a press squashes the
--- group); squish: a press squashes it (not a face or look part)
-export type Rider = { part: BasePart, point: Vector3, group: string, squish: boolean }
+-- group); section: that name is a real SD_Section; squish: a press squashes it (not a face or look part)
+export type Rider = { part: BasePart, point: Vector3, group: string, section: boolean, squish: boolean }
+
+-- A mesh body's dark shell (SD_Outline): the part, how far it stands out, its ink and how many closed shells it covers.
+export type OutlinePart = { part: BasePart, thickness: number, color: Color3, shells: number }
 
 export type Reading = {
 	body: { BodyPart },
 	riders: { Rider },
 	faceMin: Vector3?,
 	faceMax: Vector3?,
+	outline: OutlinePart?,
 }
 
 export type Args = {
@@ -143,7 +156,7 @@ type Kit = {
 	shell: Shell,
 	network: CrackNetwork.Network?,
 	mesh: SoftShell.Handle,
-	canvas: CrackCanvas.Canvas,
+	canvas: CrackCanvas.Canvas?, -- the colour atlas; none on a mesh body (its colours are stored in the mesh)
 	body: SoftBody.Body,
 	coat: WaxCoat.Coat?,
 	anchors: { number }, -- per rider: its shell vertex
@@ -221,7 +234,8 @@ local QUOTA_KEY = "soft" -- MeshQuota (spec §3.2)
 local PROFILE = "SD_Knead" -- the profiler scope of a live frame (spec §3.14: <= ~2 ms)
 local HOME_PITCH_DEG = math.deg(VIEW.homePitchRad)
 local CRUNCH_PITCH_DEG = math.deg(VIEW.crunchPitchRad)
-local SHELL_SHAPES: { [string]: boolean } = { E = true, B = true, RB = true } -- ShellGeometry's shapes
+local MESH_SHAPE = "M" -- a mesh body (the header)
+local SHELL_SHAPES: { [string]: boolean } = { E = true, B = true, RB = true, [MESH_SHAPE] = true } -- ShellGeometry's shapes
 local BUILD_CHUNK = 4 -- shell triangles per CrackNetwork:buildStep between two clock reads
 local JOLT_MIN = 1e-5 -- du: below it the jolt stops (design: fp.js:480)
 local RAY_REACH_DIMS = 4 -- a pointer ray reaches this many toy sizes past the pivot
@@ -238,6 +252,9 @@ local ATTR_FACE = "SD_Face"
 local ATTR_SCALE = "SD_Scale"
 local ATTR_LOOK = "SD_Look" -- owner 2026-10-26: what joins the shell, what squashes
 local ATTR_ATTACHED = "SD_AttachedTo"
+local ATTR_OUTLINE = "SD_Outline"
+local ATTR_OUTLINE_SHELLS = "SD_OutlineShells"
+local ATTR_SHELL_LOW = "SD_ShellLow"
 local RIDER = KNEAD.rider
 local SQUASH_REST = 1e-4 -- a released group's squash (and its speed ×10) below this is done
 
@@ -261,7 +278,7 @@ local cache: CacheEntry? = nil
 -- The engine-only surfaces a handle touches; tests swap them (useDeps): the shell's EditableMesh, the crack atlas'
 -- EditableImage, the atlas on the shell (Content) and the sound player KneadAudio plays through.
 local REAL_DEPS = {
-	Shell = SoftShell, -- create(shell, flipV) -> (Handle?, reason?)
+	Shell = SoftShell, -- create(shell, flipV) -> (Handle?, reason?), readMesh(uri) -> MeshData (a mesh body; yields)
 	Canvas = CrackCanvas, -- new(shell, colors, size) -> Canvas?
 	Texture = function(part: MeshPart, image: EditableImage)
 		part.TextureContent = Content.fromObject(image)
@@ -291,11 +308,16 @@ function KneadController.readModel(model: Model, scale: Vector3): Reading
 	local riders: { Rider } = {}
 	local lo: { number }? = nil
 	local hi: { number }? = nil
+	local outlinePart: BasePart? = nil
 	for _, descendant in model:GetDescendants() do
 		if not descendant:IsA("BasePart") or descendant == root then
 			continue
 		end
 		local part = descendant :: BasePart
+		if part:GetAttribute(ATTR_OUTLINE) == true then
+			outlinePart = part -- neither shell nor rider: it hides while live
+			continue
+		end
 		local cframe = pivot:ToObjectSpace(part.CFrame)
 		local shape = part:GetAttribute(ATTR_SHAPE)
 		local section = part:GetAttribute(ATTR_SECTION)
@@ -309,9 +331,12 @@ function KneadController.readModel(model: Model, scale: Vector3): Reading
 			and section == nil
 		then
 			local size = part.Size
-			if shape == "RB" and part:FindFirstChildWhichIsA("DataModelMesh") == nil then
+			if (shape == "RB" or shape == MESH_SHAPE) and part:FindFirstChildWhichIsA("DataModelMesh") == nil then
 				local rigidity = part:GetAttribute(ATTR_RIGIDITY)
 				size = size / kvOf(scale, if type(rigidity) == "number" then math.clamp(rigidity, 0, 1) else 0)
+			end
+			if shape == MESH_SHAPE then
+				cframe = CFrame.new(cframe.Position / scale) * cframe.Rotation -- the deformer moves a solid part with the scale
 			end
 			table.insert(body, { part = part, shape = shape, cframe = cframe, size = size, color = part.Color })
 		else
@@ -323,6 +348,7 @@ function KneadController.readModel(model: Model, scale: Vector3): Reading
 				part = part,
 				point = point,
 				group = if type(section) == "string" then section else part.Name,
+				section = type(section) == "string",
 				squish = not face and look == nil,
 			})
 		end
@@ -344,12 +370,55 @@ function KneadController.readModel(model: Model, scale: Vector3): Reading
 		end
 	end
 	table.sort(body, byName)
-	local reading: Reading = { body = body, riders = riders, faceMin = nil, faceMax = nil }
+	local reading: Reading = { body = body, riders = riders, faceMin = nil, faceMax = nil, outline = nil }
 	if lo and hi then
 		reading.faceMin = Vector3.new(lo[1], lo[2], lo[3])
 		reading.faceMax = Vector3.new(hi[1], hi[2], hi[3])
 	end
+	if outlinePart and body[1] and body[1].shape == MESH_SHAPE then
+		local shells = outlinePart:GetAttribute(ATTR_OUTLINE_SHELLS)
+		reading.outline = {
+			part = outlinePart,
+			thickness = (outlinePart.Size.X / scale.X - body[1].size.X) / 2,
+			color = outlinePart.Color,
+			shells = if type(shells) == "number" then shells else 1,
+		}
+	end
 	return reading
+end
+
+-- The mesh a mesh body's shell is read from: on Low the lighter one when it has one.
+function KneadController.meshUri(body: BodyPart, quality: string): string
+	local low = body.part:GetAttribute(ATTR_SHELL_LOW)
+	if quality == "Low" and type(low) == "string" and low ~= "" then
+		return low
+	end
+	return (body.part :: MeshPart).MeshId
+end
+
+-- A section's parts take its first part's vertex (the header); a rider with no section keeps its own.
+function KneadController.shareAnchors(riders: { Rider }, anchors: { number })
+	local first: { [string]: number } = {}
+	for k, rider in riders do
+		if rider.section then
+			local anchor = first[rider.group]
+			if anchor then
+				anchors[k] = anchor
+			else
+				first[rider.group] = anchors[k]
+			end
+		end
+	end
+end
+
+-- A rider's shown mesh: where it is and how big. A FileMesh's Scale is absolute (SquishyCache): its part's Size says.
+function KneadController.riderBox(part: BasePart): (CFrame, Vector3)
+	local mesh = part:FindFirstChildWhichIsA("DataModelMesh")
+	if mesh == nil then
+		return part.CFrame, part.Size
+	end
+	local absolute = mesh:IsA("SpecialMesh") and mesh.MeshType == Enum.MeshType.FileMesh
+	return part.CFrame * CFrame.new(mesh.Offset), if absolute then part.Size else part.Size * mesh.Scale
 end
 
 -- The deforming shell vertex (1..shell.count) nearest each point.
@@ -475,14 +544,40 @@ local function build(self: Handle)
 			names[k] = part.part.Name
 			colors[k] = part.color
 		end
+		local meshUri = if reading.body[1].shape == MESH_SHAPE
+			then KneadController.meshUri(reading.body[1], self._quality)
+			else nil
+		if meshUri then
+			if #reading.body > 1 then
+				error("a mesh body must be the toy's only shell part", 0)
+			end
+			if reading.outline and reading.outline.thickness <= 0 then
+				error("the outline is no bigger than the mesh body", 0)
+			end
+		end
 		local key = `{args.def.blueprintId}|{self._quality}|{args.model:GetAttribute(ATTR_SCALE)}|`
 			.. table.concat(names, ",")
+			.. (meshUri or "")
 		local entry: CacheEntry
 		local cached = cache
 		if cached ~= nil and cached.key == key then
 			entry = cached
 		else
-			entry = { key = key, shell = ShellGeometry.build(inputs, self._quality), network = nil }
+			local built: Shell
+			if meshUri then
+				local data = deps.Shell.readMesh(meshUri) -- yields
+				if self._dead then
+					return nil
+				end
+				built = ShellGeometry.fromMesh(data, inputs[1], self._quality, reading.outline)
+				local budget = if self._quality == "Low" then KNEAD.shell.lowVertices else KNEAD.shell.highVertices
+				if built.count > budget then
+					error(`the mesh has {built.count} vertices, over the {self._quality} budget of {budget}`, 0)
+				end
+			else
+				built = ShellGeometry.build(inputs, self._quality)
+			end
+			entry = { key = key, shell = built, network = nil }
 			cache = entry
 		end
 		local shell = entry.shell
@@ -508,10 +603,11 @@ local function build(self: Handle)
 		if made == nil then
 			error(`no soft shell ({reason})`, 0)
 		end
-		local image = deps.Canvas.new(shell :: any, colors, KNEAD.shell.atlas[self._quality])
-		canvas = image
-		if image == nil then
-			error("no EditableImage for the crack atlas", 0)
+		if shell.colors == nil then
+			canvas = deps.Canvas.new(shell :: any, colors, KNEAD.shell.atlas[self._quality])
+			if canvas == nil then
+				error("no EditableImage for the crack atlas", 0)
+			end
 		end
 		local points: { Vector3 } = {}
 		for k, rider in reading.riders do
@@ -531,14 +627,18 @@ local function build(self: Handle)
 				all[i] = i
 			end
 		end
+		local anchors = KneadController.nearestVertices(shell, points)
+		if meshUri then
+			KneadController.shareAnchors(reading.riders, anchors)
+		end
 		return {
 			shell = shell,
 			network = network,
 			mesh = made,
-			canvas = image,
+			canvas = canvas,
 			body = body,
 			coat = if self._wax then WaxCoat.new(body, { rng = self._rng }) else nil, -- user 2026-10-12: the wax switch
-			anchors = KneadController.nearestVertices(shell, points),
+			anchors = anchors,
 			colors = colors,
 			all = all,
 		}
@@ -547,7 +647,9 @@ local function build(self: Handle)
 	if ok and result ~= nil and not self._dead and self._state == "building" then
 		local kit = result :: Kit
 		self._cleanup:add(kit.mesh)
-		self._cleanup:add(kit.canvas)
+		if kit.canvas then
+			self._cleanup:add(kit.canvas)
+		end
 		self._kit = kit
 		self._state = "ready"
 		return
@@ -643,9 +745,7 @@ local function riderAt(
 	for _, rider in self._reading.riders do
 		local part = rider.part
 		if rider.squish and part.Transparency < 1 then
-			local mesh = part:FindFirstChildWhichIsA("DataModelMesh")
-			local size = if mesh then part.Size * mesh.Scale else part.Size
-			local at = if mesh then part.CFrame * CFrame.new(mesh.Offset) else part.CFrame
+			local at, size = KneadController.riderBox(part)
 			local shape = if part:GetAttribute(ATTR_SHAPE) == "E" then "E" else "B"
 			local t = KneadMath.rayPart(at, size, shape, worldOrigin, worldDirection)
 			if t ~= nil and (bestT == nil or t < bestT) then
@@ -669,7 +769,9 @@ local function goLive(self: Handle)
 	local c = self._cleanup
 	local model = args.model
 	local part = kit.mesh.part
-	deps.Texture(part, kit.canvas.image)
+	if kit.canvas then
+		deps.Texture(part, kit.canvas.image)
+	end
 	part.CFrame = model:GetPivot() * CFrame.new(kit.shell.center)
 	self._state = "live" -- from here a teardown puts the model back
 	part.Parent = model
@@ -683,6 +785,11 @@ local function goLive(self: Handle)
 	for _, body in self._reading.body do
 		hidden[body.part] = body.part.Transparency
 		body.part.Transparency = 1
+	end
+	local outline = self._reading.outline
+	if outline then
+		hidden[outline.part] = outline.part.Transparency
+		outline.part.Transparency = 1
 	end
 	c:add(function()
 		for hiddenPart, transparency in hidden do
@@ -808,6 +915,7 @@ local function frame(self: Handle, dt: number)
 	local kit = self._kit :: Kit
 	local live = self._live :: Live
 	local body, coat, shell, network = kit.body, kit.coat, kit.shell, kit.network
+	local canvas = kit.canvas :: CrackCanvas.Canvas -- (only the wax uses it here, and a mesh body has no wax)
 	local reduced = args.reduced()
 	local deformer = args.deformer()
 	local scale = if deformer then deformer:getScale() else Vector3.one
@@ -891,7 +999,7 @@ local function frame(self: Handle, dt: number)
 				crackFx(self, kit, live, crack, pivot, scale, eye, studsPerDu, kz, reduced)
 			end
 			if coat.touchedCount > 0 then
-				kit.canvas:queue(network:reveal(coat.damage, coat.touched, coat.touchedCount))
+				canvas:queue(network:reveal(coat.damage, coat.touched, coat.touchedCount))
 				coat:clearTouched()
 			end
 		end
@@ -907,10 +1015,10 @@ local function frame(self: Handle, dt: number)
 				local finished = network:buildStep(BUILD_CHUNK)
 			until finished or os.clock() - from >= budget
 			if network.finished then
-				kit.canvas:queue(network:reveal(coat.damage, kit.all, shell.count)) -- what cracked while it built
+				canvas:queue(network:reveal(coat.damage, kit.all, shell.count)) -- what cracked while it built
 			end
 		end
-		kit.canvas:draw(CANVAS.drawPerFrame)
+		canvas:draw(CANVAS.drawPerFrame)
 	end
 
 	-- The body's events: the soft kicks to the rig's jiggle, the sound cues to the wax sound.
@@ -1126,8 +1234,9 @@ function HandleClass.rewax(self: Handle)
 	end
 	coat:rewax()
 	network:reset()
-	kit.canvas:clear()
-	kit.canvas:fill()
+	local canvas = kit.canvas :: CrackCanvas.Canvas -- (a mesh body has no coat)
+	canvas:clear()
+	canvas:fill()
 	live.audio:rewax()
 	self._rateFrom = coat.cracks
 	local scale = scaleOf(self)
@@ -1181,7 +1290,7 @@ function HandleClass.debugState(self: Handle): { [string]: any }
 		faceSquish = self._faceSquish,
 		networkFinished = if network then network.finished else false,
 		segments = if network then network.count else 0,
-		pendingLines = if kit then kit.canvas:pending() else 0,
+		pendingLines = if kit and kit.canvas then kit.canvas:pending() else 0,
 		flakes = if pool then pool:count() else 0,
 		jolt = self._jolt,
 		buildMs = self._buildMs,
@@ -1230,7 +1339,7 @@ function KneadController.start(args: Args): Handle?
 		_rng = Random.new(),
 		_reattach = false,
 		_dead = false,
-		_wax = if args.wax == nil then WAX.enabled else args.wax,
+		_wax = if reading.body[1].shape == MESH_SHAPE then false elseif args.wax == nil then WAX.enabled else args.wax,
 		_pressing = false,
 		_touch = false,
 		_pointerAt = nil,

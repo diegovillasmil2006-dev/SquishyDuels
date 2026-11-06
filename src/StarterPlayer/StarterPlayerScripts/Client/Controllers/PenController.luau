@@ -391,7 +391,7 @@ end
 
 -- A walker's model and label (see the header).
 local function build(look: PenMath.Look): Walker?
-	local model = SquishyCache.clone(look.kind, "World")
+	local model, baked = SquishyCache.clonePen(look.kind, look.form) -- baked: the form's colours are in its meshes
 	local root = model.PrimaryPart
 	if root == nil then
 		model:Destroy()
@@ -407,7 +407,7 @@ local function build(look: PenMath.Look): Walker?
 	local box, size = model:GetBoundingBox()
 	-- Pens3 phase 8: a Golden or Rainbow look (see the header).
 	local form = if look.form == 1 then FORMS.golden elseif look.form == 2 then FORMS.rainbow else nil
-	if form then
+	if form and not baked then
 		local bottom = box.Position.Y - size.Y / 2
 		for _, part in model:GetDescendants() do
 			if part:IsA("BasePart") and part.Transparency < 1 and not PenController.isFace(part.Name) then

@@ -576,9 +576,13 @@ return function(t: Context)
 		for _, name in { "toast_pen", "toast_pen1", "toast_pen2" } do
 			markedSlot(name).Parent = folder
 		end
-		local cache, _, warnings = makeSlotCache(folder)
+		local cache, calls, warnings = makeSlotCache(folder)
 		for form, name in { [0] = "toast_pen", [1] = "toast_pen1", [2] = "toast_pen2" } do
 			local model, baked = cache:clonePen("toast", form)
+			local built = #calls
+			local again = cache:clonePen("toast", form)
+			expect.equal(#calls, built) -- the template is kept: the next walker builds nothing
+			expect.truthy(again ~= model) -- a copy each, never the template
 			expect.truthy(baked)
 			expect.truthy(SquishyCache.isSlotModel(model))
 			expect.equal(whichSlot(model), name)
@@ -612,16 +616,20 @@ return function(t: Context)
 		folder:Destroy()
 	end)
 
-	t.test("an invalid light slot warns once and gives the normal World model", function()
+	t.test("an invalid light slot warns once, is not tried again and gives the normal World model", function()
 		local folder = Instance.new("Folder")
 		local bad = Instance.new("Folder")
 		bad.Name = "toast_pen"
 		bad.Parent = folder
-		local cache, _, warnings = makeSlotCache(folder)
+		local cache, calls, warnings = makeSlotCache(folder)
 		local first, baked = cache:clonePen("toast", 0)
 		expect.falsy(baked)
 		expect.falsy(SquishyCache.isSlotModel(first))
-		cache:clonePen("toast", 0)
+		local built = #calls
+		local again, bakedAgain = cache:clonePen("toast", 0)
+		expect.falsy(bakedAgain)
+		expect.falsy(SquishyCache.isSlotModel(again))
+		expect.equal(#calls, built) -- no second build for the bad slot
 		expect.equal(#warnings, 1)
 		cache:clear()
 		folder:Destroy()

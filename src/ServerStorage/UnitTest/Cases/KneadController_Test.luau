@@ -123,6 +123,67 @@ return function(t: Context)
 		model:Destroy()
 	end)
 
+	t.test("readModel: a mesh body (M) with its rest box, its uri per quality; its outline neither shell nor rider", function()
+		local model, pivot = handModel()
+		local S = Vector3.new(1.25, 0.8, 1)
+		local body = Instance.new("MeshPart")
+		body.Name = "Body"
+		body:SetAttribute("SD_Body", true)
+		body:SetAttribute("SD_Shape", "M")
+		body:SetAttribute("SD_ShellLow", "rbxassetid://5")
+		body.Size = Vector3.new(2, 1, 1.5) * S
+		body.CFrame = pivot * CFrame.new(Vector3.new(0.1, 0.2, -0.1) * S)
+		body.Color = Color3.new(1, 1, 1)
+		body.Parent = model
+		local outline = Instance.new("MeshPart")
+		outline.Name = "BodyOutline"
+		outline:SetAttribute("SD_Outline", true)
+		outline:SetAttribute("SD_OutlineShells", 3)
+		outline.Size = Vector3.new(2.1, 1.1, 1.6) * S
+		outline.CFrame = body.CFrame
+		outline.Color = Color3.new(0.1, 0.05, 0.1)
+		outline.Parent = model
+		local eye = addPart(model, "EyeL", { SD_Face = true, SD_Look = "eye" }, pivot * CFrame.new(0.2, 0, -0.7), Vector3.one * 0.2, true)
+		local reading = Knead.readModel(model, S)
+		expect.equal(#reading.body, 1)
+		expect.equal(reading.body[1].part, body)
+		expect.equal(reading.body[1].shape, "M")
+		near(reading.body[1].size, Vector3.new(2, 1, 1.5))
+		near(reading.body[1].cframe.Position, Vector3.new(0.1, 0.2, -0.1))
+		expect.equal(#reading.riders, 1)
+		expect.equal(reading.riders[1].part, eye)
+		expect.equal(reading.riders[1].section, false)
+		expect.equal(reading.outline.part, outline)
+		expect.near(reading.outline.thickness, 0.05, EPS)
+		expect.equal(reading.outline.shells, 3)
+		expect.equal(reading.outline.color, outline.Color)
+		expect.equal(Knead.meshUri(reading.body[1], "Low"), "rbxassetid://5")
+		expect.equal(Knead.meshUri(reading.body[1], "High"), body.MeshId)
+		model:Destroy()
+	end)
+
+	t.test("riderBox: a Sphere mesh is Size x Scale, a FileMesh its Size (its Scale is absolute), both at the Offset", function()
+		local part = Instance.new("Part")
+		part.Size = Vector3.new(2, 2, 2)
+		part.CFrame = CFrame.new(1, 0, 0)
+		local at, size = Knead.riderBox(part)
+		near(at.Position, Vector3.new(1, 0, 0))
+		near(size, Vector3.new(2, 2, 2))
+		local mesh = Instance.new("SpecialMesh")
+		mesh.MeshType = Enum.MeshType.Sphere
+		mesh.Scale = Vector3.new(0.5, 0.5, 0.5)
+		mesh.Offset = Vector3.new(0, 1, 0)
+		mesh.Parent = part
+		at, size = Knead.riderBox(part)
+		near(at.Position, Vector3.new(1, 1, 0))
+		near(size, Vector3.new(1, 1, 1))
+		mesh.MeshType = Enum.MeshType.FileMesh
+		at, size = Knead.riderBox(part)
+		near(at.Position, Vector3.new(1, 1, 0))
+		near(size, Vector3.new(2, 2, 2))
+		part:Destroy()
+	end)
+
 	t.test("readModel: an RB part's rest size undoes the deformer's scale; W and section body parts ride", function()
 		local model, pivot = handModel()
 		local S = Vector3.new(1.2, 0.8, 1)

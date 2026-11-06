@@ -6,12 +6,6 @@
 		"container": "Workspace"
 	},
 	{
-		"file": "Workspace/SD_KittyBreadCheck_.rbxm",
-		"class": "Model",
-		"name": "SD_KittyBreadCheck\t",
-		"container": "Workspace"
-	},
-	{
 		"file": "Workspace/SquishyDuelsLobby.rbxm",
 		"class": "Model",
 		"name": "SquishyDuelsLobby",
@@ -87,6 +81,12 @@
 		"file": "ServerStorage/SD_MeshLibrary.rbxm",
 		"class": "Model",
 		"name": "SD_MeshLibrary",
+		"container": "ServerStorage"
+	},
+	{
+		"file": "ServerStorage/SD_ModelsTest.rbxm",
+		"class": "Folder",
+		"name": "SD_ModelsTest",
 		"container": "ServerStorage"
 	},
 	{

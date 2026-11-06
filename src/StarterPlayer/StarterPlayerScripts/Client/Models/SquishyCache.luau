@@ -46,11 +46,21 @@
 --     ONE warning per id and the blueprint model is used instead.
 --   * The built model is named after the blueprint id and carries SD_ModelSlot = true, SD_SlotFit (the uniform fit
 --     factor) and the builder's model attributes (SD_BlueprintId, SD_BlueprintVersion, SD_Scale, SD_Mode).
+--   * The pen's light copy (pen squishies never squash, flap or swap faces): a child Model <blueprint id>_pen, or
+--     _pen1 (Golden) / _pen2 (Rainbow) with the form's colours already in it, replaces the World model for clonePen
+--     only, fitted and built like any slot. Without the form's one, clonePen gives the normal World model.
+--   * A mesh body (the squish window dents its own mesh, see Controllers/KneadController): a MeshPart with SD_Body and
+--     SD_Shape "M", its colours stored in the mesh, SD_ShellLow = the lighter mesh's uri for Low quality; SD_Outline =
+--     true on its one dark shell, SD_OutlineShells = how many of the biggest closed shells that covers. A part that must
+--     ride, flap or squash is a Part + FileMesh SpecialMesh.
 --
 -- API:
 --   SquishyCache.clone(id, mode, scale?) -> Model   id = a squishy id (mapped through Catalog blueprintId) or a
 --                                                     blueprint id ("gift_box", "dragon_head_vfx"); scale (default 1)
 --                                                     multiplies the blueprint scale, as in SquishyBuilder.build
+--   SquishyCache.clonePen(id, form?) -> (Model, boolean)   the pen's copy for form 0 (plain), 1 (Golden) or 2 (Rainbow):
+--                                                     the form's light slot and true (its colours are the form's
+--                                                     already), else the normal World model and false
 --   SquishyCache.isPlaceholder(model) -> boolean
 --   SquishyCache.isSlotModel(model) -> boolean       built from a model slot
 --   SquishyCache.templateCount() -> number
@@ -63,6 +73,7 @@
 
 -- Services
 
+local ContentProvider = game:GetService("ContentProvider")
 local PhysicsService = game:GetService("PhysicsService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -105,6 +116,7 @@ local ROOT_SIZE = Vector3.one * 0.2 -- §8.1 rule 3
 local PLACEHOLDER_BODY = Vector3.new(1.4, 1.2, 1.2) -- inside the 1.4-1.8 in-hand size band (§8.1 rule 8)
 local SLOT_FOLDER = "SD_Models"
 local SLOT_MAX_PARTS = 64
+local PEN_SLOTS: { [number]: string } = { [0] = "_pen", [1] = "_pen1", [2] = "_pen2" } -- by form: a light slot's suffix
 -- Classes (IsA) removed from a slot model: behaviour, sound, light, effects, GUIs, interaction and physics.
 local SLOT_STRIPPED = {
 	"LuaSourceContainer", -- Script, LocalScript, ModuleScript
@@ -470,6 +482,35 @@ function CacheClass.clone(self: Cache, id: string, mode: Mode, scale: number?): 
 	return (template :: Model):Clone()
 end
 
+-- The pen's copy for (id, form): the form's light slot and true, else the normal World model and false (header).
+function CacheClass.clonePen(self: Cache, id: string, form: number?): (Model, boolean)
+	local def = Catalog.get(id)
+	local blueprintId = if def then def.blueprintId else id
+	local slotName = blueprintId .. (PEN_SLOTS[form or 0] or PEN_SLOTS[0])
+	local key = keyOf(slotName, "World", nil)
+	local template: Model? = self._templates[key]
+	if template == nil then
+		local source = if self._slotWarned[slotName] then nil else slotSource(self, slotName) -- a bad slot: one try
+		if source == nil then
+			return self:clone(id, "World"), false
+		end
+		local reference = buildBlueprint(self, blueprintId, "World", nil)
+		local ok, result = pcall(buildSlot, source, blueprintId, "World" :: Mode, reference)
+		reference:Destroy()
+		if not ok then
+			self._slotWarned[slotName] = true
+			self._warn(
+				`model slot ReplicatedStorage.{SLOT_FOLDER}.{slotName} cannot be used ({tostring(result)});`
+					.. " showing the normal model"
+			)
+			return self:clone(id, "World"), false
+		end
+		self._templates[key] = result
+		template = result
+	end
+	return (template :: Model):Clone(), true
+end
+
 function CacheClass.templateCount(self: Cache): number
 	local count = 0
 	for _ in self._templates do
@@ -518,12 +559,25 @@ local function default(): Cache
 	if cache == nil then
 		cache = SquishyCache.new(defaultBuild, nil, defaultSlots)
 		defaultCache = cache
+		-- Uploaded meshes download the first time they show: fetch the slots' now, so no view opens on a half-drawn toy.
+		local folder = defaultSlots()
+		if folder then
+			task.spawn(function()
+				pcall(function()
+					ContentProvider:PreloadAsync(folder:GetDescendants())
+				end)
+			end)
+		end
 	end
 	return cache :: Cache
 end
 
 function SquishyCache.clone(id: string, mode: Mode, scale: number?): Model
 	return default():clone(id, mode, scale)
+end
+
+function SquishyCache.clonePen(id: string, form: number?): (Model, boolean)
+	return default():clonePen(id, form)
 end
 
 function SquishyCache.isPlaceholder(model: Instance): boolean

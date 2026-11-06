@@ -16,6 +16,14 @@
 --     cleans up and answers nil and the reason (the caller falls back). The MeshPart "SD_SoftShell" is unparented,
 --     anchored, never collides, touches or is queried, casts no shadow, SmoothPlastic; the caller places it at the
 --     model pivot × CFrame(shell.center) and gives it its texture.
+--   SoftShell.hullBatch(ids, values, n, vertexIds, shell, written, count, px, py, pz) -> number   a mesh body's dark copy
+--     (ShellGeometry.fromMesh): adds the moved vertices' copies after the batch (shown position + rest normal x
+--     thickness, minus the centre); n stays as it is without a copy
+--   SoftShell.meshData(mesh) -> MeshData   pure over anything with GetVertices, GetPosition, GetFaces, GetFaceVertices,
+--     GetFaceColors and GetColor: a mesh's points, per-vertex colours and triangles as plain arrays (1-based, the
+--     vertices in GetVertices order); a face with more corners becomes a fan of triangles (a load may give quads)
+--   SoftShell.readMesh(uri) -> MeshData   yields: reads an uploaded mesh (AssetService:CreateEditableMeshAsync) and lets
+--     it go; raises when it cannot (the caller's pcall falls back)
 --   handle:write(written, count, px, py, pz)   one frame: EditableMesh:BatchSetValues on the moved vertices (one call),
 --     else SetPosition each (once BatchSetValues fails, for the rest of the session: verify in Studio)
 --   handle:raycast(origin, direction) -> (triangle?, point?)   EditableMesh:RaycastLocal in mesh space (the direction's
@@ -30,6 +38,8 @@ local Log = require(ReplicatedStorage.Shared.Util.Log)
 local ShellGeometry = require(script.Parent.ShellGeometry)
 
 type Shell = ShellGeometry.Shell
+
+export type MeshData = ShellGeometry.MeshInput
 
 export type Ids = {
 	vertex: { number },
@@ -76,6 +86,14 @@ function SoftShell.writeMesh(mesh: any, shell: Shell, flipV: boolean): Ids
 		vertexIds[i] = mesh:AddVertex(Vector3.new(px[i], py[i], pz[i]) - center)
 		normalIds[i] = mesh:AddNormal()
 	end
+	local colors = shell.colors
+	local colorIds: { number } = {}
+	if colors then
+		for i = 1, total do
+			colorIds[i] = mesh:AddColor(colors[i], 1)
+		end
+	end
+	local hull = shell.hull
 	local uvIds: { number } = table.create(shell.uvCount, 0)
 	local uvs = shell.uvs
 	for j = 1, shell.uvCount do
@@ -89,7 +107,11 @@ function SoftShell.writeMesh(mesh: any, shell: Shell, flipV: boolean): Ids
 		local face = mesh:AddTriangle(vertexIds[a], vertexIds[b], vertexIds[c])
 		mesh:SetFaceNormals(face, { normalIds[a], normalIds[b], normalIds[c] })
 		mesh:SetFaceUVs(face, { uvIds[faceUVs[3 * k - 2]], uvIds[faceUVs[3 * k - 1]], uvIds[faceUVs[3 * k]] })
-		triangles[face] = k
+		if colors then
+			mesh:SetFaceColors(face, { colorIds[a], colorIds[b], colorIds[c] })
+		end
+		-- A ray that meets the dark copy counts as the shell's triangle under it.
+		triangles[face] = if hull and k >= hull.triFirst then k - hull.triFirst + 1 else k
 	end
 	return { vertex = vertexIds, triangle = triangles }
 end
@@ -118,7 +140,77 @@ function SoftShell.batch(
 	return count
 end
 
+function SoftShell.hullBatch(
+	ids: { number },
+	values: { Vector3 },
+	n: number,
+	vertexIds: { number },
+	shell: Shell,
+	written: { number },
+	count: number,
+	px: { number },
+	py: { number },
+	pz: { number }
+): number
+	local hull = shell.hull
+	if hull == nil then
+		return n
+	end
+	local nx, ny, nz = shell.nx, shell.ny, shell.nz
+	local t, center = hull.thickness, shell.center
+	local cx, cy, cz = center.X, center.Y, center.Z
+	local before = hull.first - 1
+	-- shortcut: a copy can pass the bounds anchors at SoftBody's clamp (a tiny rescale), reached only by mochi-feel pulls;
+	-- clamp here when a mochi toy gets a mesh body.
+	for k = 1, count do
+		local i = written[k]
+		if i <= hull.count then
+			n += 1
+			ids[n] = vertexIds[before + i]
+			values[n] = Vector3.new(px[i] + nx[i] * t - cx, py[i] + ny[i] * t - cy, pz[i] + nz[i] * t - cz)
+		end
+	end
+	return n
+end
+
+function SoftShell.meshData(mesh: any): MeshData
+	local index: { [number]: number } = {}
+	local positions: { Vector3 } = {}
+	for i, id in mesh:GetVertices() do
+		index[id] = i
+		positions[i] = mesh:GetPosition(id)
+	end
+	local colors: { Color3 } = table.create(#positions, Color3.new(1, 1, 1))
+	local tris: { number } = {}
+	for _, face in mesh:GetFaces() do
+		local corners = mesh:GetFaceVertices(face)
+		local colorIds = mesh:GetFaceColors(face)
+		for m, corner in corners do
+			colors[index[corner]] = mesh:GetColor(colorIds[m])
+		end
+		for m = 3, #corners do
+			table.insert(tris, index[corners[1]])
+			table.insert(tris, index[corners[m - 1]])
+			table.insert(tris, index[corners[m]])
+		end
+	end
+	return { positions = positions, colors = colors, tris = tris }
+end
+
 -- Public: the mesh
+
+function SoftShell.readMesh(uri: string): MeshData
+	local mesh = AssetService:CreateEditableMeshAsync(Content.fromUri(uri))
+	if mesh == nil then
+		error("no editable mesh to read the body with", 0)
+	end
+	local ok, data = pcall(SoftShell.meshData, mesh)
+	mesh:Destroy()
+	if not ok then
+		error(data, 0)
+	end
+	return data
+end
 
 function SoftShell.create(shell: Shell, flipV: boolean): (Handle?, string?)
 	local mesh: any = nil
@@ -179,6 +271,7 @@ function HandleClass.write(
 	end
 	local ids, values = self._batchIds, self._batchValues
 	local n = SoftShell.batch(ids, values, self._ids.vertex, written, count, px, py, pz, self._center)
+	n = SoftShell.hullBatch(ids, values, n, self._ids.vertex, self._shell, written, count, px, py, pz)
 	local mesh = self.mesh
 	if self._batch then
 		local ok, err = pcall(function()
