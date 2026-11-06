@@ -635,6 +635,25 @@ return function(t: Context)
 		folder:Destroy()
 	end)
 
+	t.test("a light slot fixed before clear() is used again, as the header says", function()
+		local folder = Instance.new("Folder")
+		local bad = Instance.new("Folder")
+		bad.Name = "toast_pen"
+		bad.Parent = folder
+		local cache, _, warnings = makeSlotCache(folder)
+		local _, baked = cache:clonePen("toast", 0)
+		expect.falsy(baked)
+		bad:Destroy()
+		markedSlot("toast_pen").Parent = folder
+		cache:clear()
+		local fixed, bakedNow = cache:clonePen("toast", 0)
+		expect.truthy(bakedNow)
+		expect.equal(whichSlot(fixed), "toast_pen")
+		expect.equal(#warnings, 1) -- the bad one, once
+		cache:clear()
+		folder:Destroy()
+	end)
+
 	t.test("private caches without a slot folder never use slots", function()
 		local cache, calls = makeCache()
 		local model = cache:clone("toast", "Held")

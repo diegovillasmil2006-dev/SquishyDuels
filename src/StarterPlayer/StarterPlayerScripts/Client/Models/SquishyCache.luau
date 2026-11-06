@@ -98,6 +98,7 @@ type CacheData = {
 	_templates: { [string]: Model },
 	_warned: { [string]: boolean },
 	_slotWarned: { [string]: boolean },
+	_badPen: { [string]: boolean }, -- light slots that failed since the last clear()
 }
 
 -- Constants
@@ -490,7 +491,7 @@ function CacheClass.clonePen(self: Cache, id: string, form: number?): (Model, bo
 	local key = keyOf(slotName, "World", nil)
 	local template: Model? = self._templates[key]
 	if template == nil then
-		local source = if self._slotWarned[slotName] then nil else slotSource(self, slotName) -- a bad slot: one try
+		local source = if self._badPen[slotName] then nil else slotSource(self, slotName)
 		if source == nil then
 			return self:clone(id, "World"), false
 		end
@@ -498,11 +499,14 @@ function CacheClass.clonePen(self: Cache, id: string, form: number?): (Model, bo
 		local ok, result = pcall(buildSlot, source, blueprintId, "World" :: Mode, reference)
 		reference:Destroy()
 		if not ok then
-			self._slotWarned[slotName] = true
-			self._warn(
-				`model slot ReplicatedStorage.{SLOT_FOLDER}.{slotName} cannot be used ({tostring(result)});`
-					.. " showing the normal model"
-			)
+			self._badPen[slotName] = true -- one try until clear(): each new walker would rebuild it
+			if not self._slotWarned[slotName] then
+				self._slotWarned[slotName] = true
+				self._warn(
+					`model slot ReplicatedStorage.{SLOT_FOLDER}.{slotName} cannot be used ({tostring(result)});`
+						.. " showing the normal model"
+				)
+			end
 			return self:clone(id, "World"), false
 		end
 		self._templates[key] = result
@@ -524,6 +528,7 @@ function CacheClass.clear(self: Cache)
 		template:Destroy()
 	end
 	table.clear(self._templates)
+	table.clear(self._badPen)
 end
 
 -- Public
@@ -550,6 +555,7 @@ function SquishyCache.new(build: BuildFn, warn: WarnFn?, slots: SlotSource?): Ca
 		_templates = {},
 		_warned = {},
 		_slotWarned = {},
+		_badPen = {},
 	}
 	return setmetatable(data, CacheClass)
 end

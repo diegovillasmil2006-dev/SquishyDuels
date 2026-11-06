@@ -436,11 +436,18 @@ end
 -- Decals and Textures are hidden and SurfaceAppearances are removed. Never call it on a shared template.
 function CollectionController.silhouette(model: Instance, color: Color3?)
 	local tint = color or paletteColor(CollectionFormat.SILHOUETTE_TOKEN, Palette.Lavender)
+	local meshBody: BasePart? = nil
+	local darkShell = false
 	for _, descendant in model:GetDescendants() do
 		if descendant:IsA("BasePart") then
 			descendant.Color = tint
 			if descendant:IsA("MeshPart") then
 				descendant.TextureID = ""
+			end
+			if descendant:GetAttribute("SD_Shape") == "M" then
+				meshBody = descendant
+			elseif descendant:GetAttribute("SD_Outline") == true then
+				darkShell = true
 			end
 		elseif descendant:IsA("SpecialMesh") then
 			descendant.TextureId = ""
@@ -449,6 +456,10 @@ function CollectionController.silhouette(model: Instance, color: Color3?)
 		elseif descendant:IsA("SurfaceAppearance") then
 			descendant:Destroy()
 		end
+	end
+	-- A mesh body's colours are stored in its mesh and a tint only multiplies them: its dark shell, tinted, draws the shape.
+	if meshBody and darkShell then
+		meshBody.Transparency = 1
 	end
 end
 

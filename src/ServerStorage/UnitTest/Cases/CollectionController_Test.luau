@@ -148,6 +148,32 @@ return function(t: Context)
 		end
 	end)
 
+	t.test("silhouette on a mesh body: no tint hides its stored colours, so it hides and its dark shell draws the shape", function()
+		local model = Instance.new("Model")
+		local body = Instance.new("MeshPart")
+		body:SetAttribute("SD_Shape", "M")
+		body.Parent = model
+		local outline = Instance.new("MeshPart")
+		outline:SetAttribute("SD_Outline", true)
+		outline.Parent = model
+		local wing = Instance.new("Part")
+		wing.Parent = model
+		Collection.silhouette(model)
+		expect.equal(body.Transparency, 1)
+		expect.equal(outline.Transparency, 0)
+		expect.equal(outline.Color, LAVENDER)
+		expect.equal(wing.Transparency, 0)
+		model:Destroy()
+		-- Without a dark shell nothing would be left of the shape: it stays, tinted.
+		local bare = Instance.new("Model")
+		local alone = Instance.new("MeshPart")
+		alone:SetAttribute("SD_Shape", "M")
+		alone.Parent = bare
+		Collection.silhouette(bare)
+		expect.equal(alone.Transparency, 0)
+		bare:Destroy()
+	end)
+
 	-- Two clones of one display (as CollectionController builds them): silhouette one, the other keeps its colours and
 	-- so does the next clone from the template.
 	local function checkClones(clone: (id: string) -> Model)
