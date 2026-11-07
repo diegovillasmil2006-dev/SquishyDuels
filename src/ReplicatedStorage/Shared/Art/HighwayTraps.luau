@@ -8,7 +8,8 @@
 -- meshes (tools/meshes/highway_props.py: chamfered blocks, the stud tile UVs of Diego's lobby, an ink hull round every
 -- part), kept in ServerStorage.SD_HighwayProps as one Model per piece (MeshParts named by palette key, plus
 -- "Outline"; pivot = the lane top centre; tools/meshes/highway_props_setup.luau). This module paints a clone: "Stud" =
--- SmoothPlastic with the lobby's stud tile, "Neon" glows without a shadow, the Outline is Diego's map ink.
+-- SmoothPlastic with the lobby's stud tile, "Smooth" = plain SmoothPlastic (the boosters' toys, 2026-11-06), "Neon" glows
+-- without a shadow, the Outline is Diego's map ink.
 --   HighwayTraps.build(biome, origin) -> Model?  an unparented decor Model (anchored, no collide, query or touch) of
 --                                                biome 1..7's trap at `origin`; nil for any other biome
 --   HighwayTraps.make(piece, origin) -> Model?   the same for any piece in this shape (Art/HighwayBoosters' too); nil
@@ -18,7 +19,7 @@ local ServerStorage = game:GetService("ServerStorage")
 
 -- Types
 
--- pal: palette key (= the MeshPart's name) -> { "Stud" | "Neon", the sheet's hex }
+-- pal: palette key (= the MeshPart's name) -> { "Stud" | "Smooth" | "Neon", its hex }
 export type Trap = { id: string, pal: { [string]: { string } } }
 
 -- Constants
@@ -66,7 +67,9 @@ local function paint(part: BasePart, entry: { string }?)
 		part.CastShadow = false
 	else
 		part.Material = Enum.Material.SmoothPlastic
-		part.MaterialVariant = STUD
+		if entry[1] == "Stud" then
+			part.MaterialVariant = STUD
+		end
 	end
 end
 

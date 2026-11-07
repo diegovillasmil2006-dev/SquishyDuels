@@ -1,13 +1,11 @@
-"""Squishy Duels highway props: the 7 traps + 14 boosters as blocky Blender meshes (2026-11-01; the sheet's other 7
-boosters 2026-11-06: set HIGHWAY_PROPS_ONLY=id,id to build and export only those pieces).
+"""Squishy Duels highway props: the 7 traps as blocky Blender meshes (2026-11-01; the boosters are in highway_boosters.py).
 
 The owner's style rule (2026-11-01, "everything was made in blender and made blocky", like Steal an Egg): the pieces of
 the owner's "Launchers & Biomes - Concept Sheet" (Desktop "jason designs", Candy Toy-Box Park Lobby.zip,
-concept-kit.js:280-300) keep the sheet's shapes, sizes and colours, drawn the way Diego's lobby and maps look: the
-sheet's own 8-sided cylinders, faceted balls (icosahedron detail 1) and 4-sided torus tubes, chamfered boxes, the
-lobby's stud tile UVs (1 UV unit = 2 studs, read back from Diego's lobby meshes; MaterialVariant SquishyStud) and an ink
-hull round every part (Diego's maps: inward faces, ink #1c1530). The halo ring now has the sheet's two gold wings and
-the fire jet its tapered 6-sided vent. Glass in the sheet becomes solid (blocky, not shiny).
+concept-kit.js:282-300) keep the sheet's shapes, sizes and colours, drawn the way Diego's lobby and maps look: the
+sheet's own 8-sided cylinders, faceted balls (icosahedron detail 1), chamfered boxes, the lobby's stud tile UVs (1 UV
+unit = 2 studs, read back from Diego's lobby meshes; MaterialVariant SquishyStud) and an ink hull round every part
+(Diego's maps: inward faces, ink #1c1530). Glass in the sheet becomes solid (blocky, not shiny).
 Run it as its own Blender process:
 
     "<blender.exe>" --background --factory-startup --python-exit-code 1 --python highway_props.py -- <out_dir>
@@ -17,7 +15,7 @@ Writes <out_dir>/SD_HighwayProps.glb (per piece one object per colour key "<id>_
 the piece's origin = the lane top centre), manifest.json (each object's centre and size in Roblox axes) and previews
 (<id>.png, sheet.png; the stud pictures only tint the previews). 1 Blender unit = 1 stud; points are computed in Roblox
 axes (X right, Y up, Z back) and written as (X, -Z, Y), so the glTF "+Y up" export gives back Roblox axes.
-Colours here are for the previews only; the game paints the meshes from Art/HighwayTraps and Art/HighwayBoosters.
+Colours here are for the previews only; the game paints the meshes from Art/HighwayTraps.
 """
 
 import json
@@ -41,26 +39,7 @@ UV_STUDS = 2.0  # one stud tile every 2 studs, like Diego's lobby meshes
 INK = "1C1530"  # Diego's map outline ink (SkyMapBuilder INK)
 D = math.pi / 180
 
-# ------------------------------------------------------------------------------------------------- the 14 pieces
-
-
-def wing_pts(s):  # concept-kit.js wingPts
-	pts = [(0, 0.1), (0.55, 0), (0.62, 0.3), (1.05, 0.28), (1.12, 0.62), (1.55, 0.62), (1.6, 1.0), (1.95, 1.05),
-		(1.75, 1.45), (1.1, 1.38), (0.45, 1.05), (0, 0.75)]
-	return [(x * s, y * s) for x, y in pts]
-
-
-def mirror(pts):
-	return [(-x, y) for x, y in pts]
-
-
-def star_pts(n, ro, ri):  # concept-kit.js starPts
-	pts = []
-	for i in range(n * 2):
-		a = math.pi / 2 + i * math.pi / n
-		q = ri if i % 2 else ro
-		pts.append((math.cos(a) * q, math.sin(a) * q))
-	return pts
+# -------------------------------------------------------------------------------------------------- the 7 pieces
 
 
 # id -> palette (key -> (hex, glows)) and the sheet's build (concept-kit.js line in each comment)
@@ -132,138 +111,6 @@ def _(k):
 	k.b("hi", (3, 1, 3), (0.4, 2.6, 0.2))
 
 
-@piece("cm_jelly_pad", {"base": ("FF8FBF", False), "jelly": ("FF7FC0", False), "bean": ("FFD84A", False)})  # :280
-def _(k):
-	k.u("base", (8, 0.5, 8), (0, 0, 0))
-	k.u("jelly", (7, 0.9, 7), (0, 0.5, 0))
-	for x, z, r in ((-2.2, -2, 20), (2, -1.6, -30), (-1.6, 2.2, 60), (2.3, 2.1, 10)):
-		k.u("bean", (0.9, 0.4, 0.55), (x, 1.4, z), (0, r, 0))
-
-
-@piece("bt_toaster_cannon", {"body": ("9FB4C7", False), "dark": ("1E1428", False), "toast": ("F2C487", False),
-	"lever": ("FF5C8A", False)})  # :283
-def _(k):
-	for x in (-2.4, 2.4):
-		for z in (-1.5, 1.5):
-			k.u("dark", (0.6, 0.3, 0.6), (x, 0, z))
-	k.u("body", (6, 4, 4.2), (0, 0.3, 0))
-	for z in (-0.9, 0.9):
-		k.u("dark", (4, 0.12, 0.9), (0, 4.3, z))
-		k.u("toast", (3.6, 2.2, 0.7), (0, 3.4, z))
-	k.u("lever", (0.5, 0.7, 0.9), (3.25, 2.2, 0))
-
-
-@piece("bl_pearl_bouncer", {"base": ("FF6FA3", False), "pearl": ("3B2630", False)})  # :286
-def _(k):
-	k.u("base", (10, 0.4, 8), (0, 0, 0))
-	k.s("pearl", 4.4, (-2.2, 2.4, 0))
-	k.s("pearl", 4.4, (2.2, 2.4, 0.6))
-	k.s("pearl", 4, (0, 2.2, -2.2))
-
-
-@piece("fd_ice_slide", {"ice": ("BDEBFF", False), "curb": ("8FD8FF", False), "snow": ("F4FBFF", False)})  # :289
-def _(k):
-	k.u("ice", (12, 0.5, 26), (0, 0, 0))
-	for s in (-1, 1):
-		k.u("curb", (1, 0.9, 26), (s * 6.5, 0, 0))
-	for x, z in ((-7.4, -6), (7.4, 4), (-7.2, 9)):
-		k.u("snow", (1.4, 1.1, 2.4), (x, 0, z))
-
-
-@piece("lv_fire_jet", {"vent": ("3A2C3A", False), "ring": ("FF6A3D", True), "f1": ("FFB03A", True),
-	"f2": ("FF6A3D", True)})  # :292
-def _(k):
-	k.c("vent", (2.6, 4.6), 1.6, (0, 0.8, 0), None, 6)
-	k.c("ring", 2.7, 0.2, (0, 1.65, 0), None, 6)
-	k.u("f2", (2.4, 4.4, 2.4), (0, 1.7, 0), (0, 45, 0))
-	k.u("f1", (1.4, 3.6, 1.4), (0, 1.7, 0), (0, 20, 0))
-	k.u("f1", (0.8, 2.2, 0.8), (0, 6.1, 0), (0, 45, 0))
-	k.u("f2", (1.2, 1.4, 1.2), (0, 5.6, 0), (0, 10, 0))
-
-
-@piece("rr_comet_pad", {"pad": ("B98CFF", False), "chev": ("FFFFFF", True), "tail": ("FF5C8A", True)})  # :296
-def _(k):
-	k.u("pad", (10, 0.5, 13), (0, 0, 0))
-	for i in range(3):
-		z = 3.5 - i * 3.5
-		for s in (-1, 1):
-			k.b("chev", (3.2, 0.12, 0.7), (s * 1.25, 0.56, z), (0, s * 35, 0))
-	k.u("tail", (1.2, 0.12, 4), (0, 0.5, 5.4))
-
-
-@piece("dh_halo_ring", {"halo": ("FFF0A0", True), "gold": ("FFC23C", False)})  # :299
-def _(k):
-	k.r("halo", 6, 0.6, (0, 7.5, 0), None, 12)
-	k.r("gold", 6.9, 0.32, (0, 7.5, 0), None, 12)
-	for s in (-1, 1):
-		k.e("gold", wing_pts(1.8) if s > 0 else mirror(wing_pts(1.8)), 0.3, (s * 7, 7, 0))
-
-
-@piece("cm_sprinkle_ramp", {"ramp": ("8EEAD0", False), "s1": ("FF8FBF", False), "s2": ("FFD84A", False),
-	"s3": ("FFF6EC", False)})  # :281
-def _(k):
-	k.w("ramp", (10, 3, 12), (0, 1.5, 0), (0, 180, 0))
-	for i in range(9):
-		x = -3.6 + (i % 3) * 3.6 + (i % 2) * 0.8
-		z = 4 - (i // 3) * 4
-		k.b(("s1", "s2", "s3")[i % 3], (1.1, 0.25, 0.3), (x, (6 - z) / 4 + 0.12, z), (14, i * 40, 0))
-
-
-@piece("bt_butter_slide", {"butter": ("FFE36E", False), "melt": ("FFE36E", False), "foil": ("FFF6EC", False)})  # :284
-def _(k):
-	k.u("butter", (11.8, 0.5, 24), (0, 0, 0))
-	for x, z, w, d in ((-2.5, -6, 3.4, 5), (2.6, 2, 2.6, 6), (-1, 8, 4, 3)):
-		k.u("melt", (w, 0.14, d), (x, 0.5, z))
-	for s in (-1, 1):
-		k.u("foil", (0.5, 0.65, 24), (s * 6.15, 0, 0))
-
-
-@piece("bl_straw_tube", {"tube": ("FF6FA3", False), "stripe": ("FFF6EC", False)})  # :287
-def _(k):
-	for s in (-1, 1):
-		k.u("tube", (1, 7, 16), (s * 5.5, 0, 0))
-	k.u("tube", (12, 1, 16), (0, 7, 0))
-	for z in (-4, 4):
-		for s in (-1, 1):
-			k.u("stripe", (1.2, 7.1, 1.4), (s * 5.5, 0, z))
-		k.u("stripe", (12.2, 1.1, 1.4), (0, 7, z))
-
-
-@piece("fd_cone_cannon", {"stand": ("F4FBFF", False), "cone": ("E0A062", False), "rim": ("FF8FBF", False)})  # :290
-def _(k):
-	k.u("stand", (6, 1.2, 6), (0, 0, 0))
-	k.u("stand", (3.6, 1.2, 3.6), (0, 1.2, 0.6))
-	g = k.g((0, 3.2, 0.6), (-55, 0, 0))
-	g.c("cone", (4.6, 0.8), 7.4, (0, 3.2, 0))
-	g.r("rim", 2.3, 0.45, (0, 6.9, 0), (90, 0, 0), 8)
-
-
-@piece("lv_magma_ramp", {"ramp": ("3A2C3A", False), "seam": ("FF6A3D", True)})  # :293
-def _(k):
-	k.w("ramp", (12, 3.5, 10), (0, 1.75, 0), (0, 180, 0))
-	for i in range(3):
-		z = 3 - i * 3
-		k.b("seam", (7 - i, 0.12, 0.4), (i - 1, (5 - z) * 0.35 + 0.08, z), (19.3, 10 - i * 12, 0))
-
-
-@piece("rr_star_ring", {"ring": ("FFD84A", True), "halo": ("FFF0A0", False), "star": ("FFFFFF", True)})  # :295
-def _(k):
-	k.r("ring", 7, 0.7, (0, 8.5, 0), None, 10)
-	k.r("halo", 7.9, 0.3, (0, 8.5, 0), None, 10)
-	k.e("star", star_pts(5, 1.7, 0.75), 0.6, (0, 16.6, 0))
-
-
-@piece("dh_wing_gate", {"marble": ("FBF7F2", False), "gold": ("FFC23C", False), "wing": ("FFFFFF", False),
-	"halo": ("FFF0A0", True)})  # :298
-def _(k):
-	for s in (-1, 1):
-		k.u("marble", (2, 15, 2), (s * 9, 0, 0))
-		k.u("gold", (2.6, 1, 2.6), (s * 9, 15, 0))
-		k.e("wing", wing_pts(4.6) if s > 0 else mirror(wing_pts(4.6)), 0.6, (s * 10, 9, 0))
-	k.u("marble", (20, 1.6, 2), (0, 16, 0))
-	k.r("halo", 2.4, 0.4, (0, 20, 0), None, 12)
-
-
 # ------------------------------------------------------------------------------------------------ the sheet's kit
 
 
@@ -284,21 +131,6 @@ def bm_box(s):
 	return bm
 
 
-def bm_wedge(s):  # the sheet's k.w: width s[0], height s[1], depth s[2], rising towards +Z, centred
-	w, h, d = s[0] / 2, s[1] / 2, s[2] / 2
-	bm = bmesh.new()
-	lo = [bm.verts.new((-w, y, z)) for y, z in ((-h, -d), (-h, d), (h, d))]
-	hi = [bm.verts.new((w, y, z)) for y, z in ((-h, -d), (-h, d), (h, d))]
-	bm.faces.new(lo)
-	bm.faces.new(hi)
-	for i in range(3):
-		bm.faces.new((lo[i], lo[(i + 1) % 3], hi[(i + 1) % 3], hi[i]))
-	bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-	bmesh.ops.bevel(bm, geom=bm.verts[:] + bm.edges[:], offset=min(0.12, 0.2 * min(s)), offset_type="OFFSET", segments=1,
-		profile=0.5, affect="EDGES", clamp_overlap=True)
-	return bm
-
-
 def bm_cyl(top_d, bottom_d, h, seg):
 	bm = bmesh.new()
 	bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=seg, radius1=bottom_d / 2,
@@ -312,36 +144,6 @@ def bm_cyl(top_d, bottom_d, h, seg):
 def bm_ball(d):
 	bm = bmesh.new()
 	bmesh.ops.create_icosphere(bm, subdivisions=2, radius=d / 2)  # = three.js IcosahedronGeometry detail 1
-	return bm
-
-
-def bm_torus(radius, tube, seg, sides=4):  # three.js TorusGeometry(radius, tube, 4, seg) in the XY plane
-	bm = bmesh.new()
-	rows = []
-	for j in range(seg):
-		u = j / seg * 2 * math.pi
-		rows.append([bm.verts.new(((radius + tube * math.cos(v)) * math.cos(u),
-			(radius + tube * math.cos(v)) * math.sin(u), tube * math.sin(v)))
-			for v in (i / sides * 2 * math.pi for i in range(sides))])
-	for j in range(seg):
-		for i in range(sides):
-			n, m = (j + 1) % seg, (i + 1) % sides
-			bm.faces.new((rows[j][i], rows[n][i], rows[n][m], rows[j][m]))
-	bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
-	return bm
-
-
-def bm_extrude(pts, depth):  # three.js ExtrudeGeometry of a flat shape, centred on Z
-	bm = bmesh.new()
-	lo = [bm.verts.new((x, y, -depth / 2)) for x, y in pts]
-	hi = [bm.verts.new((x, y, depth / 2)) for x, y in pts]
-	bm.faces.new(lo)
-	bm.faces.new(hi)
-	n = len(pts)
-	for i in range(n):
-		bm.faces.new((lo[i], lo[(i + 1) % n], hi[(i + 1) % n], hi[i]))
-	bmesh.ops.triangulate(bm, faces=[f for f in bm.faces if len(f.verts) > 4])  # the wing outline is concave
-	bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
 	return bm
 
 
@@ -363,18 +165,11 @@ def hull_of(bm, flat_top):
 
 
 class Kit:
-	def __init__(self, parts=None, base=None):
-		self.parts = [] if parts is None else parts  # (key, bmesh in piece space, Roblox axes)
-		self.base = base or Matrix.Identity(4)
-
-	def g(self, p, r):  # the sheet's k.g: a group at p turned by r
-		return Kit(self.parts, self.base @ Matrix.Translation(Vector(p)) @ rot_matrix(r))
+	def __init__(self):
+		self.parts = []  # (key, bmesh in piece space, Roblox axes)
 
 	def b(self, key, s, p, r=None):
 		self._put(key, bm_box(s), p, r)
-
-	def w(self, key, s, p, r=None):
-		self._put(key, bm_wedge(s), p, r)
 
 	def u(self, key, s, p, r=None):
 		self._put(key, bm_box(s), (p[0], p[1] + s[1] / 2, p[2]), r, s[1] <= 0.6 and p[1] <= 0)
@@ -386,15 +181,9 @@ class Kit:
 	def s(self, key, d, p):
 		self._put(key, bm_ball(d), p)
 
-	def r(self, key, radius, tube, p, r=None, seg=12):
-		self._put(key, bm_torus(radius, tube, seg), p, r)
-
-	def e(self, key, pts, depth, p, r=None):
-		self._put(key, bm_extrude(pts, depth), p, r)
-
 	def _put(self, key, bm, p, r=None, flat_top=False):
 		hull = hull_of(bm, flat_top)
-		m = self.base @ Matrix.Translation(Vector(p)) @ rot_matrix(r)
+		m = Matrix.Translation(Vector(p)) @ rot_matrix(r)
 		for g in (bm, hull):
 			bmesh.ops.transform(g, matrix=m, verts=g.verts)
 		self.parts.append((key, bm))
@@ -438,14 +227,7 @@ manifest = {"uvStuds": UV_STUDS, "ink": INK, "objects": {}}
 piece_objects = {}
 problems = []
 
-ONLY = [pid for pid in os.environ.get("HIGHWAY_PROPS_ONLY", "").split(",") if pid]
-for pid in ONLY:
-	if pid not in PIECES:
-		raise SystemExit("highway_props: no piece " + pid)
-
 for pid, (pal, build) in PIECES.items():
-	if ONLY and pid not in ONLY:
-		continue
 	kit = Kit()
 	build(kit)
 	merged = {}
@@ -634,7 +416,7 @@ TILE = (560, 440)
 for pid, objs in piece_objects.items():
 	render(os.path.join(OUT, f"{pid}.png"), objs, 35, 32, TILE)
 
-# the sheet: the previews tiled, traps on the top row, boosters below, in highway order
+# the sheet: the previews tiled in highway order
 import numpy as np
 
 w, h = TILE

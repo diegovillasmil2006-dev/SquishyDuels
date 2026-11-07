@@ -111,20 +111,26 @@ local Highway = {
 	-- The course (owner 2026-11-06: "investigate hit a golf ball and do it like them": their cannons and rockets stand on
 	-- the runway, a late one can double a shot, obstacles stop it): traps and boosters stand on the lane all the time at
 	-- `spots`, in the order of the owner's "Launchers & Biomes" sheet (booster a, booster b, trap, again and again; on the
-	-- lane's centre, where the squishy flies, and off the BULLSEYE pads). HighwayMath.reach decides what a throw reaches: a
+	-- lane's centre, where the squishy flies, off the BULLSEYE pads and the low rings). HighwayMath.reach decides what a throw reaches: a
 	-- touchdown within catchShare x the spot's biome length lands on it. A booster bounces it to bounceDistance x where it
 	-- would stop (maxBounces a throw, so one can lead into the next), flying like a boost (boost.speedUp); a trap stops it
 	-- there unless the armor pieces reach the trap's zone. A roll never crosses a spot: the flight carries clearStuds past
 	-- it. Every throw's power is x scatter^(-1..1), so no two fly the same and a throw meets different spots.
 	-- [P] Money check (owner "Yes, build it", old throws vs these from Lv 1 to the Golden Gates, with PERFECT 1 in 5 and a
-	-- 1.5 s pause a throw): Coins a second +1 % .. +31 %, +13 % in the middle; a bounce on 4-35 % of the throws, a trap on
-	-- 0-28 %.
+	-- 1.5 s pause a throw): Coins a second +1 % .. +26 %, +13 % in the middle; a bounce on 3-34 % of the throws, a trap on
+	-- 0-22 %.
 	course = {
 		scatter = 4,
 		catchShare = 0.021,
 		bounceDistance = 2,
 		maxBounces = 2,
 		clearStuds = 14,
+		-- Where a squishy touches each booster, in studs over the lane top, by kind and biome (the models:
+		-- tools/meshes/highway_boosters.py): the top of what it bounces on, the middle of what it flies through.
+		touch = {
+			a = { 9.5, 20.5, 21.4, 4.3, 9.5, 13.5, 10 },
+			b = { 6.8, 4.6, 11.4, 10.7, 6.8, 3.9, 12 },
+		},
 		-- d = studs from the start line; kind = "a" | "b" (the biome's two boosters, Art/HighwayBoosters) | "trap".
 		spots = {
 			{ d = 50, kind = "a" },
@@ -145,21 +151,21 @@ local Highway = {
 			{ d = 980, kind = "a" },
 			{ d = 1_060, kind = "trap" },
 			{ d = 1_180, kind = "b" },
-			{ d = 1_280, kind = "a" },
+			{ d = 1_260, kind = "a" },
 			{ d = 1_350, kind = "trap" },
 			{ d = 1_450, kind = "b" },
 			{ d = 1_600, kind = "a" },
 			{ d = 1_740, kind = "b" },
 			{ d = 1_880, kind = "trap" },
 			{ d = 2_040, kind = "a" },
-			{ d = 2_180, kind = "b" },
+			{ d = 2_210, kind = "b" },
 			{ d = 2_290, kind = "trap" },
 			{ d = 2_440, kind = "a" },
 			{ d = 2_650, kind = "b" },
 			{ d = 2_860, kind = "a" },
 			{ d = 3_080, kind = "trap" },
 			{ d = 3_300, kind = "b" },
-			{ d = 3_500, kind = "a" },
+			{ d = 3_530, kind = "a" },
 			{ d = 3_690, kind = "trap" },
 			{ d = 3_900, kind = "b" },
 			{ d = 4_200, kind = "a" },

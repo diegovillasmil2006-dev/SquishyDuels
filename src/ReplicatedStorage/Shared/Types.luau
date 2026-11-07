@@ -645,6 +645,7 @@ export type HighwayArc = {
 	from: number, -- studs from the start line where it starts (negative on the deck)
 	y0: number, -- lane-local height where it starts
 	carry: number, -- studs where it meets the lane
+	y1: number?, -- the course (2026-11-06): lane-local height where it ends on a booster (nil: on the lane)
 	air: number, -- seconds from startAt to the carry
 	peak: number, -- studs the arc rises over the straight line (at most flight.peakMax)
 }

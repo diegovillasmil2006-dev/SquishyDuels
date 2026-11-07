@@ -1620,6 +1620,7 @@ local Strings = {
 		-- Pens3 phase 13 (the server's board lines and the client's stand-in HUD; {distance} = Format.distance,
 		-- {coins} / {grip} = Format.coins, {biome} = a biome name, {name} = a squishy's name, {food} = a food's name).
 		studs = "{distance} studs",
+		boosterSign = "x{x}", -- the course: floating over each booster on the lane
 		landed = "{distance} studs! +{coins} Coins, +{grip} Grip",
 		newBest = "New best: {distance} studs!",
 		reached = "You reached {biome}!",

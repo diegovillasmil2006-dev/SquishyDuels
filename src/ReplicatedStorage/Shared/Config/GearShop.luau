@@ -43,8 +43,22 @@ local GearShop = {
 	-- TRAP! (HighwayThrowController): the pop's colour (a Palette token), its sound (an AssetTable key; the uploaded
 	-- splat), and a short camera jolt (studs up and down, seconds; none under ReducedMotion: no camera shots then).
 	trap = { color = "CandyLavender", sound = "match.splat", joltStuds = 0.6, joltSeconds = 0.3, joltHz = 18 },
-	-- 2026-10-31 boosters: the BOOSTER! pop as a throw bounces off a booster (the boost pop's colour and sound).
-	booster = { color = "CandyCyan", sound = "sfx.dashWhoosh" },
+	-- 2026-10-31 boosters: the BOOSTER! pop as a throw bounces off a booster (the boost pop's colour and sound). `sign`
+	-- (owner 2026-11-06, like Hit a Golf Ball's floating words; Art/HighwayBoosters): the "x2" floating over each booster:
+	-- Palette tokens, the outline's px, its size in studs, how far over the model's top, and from how far it shows.
+	booster = {
+		color = "CandyCyan",
+		sound = "sfx.dashWhoosh",
+		sign = {
+			color = "CandyGold",
+			stroke = "PlumInk",
+			strokePx = 3,
+			widthStuds = 14,
+			heightStuds = 8,
+			liftStuds = 1,
+			maxDistance = 400,
+		},
+	},
 }
 
 return GearShop

@@ -42,8 +42,9 @@
 --   HighwayMath.planAt(core, t)       -> (Vector3 (x, y, d), boolean): the squishy at server time t and whether it is
 --                                        in the air (t in [the release, airEnd)): the release point before the
 --                                        release; arc i (in force from its startAt to the next one's) at u = its
---                                        share of the air, d = from + (carry - from) u, y = y0 + (CLEAR - y0) u + 4
---                                        peak u (1 - u); then the roll (P3D:590's ease, P3D:555's hops) to studs, then
+--                                        share of the air, d = from + (carry - from) u, y = y0 + (y1 - y0) u + 4
+--                                        peak u (1 - u), y1 = CLEAR unless the arc ends on a booster; then the roll
+--                                        (P3D:590's ease, P3D:555's hops) to studs, then
 --                                        (x, CLEAR, studs); x = clamp(x0, ±MAX_X) eased to 0 over the first
 --                                        centreStuds studs (the rings are centred)
 --   HighwayMath.boost(core, power, t) -> Core?: the plan after a boost at server time t (fuel is the service's
@@ -58,7 +59,8 @@
 --                                        the plan's last arc reaches. Its touchdown within catchShare x a spot's biome
 --                                        length, of the nearest spot ahead of the arc's start, lands exactly on it (the
 --                                        arc's carry moves there). A booster, under maxBounces (`bounced` so far on this
---                                        throw + this call's), adds an arc from it to bounceDistance x where the throw
+--                                        throw + this call's), is touched at its course.touch height (the arc's y1), and
+--                                        adds an arc from there to bounceDistance x where the throw
 --                                        would stop (at most gatesAt, at least boost.minAheadStuds ahead), flying
 --                                        boost.speedUp x faster than the arc before (never under minAirSeconds), and
 --                                        looks again from that arc's touchdown: bounces = the spots bounced off. A trap
@@ -159,7 +161,7 @@ end
 -- The height of arc `a` over distance d (inside its from..carry).
 local function heightOn(a: Types.HighwayArc, d: number): number
 	local u = (d - a.from) / (a.carry - a.from)
-	return a.y0 + (CLEAR - a.y0) * u + 4 * a.peak * u * (1 - u)
+	return a.y0 + ((a.y1 or CLEAR) - a.y0) * u + 4 * a.peak * u * (1 - u)
 end
 
 -- Public
@@ -273,7 +275,7 @@ function HighwayMath.planAt(core: Core, t: number): (Vector3, boolean)
 	if index < #core.arcs or t < a.startAt + a.air then
 		local u = math.clamp((t - a.startAt) / a.air, 0, 1)
 		local d = a.from + (a.carry - a.from) * u
-		return at(a.y0 + (CLEAR - a.y0) * u + 4 * a.peak * u * (1 - u), d), true
+		return at(a.y0 + ((a.y1 or CLEAR) - a.y0) * u + 4 * a.peak * u * (1 - u), d), true
 	end
 	local rest = core.studs - a.carry
 	if core.roll <= 0 or rest <= 0 then
@@ -361,9 +363,11 @@ function HighwayMath.reach(core: Core, armor: number, spots: { Spot }, bounced: 
 				pushed = pushed,
 			}
 		end
+		local height = LANE_Y + C.touch[spot.kind][HighwayMath.biomeAt(spot.d)]
+		aimed.y1 = height
 		local ahead = spot.d + B.minAheadStuds
 		studs = math.min(math.max(math.floor(studs * C.bounceDistance), ahead), H.gatesAt)
-		local new = HighwayMath.arc(spot.d, CLEAR, studs, touch, ahead)
+		local new = HighwayMath.arc(spot.d, height, studs, touch, ahead)
 		local speed = (last.carry - last.from) / last.air
 		new.air = math.max((new.carry - new.from) / (speed * B.speedUp), B.minAirSeconds)
 		table.insert(arcs, new)

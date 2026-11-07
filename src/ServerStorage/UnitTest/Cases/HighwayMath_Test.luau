@@ -327,6 +327,13 @@ return function(t: Context)
 		local touch = first.startAt + first.air
 		expect.truthy((HighwayMath.planAt(r, touch - 1e-6) - HighwayMath.planAt(r, touch + 1e-6)).Magnitude < 0.01)
 		expect.near(HighwayMath.planAt(r, touch).Z, 190, 1e-3)
+		-- Touched at the booster's own height, not down on the lane: Candy Meadow's "a".
+		local height = 1 + H.course.touch.a[1]
+		expect.equal(r.arcs[1].y1, height)
+		expect.equal(second.y0, height)
+		expect.equal(second.y1, nil)
+		expect.near(HighwayMath.planAt(r, touch).Y, height, 1e-3)
+		expect.equal(first.y1, nil) -- the plan it came from stays as it was
 		-- The nearest spot wins; "b" is a booster too.
 		expect.deepEqual(HighwayMath.reach(plain, 0, spots(187, "a", 193, "b"), 0).bounces, { 193 })
 	end)
@@ -432,6 +439,19 @@ return function(t: Context)
 		end
 		for biome = 1, #H.starts do
 			expect.deepEqual(kinds[biome], { a = true, b = true, trap = true })
+		end
+	end)
+
+	t.test("course: a booster stands clear of every ring low enough to touch it (the tallest is 31 studs)", function()
+		local tallest = 31
+		for _, spot in H.course.spots do
+			if spot.kind ~= "trap" then
+				for _, ring in WorldLayout.Highway.rings do
+					if ring.y - WorldLayout.Highway.ringRadius < tallest then
+						expect.truthy(math.abs(spot.d - ring.d) >= WorldLayout.Highway.ringRadius + H.course.clearStuds)
+					end
+				end
+			end
 		end
 	end)
 

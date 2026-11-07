@@ -57,7 +57,7 @@ if #problems > 0 then
 	return "NOT DONE:\n" .. table.concat(problems, "\n")
 end
 local pieces = #folder:GetChildren()
-if old then -- a partial import (HIGHWAY_PROPS_ONLY) keeps the other pieces
+if old then -- a partial import (the traps, or the boosters) keeps the other pieces
 	for _, model in folder:GetChildren() do
 		local same = old:FindFirstChild(model.Name)
 		if same then
