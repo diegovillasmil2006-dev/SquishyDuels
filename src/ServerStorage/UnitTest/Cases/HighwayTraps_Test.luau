@@ -7,7 +7,8 @@
 --     else, all anchored and never colliding, queried or touched, the Outline one-sided;
 --   * build(biome, origin) is that Model painted (the key's hex; Neon glows, the rest wears the stud tile; the Outline
 --     is ink) with its pivot at the origin; it fits on the 26-stud lane top and stands on it (nothing more than 0.9
---     under the origin: the cloud gap's shade and its ink); any other biome builds nothing.
+--     under the origin: the cloud gap's shade and its ink), and inside the room the course keeps clear round a trap
+--     (course.trapClearStuds along the lane, 2026-11-07); any other biome builds nothing.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -19,6 +20,7 @@ return function(t: Context)
 	local expect = t.expect
 	local HighwayTraps = t.requireShared("Art/HighwayTraps")
 	local WorldLayout = t.requireShared("World/WorldLayout")
+	local COURSE = t.requireShared("Config").Economy.Highway.course
 
 	local LANE_TOP_WIDTH = 26
 	local props = game:GetService("ServerStorage"):FindFirstChild(HighwayTraps.PROPS)
@@ -91,6 +93,7 @@ return function(t: Context)
 			local local_ = origin:PointToObjectSpace(box.Position)
 			expect.truthy(math.abs(local_.X) + size.X / 2 <= LANE_TOP_WIDTH / 2 + 2) -- within the lane (rotated parts)
 			expect.truthy(local_.Y - size.Y / 2 >= -0.9) -- stands on the lane top
+			expect.truthy(math.abs(local_.Z) + size.Z / 2 <= COURSE.trapClearStuds) -- no stop lands in it
 			model:Destroy()
 		end
 		expect.equal(HighwayTraps.build(0, origin), nil)

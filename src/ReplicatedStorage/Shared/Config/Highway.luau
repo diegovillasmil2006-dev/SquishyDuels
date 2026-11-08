@@ -114,17 +114,24 @@ local Highway = {
 	-- lane's centre, where the squishy flies, off the BULLSEYE pads and the low rings). HighwayMath.reach decides what a throw reaches: a
 	-- touchdown within catchShare x the spot's biome length lands on it. A booster bounces it to bounceDistance x where it
 	-- would stop (maxBounces a throw, so one can lead into the next), flying like a boost (boost.speedUp); a trap stops it
-	-- there unless the armor pieces reach the trap's zone. A roll never crosses a spot: the flight carries clearStuds past
-	-- it. Every throw's power is x scatter^(-1..1), so no two fly the same and a throw meets different spots.
+	-- on it unless the armor pieces reach the trap's zone, up to trapSpread off its middle (as far off as the touchdown
+	-- was in the catch). Every throw's power is x scatter^(-1..1), so no two fly the same and a throw meets different
+	-- spots. The rooms (owner 2026-11-07, "yes" to fixing the repeating distances: half the throws stopped at the same
+	-- 2-3 distances): each spot keeps clearStuds (a booster) or trapClearStuds (a trap) of lane clear on both sides, about
+	-- its model's half-length; no throw stops in one or rolls through one: a stop in the first half of a room stops that
+	-- far short of it when there is space, anything else flies past it by as much (HighwayMath.reach).
 	-- [P] Money check (owner "Yes, build it", old throws vs these from Lv 1 to the Golden Gates, with PERFECT 1 in 5 and a
-	-- 1.5 s pause a throw): Coins a second +1 % .. +26 %, +13 % in the middle; a bounce on 3-34 % of the throws, a trap on
-	-- 0-22 %.
+	-- 1.5 s pause a throw; rerun 2026-11-07 with the rooms, the real stop rule this time): Coins a second +3 % .. +28 %,
+	-- +15 % in the middle (the stop rule before the rooms: +4 % .. +36 %, +18 %); a bounce on 3-35 % of the throws, a trap
+	-- on 0-22 %; no whole-stud distance on more than about 4 % of a level's throws (it was up to a third).
 	course = {
 		scatter = 4,
 		catchShare = 0.021,
 		bounceDistance = 2,
 		maxBounces = 2,
 		clearStuds = 14,
+		trapClearStuds = 7,
+		trapSpread = 2.5,
 		-- Where a squishy touches each booster, in studs over the lane top, by kind and biome (the models:
 		-- tools/meshes/highway_boosters.py): the top of what it bounces on, the middle of what it flies through.
 		touch = {

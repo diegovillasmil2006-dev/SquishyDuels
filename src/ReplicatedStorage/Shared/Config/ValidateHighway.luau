@@ -31,8 +31,8 @@
 --   maxOneWaySeconds >= 0; boost.fuel a whole number >= 0, boost.power >= 1, afterReleaseSeconds,
 --   beforeCarrySeconds and minAheadStuds >= 0, speedUp and minAirSeconds > 0; pay.ringShare >= 0. Every number finite.
 -- The course (2026-11-06): scatter >= 1, catchShare in (0, 1), bounceDistance above 1, maxBounces a whole number >= 0,
---   clearStuds >= 0, touch.a and touch.b one height >= 0 a biome, spots rising distances inside the lane, each of kind
---   "a", "b" or "trap".
+--   clearStuds, trapClearStuds and trapSpread >= 0, touch.a and touch.b one height >= 0 a biome, spots rising distances
+--   inside the lane, each of kind "a", "b" or "trap".
 
 local H = "Config.Economy.Highway"
 local MIN_BLOCKS = 10 -- = Config/ValidateAutoClick's: the spread of fewer block means is too noisy to trust
@@ -242,6 +242,8 @@ return function(config: any, catalog: any?): { string }
 		`{H}.course.maxBounces must be a whole number >= 0 (got {show(course.maxBounces)})`
 	)
 	atLeast("course", "clearStuds", course.clearStuds, 0)
+	atLeast("course", "trapClearStuds", course.trapClearStuds, 0)
+	atLeast("course", "trapSpread", course.trapSpread, 0)
 	local biomeCount = if type(starts) == "table" then #starts else 0
 	for _, kind in { "a", "b" } do
 		local heights = if type(course.touch) == "table" then course.touch[kind] else nil

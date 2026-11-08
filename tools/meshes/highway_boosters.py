@@ -4,7 +4,7 @@ The owner on the old blocky ones: "more roblox style, they look so bland, take h
 build all 14" on a sample. So these keep the objects of the owner's "Launchers & Biomes - Concept Sheet" (Desktop "jason
 designs", Candy Toy-Box Park Lobby.zip, concept-kit.js:280-299) but 2-3 times bigger, round and smooth, in 2-3 loud colours
 with one bright detail; only the stands keep Diego's stud tile (a "Stud" key). The look is borrowed, their models are not.
-The traps are still in highway_props.py.
+highway_props.py builds the 7 traps with this kit (it imports this file, which then builds nothing, and calls main).
 Run it as its own Blender process:
 
     "<blender.exe>" --background --factory-startup --python-exit-code 1 --python highway_boosters.py -- <out_dir>
@@ -197,6 +197,29 @@ def bm_flat(pts, depth):  # a flat shape along Z, flat shaded
 	return bm
 
 
+def lobes(radius, waves, sx=1.0, sz=1.0):  # a splat's outline: its radius at angle a; waves = (n, amplitude, phase)
+	def r(a):
+		k = 1 + sum(amp * math.sin(n * a + ph) for n, amp, ph in waves)
+		return radius * k / math.sqrt((math.cos(a) / sx) ** 2 + (math.sin(a) / sz) ** 2)
+	return r
+
+
+def bm_blob(outline, profile, seg, top):  # rows (inset in studs, y) under the outline, a low dome on top at `top`
+	bm = bmesh.new()
+	rows = []
+	for inset, y in profile:
+		rows.append([bm.verts.new((max(0.05, outline(j / seg * TAU) - inset) * math.cos(j / seg * TAU), y,
+			max(0.05, outline(j / seg * TAU) - inset) * math.sin(j / seg * TAU))) for j in range(seg)])
+	for lo, hi in zip(rows, rows[1:]):
+		for j in range(seg):
+			bm.faces.new((lo[j], lo[(j + 1) % seg], hi[(j + 1) % seg], hi[j]))
+	centre = bm.verts.new((0, top, 0))
+	for j in range(seg):
+		bm.faces.new((rows[-1][j], rows[-1][(j + 1) % seg], centre))
+	bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+	return bm
+
+
 def bm_slab(profile, width, soft):  # a (z, y) outline stretched along X
 	bm = bmesh.new()
 	lo = [bm.verts.new((-width / 2, y, z)) for z, y in profile]
@@ -255,6 +278,10 @@ class Kit:
 
 	def slab(self, key, profile, width, x=0, soft=0.5):
 		self._put(key, bm_slab(profile, width, soft), (x, 0, 0))
+
+	def blob(self, key, outline, h, p=(0, 0, 0), seg=40, edge=1.0):  # a goo puddle h high with a round edge
+		rows = ((0, 0), (0.04 * edge, 0.45 * h), (0.25 * edge, 0.8 * h), (0.6 * edge, 0.96 * h), (1.1 * edge, h))
+		self._put(key, bm_blob(outline, rows, seg, h + 0.12), p)
 
 	def _put(self, key, bm, p, r=None, scale=(1, 1, 1), smooth=True):
 		for f in bm.faces:

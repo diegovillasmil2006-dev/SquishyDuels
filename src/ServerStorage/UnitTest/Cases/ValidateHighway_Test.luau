@@ -75,6 +75,8 @@ return function(t: Context)
 			{ changes = { bounceDistance = 1 }, field = "bounceDistance" },
 			{ changes = { maxBounces = 1.5 }, field = "maxBounces" },
 			{ changes = { clearStuds = -1 }, field = "clearStuds" },
+			{ changes = { trapClearStuds = -1 }, field = "trapClearStuds" },
+			{ changes = { trapSpread = "x" }, field = "trapSpread" },
 			{ changes = { touch = "x" }, field = "touch.a" },
 			{ changes = { touch = { a = { 1 }, b = Config.Economy.Highway.course.touch.b } }, field = "touch.a" },
 			{ changes = { touch = { a = Config.Economy.Highway.course.touch.a, b = { -1, 1, 1, 1, 1, 1, 1 } } }, field = "touch.b[1]" },

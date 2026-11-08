@@ -18,8 +18,14 @@
 --     roll, on the lane (y 2) at the carry and the landing, x easing to the centre over 60 studs), boost (x4 power,
 --     only from 0.2 s after the release to 0.15 s before the air ends, continuous, faster), ringsHit, bullseye;
 --   * the course (owner 2026-11-06): reach lands a touchdown on a spot within catchShare x its biome's length; a booster
---     adds an arc to 2 x the stop (2 a throw, faster, continuous), a trap stops it there unless the armor reaches the
---     zone, a roll carries past the spots it would cross; a boost flies over what is ahead;
+--     adds an arc to 2 x the stop (2 a throw, faster, continuous), a trap stops it on it unless the armor reaches the
+--     zone; a boost flies over what is ahead;
+--   * the course's rooms (owner 2026-11-07, "yes" to fixing the repeating distances): no throw stops inside a spot's
+--     room (clearStuds a booster, trapClearStuds a trap): a stop in the first half of one stops that far short of it
+--     when that is clear, anything else flies past it by as much (and past the next room the same way); the touchdown
+--     is never in a room nor before one the roll would run through; a trap stops it within trapSpread of its middle,
+--     as far off as the touchdown was within the catch; no whole-stud distance comes back much more than its
+--     neighbours;
 --   * inArea(lane-local point, margin): inside WorldLayout.Highway.throwArea (the deck top, L:20 30 x 15), grown by
 --     the margin; inThrowArea(world point, margin) the same from a world position;
 --   * foodBag(pen, sv): the band food of the weakest placed squishy (the lowest level: its band decides the food),
@@ -294,7 +300,7 @@ return function(t: Context)
 		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
 		local carry = plain.arcs[1].carry
 		expect.near(carry, 191.7, 1e-6)
-		for _, list in { {}, spots(184, "a"), spots(50, "a", 100, "trap") } do -- 184 is 7.7 from the touchdown
+		for _, list in { {}, spots(170, "a"), spots(50, "a", 100, "trap") } do -- 170's room ends at 184, before the touchdown
 			local r = HighwayMath.reach(plain, 0, list, 0)
 			expect.equal(r.studs, 213)
 			expect.equal(r.arcs[1].carry, carry)
@@ -382,26 +388,115 @@ return function(t: Context)
 		expect.equal(HighwayMath.reach(plain, 2, list, 0).trap, false)
 	end)
 
-	t.test("course: a roll never crosses a spot: the flight carries past it and stops past it", function()
+	t.test("course: rooms: never stops in one or rolls through one; short of it, or past it by as much", function()
+		-- Lv 1 plain: touches down at 191.7 and would stop at 213; a booster's room is 14, a trap's 7.
 		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
-		local clear = H.course.clearStuds
-		local r = HighwayMath.reach(plain, 0, spots(205, "trap"), 0) -- 13.3 from the touchdown, 8 before the stop
-		expect.equal(r.trap, false)
-		expect.equal(r.arcs[1].carry, 205 + clear)
-		expect.equal(r.studs, 205 + clear)
-		expect.equal(r.roll, 0)
-		-- The last spot it would cross wins; the stop stays when it is farther (a PERFECT: touches down at 231.3, stops at 257).
+		local function stops(list: { any }): (number, number)
+			local r = HighwayMath.reach(plain, 0, list, 0)
+			expect.equal(r.trap, false)
+			expect.deepEqual(r.bounces, {})
+			expect.near(r.roll, HighwayMath.rollSeconds(r.arcs[1].carry, r.studs), 1e-9)
+			return r.studs, r.arcs[1].carry
+		end
+		local function expectStop(list: { any }, studs: number, carry: number)
+			local got, touch = stops(list)
+			expect.equal(got, studs)
+			expect.near(touch, carry, 1e-9)
+		end
+		-- A trap between the touchdown and the stop: flies over its room, rolls on to the same stop.
+		expectStop(spots(205, "trap"), 213, 212)
+		-- A touchdown inside a booster's room (6.7 off: just outside the catch): touches down past it instead.
+		expectStop(spots(185, "a"), 213, 199)
+		-- A stop in the first half of a room stops that far short of it (199, clear) ...
+		expectStop(spots(220, "a"), 199, 191.7)
+		-- ... in the second half flies past it by as much (213 + 14) ...
+		expectStop(spots(205, "a"), 227, 219)
+		-- ... and in the first half with the trap's room behind it, past it by its whole room (213 + 28).
+		expectStop(spots(203, "trap", 220, "a"), 241, 234)
+		-- Past one room into the next: past that one too, the same way (227 is in the first half of 230's: + 14).
+		expectStop(spots(205, "a", 230, "trap"), 241, 237)
+		-- A room that ends before the stop is clear; one that starts after it does not count.
+		expectStop(spots(213 + H.course.clearStuds + 1, "a"), 213, 191.7)
+		-- A PERFECT (touches down at 231.3, stops at 257): the touchdown goes past the last room before the stop.
 		local perfect = HighwayMath.newPlan(3600, ROOT, RELEASE)
 		local two = HighwayMath.reach(perfect, 0, spots(240, "a", 245, "a"), 0)
-		expect.equal(two.studs, 245 + clear)
-		expect.equal(two.arcs[1].carry, 245 + clear)
+		expect.equal(two.studs, 271) -- 257 is in the second half of 245's room
+		expect.equal(two.arcs[1].carry, 259)
 		local one = HighwayMath.reach(perfect, 0, spots(240, "a"), 0)
 		expect.equal(one.studs, 257)
-		expect.equal(one.arcs[1].carry, 240 + clear)
-		-- A spot just past the stop counts too (it would stop on it).
-		expect.equal(HighwayMath.reach(plain, 0, spots(220, "a"), 0).studs, 220 + clear)
-		-- A spot far past it does not.
-		expect.equal(HighwayMath.reach(plain, 0, spots(213 + clear + 1, "a"), 0).studs, 213)
+		expect.equal(one.arcs[1].carry, 254)
+	end)
+
+	t.test("course: a trap stops it within trapSpread of its middle, as far off as the touchdown was in the catch", function()
+		-- Lv 1 plain touches down at 191.7; the catch is 6.3 in Candy Meadow, the spread 2.5: 191.7 - 196 = -4.3 -> -1.7.
+		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
+		for _, case in { { 196, 194 }, { 187, 188 }, { 190, 190 } } do
+			local r = HighwayMath.reach(plain, 0, spots(case[1], "trap"), 0)
+			expect.equal(r.trap, true)
+			expect.equal(r.studs, case[2])
+			expect.equal(r.arcs[1].carry, case[2])
+			expect.equal(r.roll, 0)
+			expect.truthy(math.abs(r.studs - case[1]) <= H.course.trapSpread + 1)
+		end
+	end)
+
+	t.test("course: from every stop on the lane, never in a room, never rolling through one, no distance coming back", function()
+		local C = H.course
+		local function roomOf(spot: any): number
+			return if spot.kind == "trap" then C.trapClearStuds else C.clearStuds
+		end
+		local hits: { [number]: number } = {}
+		local problem: string? = nil
+		for natural = 100, H.gatesAt - 1 do
+			local first = HighwayMath.arc(-ROOT.Z, ROOT.Y, natural, RELEASE)
+			local core = {
+				x0 = 0,
+				arcs = { first },
+				roll = HighwayMath.rollSeconds(first.carry, natural),
+				studs = natural,
+				landsAt = RELEASE + first.air,
+			}
+			for _, armor in { 0, #H.starts } do
+				local r = HighwayMath.reach(core, armor, C.spots, 0)
+				local touch = r.arcs[#r.arcs].carry
+				if r.trap then
+					local near = math.huge
+					for _, spot in C.spots do
+						if spot.kind == "trap" then
+							near = math.min(near, math.abs(r.studs - spot.d))
+						end
+					end
+					if near > C.trapSpread + 1 or touch ~= r.studs or r.roll ~= 0 then
+						problem = problem or `{natural}: trapped at {r.studs}, {near} from a trap`
+					end
+				else
+					if touch > r.studs then
+						problem = problem or `{natural}: touches down at {touch}, past the stop {r.studs}`
+					end
+					for _, spot in C.spots do
+						local room = roomOf(spot)
+						local clear = r.studs >= H.gatesAt or math.abs(r.studs - spot.d) >= room
+						local over = spot.d + room <= touch or spot.d - room >= r.studs
+						if not (clear and over) then
+							problem = problem or `{natural}: rolls {touch} -> {r.studs} against the {spot.kind} at {spot.d}`
+						end
+					end
+					if armor == 0 and r.studs < H.gatesAt then
+						hits[r.studs] = (hits[r.studs] or 0) + 1
+					end
+				end
+			end
+		end
+		expect.equal(problem, nil)
+		-- No whole-stud stop comes from more than 6 of the 8,400 whole-stud throws (it was 28 and more: every throw that
+		-- would roll into a spot stopped exactly clearStuds past it).
+		local most, at = 0, 0
+		for studs, n in hits do
+			if n > most then
+				most, at = n, studs
+			end
+		end
+		expect.equal(if most <= 6 then nil else `{most} throws stop at {at}`, nil)
 	end)
 
 	t.test("course: a boost flies over what is ahead, adds its own gain, and escapes a trap", function()
@@ -433,8 +528,9 @@ return function(t: Context)
 			local biome = HighwayMath.biomeAt(spot.d)
 			kinds[biome] = kinds[biome] or {}
 			kinds[biome][spot.kind] = true
+			local room = if spot.kind == "trap" then H.course.trapClearStuds else H.course.clearStuds
 			for _, pad in WorldLayout.Highway.pads do
-				expect.truthy(math.abs(spot.d - pad.d) >= WorldLayout.Highway.padRadius + H.course.clearStuds)
+				expect.truthy(math.abs(spot.d - pad.d) >= WorldLayout.Highway.padRadius + room)
 			end
 		end
 		for biome = 1, #H.starts do

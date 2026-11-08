@@ -64,11 +64,16 @@
 --                                        would stop (at most gatesAt, at least boost.minAheadStuds ahead), flying
 --                                        boost.speedUp x faster than the arc before (never under minAirSeconds), and
 --                                        looks again from that arc's touchdown: bounces = the spots bounced off. A trap
---                                        stops it there (trap = true, no roll) unless armor >= the spot's biome: then
+--                                        stops it on it (trap = true, no roll), as far off its middle as the touchdown
+--                                        was in the catch, scaled to trapSpread, unless armor >= the spot's biome: then
 --                                        it goes through (pushed = that spot). A booster over the limit does nothing.
---                                        A roll never crosses a spot: the arc carries clearStuds past the last spot it
---                                        would roll over, and stops there at the least. Plans are never changed in
---                                        place; with no spot near, the same flight
+--                                        The rooms (owner 2026-11-07): no stop lies inside a spot's room (clearStuds a
+--                                        booster, trapClearStuds a trap): a stop in the first half of one stops that
+--                                        far short of it when that is clear (and minAheadStuds past the arc's start),
+--                                        anything else flies past it by as much, past the next room the same way; the
+--                                        touchdown moves past every room before the stop (never in one: a roll never
+--                                        runs through a spot). Plans are never changed in place; with no spot near, the
+--                                        same flight
 --   HighwayMath.ringsHit(core)        -> { number }: the WorldLayout.Highway.rings indices (ascending) the plan flies
 --                                        through: the arc in force at the ring's d is within ringRadius of its
 --                                        centre (rolling never hits)
@@ -316,18 +321,57 @@ function HighwayMath.boost(core: Core, power: number, t: number): Core?
 	return { x0 = core.x0, arcs = arcs, roll = roll, studs = studs, landsAt = t + new.air + roll }
 end
 
+-- The course: a spot's catch, catchShare x its biome's length.
+local function catchOf(d: number): number
+	local biome = HighwayMath.biomeAt(d)
+	return C.catchShare * (endOf(biome) - H.starts[biome])
+end
+
 -- The course: the nearest spot ahead of `from` whose catch holds a touchdown at `carry`.
 local function spotAt(spots: { Spot }, carry: number, from: number): Spot?
 	local found: Spot? = nil
 	local nearest = math.huge
 	for _, spot in spots do
 		local off = math.abs(spot.d - carry)
-		local biome = HighwayMath.biomeAt(spot.d)
-		if spot.d > from and off < nearest and off <= C.catchShare * (endOf(biome) - H.starts[biome]) then
+		if spot.d > from and off < nearest and off <= catchOf(spot.d) then
 			found, nearest = spot, off
 		end
 	end
 	return found
+end
+
+-- The course: the room a spot keeps clear along the lane (its model's half-length and a little more).
+local function roomOf(spot: Spot): number
+	return if spot.kind == TRAP then C.trapClearStuds else C.clearStuds
+end
+
+-- The spot whose room holds lane distance d (its edges are clear), with that room.
+local function roomAt(spots: { Spot }, d: number): (Spot?, number)
+	for _, spot in spots do
+		local room = roomOf(spot)
+		if math.abs(d - spot.d) < room then
+			return spot, room
+		end
+	end
+	return nil, 0
+end
+
+-- Where a throw that would stop at `studs` stops (see the API): short of a room it would stop in the first half of,
+-- by the room, when that is clear and at least `low`; else past it by as much, and past the next room the same way.
+-- Throws near a spot keep their spread instead of all stopping at one distance.
+local function freeStop(spots: { Spot }, studs: number, low: number): number
+	local spot, room = roomAt(spots, studs)
+	if spot ~= nil and studs < spot.d and studs - room >= low and roomAt(spots, studs - room) == nil then
+		return studs - room
+	end
+	for _ = 1, #spots do -- every step leaves a room forwards, so this ends
+		if spot == nil then
+			break
+		end
+		studs += if studs < spot.d then 2 * room else room
+		spot, room = roomAt(spots, studs)
+	end
+	return math.min(studs, H.gatesAt)
 end
 
 -- The course (see the API).
@@ -352,11 +396,12 @@ function HighwayMath.reach(core: Core, armor: number, spots: { Spot }, bounced: 
 		arcs[#arcs] = aimed
 		local touch = aimed.startAt + aimed.air
 		if isTrap then
+			aimed.carry = math.floor(spot.d + (last.carry - spot.d) / catchOf(spot.d) * C.trapSpread)
 			return {
 				x0 = core.x0,
 				arcs = arcs,
 				roll = 0,
-				studs = spot.d,
+				studs = aimed.carry,
 				landsAt = touch,
 				bounces = bounces,
 				trap = true,
@@ -375,17 +420,19 @@ function HighwayMath.reach(core: Core, armor: number, spots: { Spot }, bounced: 
 		last = new
 		spot = spotAt(spots, last.carry, last.from)
 	end
-	local past = last.carry
+	-- Where it stops, out of every room, and where it touches down: past every room before the stop (it flies over).
+	studs = freeStop(spots, studs, last.from + B.minAheadStuds)
+	local carry = math.min(last.carry, studs)
 	for _, ahead in spots do
-		if ahead.d > last.carry and ahead.d <= studs + C.clearStuds then
-			past = math.max(past, ahead.d + C.clearStuds)
+		local edge = ahead.d + roomOf(ahead)
+		if edge > carry and edge <= studs then
+			carry = edge
 		end
 	end
-	if past > last.carry then
+	if carry ~= last.carry then
 		last = table.clone(last)
-		last.carry = past
+		last.carry = carry
 		arcs[#arcs] = last
-		studs = math.max(studs, past)
 	end
 	local roll = HighwayMath.rollSeconds(last.carry, studs)
 	return {
