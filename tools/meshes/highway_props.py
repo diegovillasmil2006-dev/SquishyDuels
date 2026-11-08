@@ -1,48 +1,36 @@
-"""Squishy Duels highway props: the 7 traps as blocky Blender meshes (2026-11-01; the boosters are in highway_boosters.py).
+"""Squishy Duels highway traps: the 7 traps as big toy models (2026-11-07), built with highway_boosters.py's kit.
 
-The owner's style rule (2026-11-01, "everything was made in blender and made blocky", like Steal an Egg): the pieces of
-the owner's "Launchers & Biomes - Concept Sheet" (Desktop "jason designs", Candy Toy-Box Park Lobby.zip,
-concept-kit.js:282-300) keep the sheet's shapes, sizes and colours, drawn the way Diego's lobby and maps look: the
-sheet's own 8-sided cylinders, faceted balls (icosahedron detail 1), chamfered boxes, the lobby's stud tile UVs (1 UV
-unit = 2 studs, read back from Diego's lobby meshes; MaterialVariant SquishyStud) and an ink hull round every part
-(Diego's maps: inward faces, ink #1c1530). Glass in the sheet becomes solid (blocky, not shiny).
+The owner on a sample of two (gum puddle, marshmallows) in the boosters' toy look (2026-11-06: "more roblox style, they
+look so bland, take hit a golf ball as an example"): "Yes, build all 7". So these keep the objects of the owner's
+"Launchers & Biomes - Concept Sheet" (Desktop "jason designs", Candy Toy-Box Park Lobby.zip, concept-kit.js:282-300),
+2-3 times bigger, round and smooth, in loud colours; the stud tile only on the rims (a "Stud" key). Next to the boosters
+a trap must look like a bad thing to hit, with no sign: low and gooey with a dark edge on the bright lanes (the AoE
+warning rule of the LihFolk vault), a bright rim inside the dark rim on the dark lava lane.
+A trapped squishy stops on the lane's centre within course.trapSpread (2.5) of the trap's middle, its centre 1 stud over
+the lane (HighwayMath CLEAR) and 4.8 studs wide (flyScale 3): the middle stays low so it sits half sunk in it, nothing
+comes within a stud of it, and the right side (+X) stays low for the game's end cameras (Config.UI.Highway.landingShot,
+Config.HighwayFx.hero, both on the right); the tall parts stand on the left, behind the squishy in both.
 Run it as its own Blender process:
 
     "<blender.exe>" --background --factory-startup --python-exit-code 1 --python highway_props.py -- <out_dir>
-        [<stud_color.png> <stud_normal.png>]
 
-Writes <out_dir>/SD_HighwayProps.glb (per piece one object per colour key "<id>__<key>" plus "<id>__Outline", all at
-the piece's origin = the lane top centre), manifest.json (each object's centre and size in Roblox axes) and previews
-(<id>.png, sheet.png; the stud pictures only tint the previews). 1 Blender unit = 1 stud; points are computed in Roblox
-axes (X right, Y up, Z back) and written as (X, -Z, Y), so the glTF "+Y up" export gives back Roblox axes.
-Colours here are for the previews only; the game paints the meshes from Art/HighwayTraps.
+Writes what highway_boosters.py writes, for the traps only (SD_HighwayProps.glb, manifest.json, <id>.png), plus
+<id>_end.png: a stuck squishy as the end camera sees it. Import it and run highway_props_setup.luau: it keeps the
+boosters. Roblox axes as in the kit (X right, Y up, Z back: a throw flies to -Z). Colours here are for the previews only;
+the game paints the meshes from Art/HighwayTraps. The kit's limits hold: every trap stays inside course.trapClearStuds
+along the lane.
 """
 
-import json
 import math
 import os
 import sys
 
-import bmesh
-import bpy
-from mathutils import Matrix, Vector
+from mathutils import Vector
 
-ARGV = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-if not ARGV:  # never default to the script's folder: in the repo the snapshot would commit the .glb and previews
-	raise SystemExit("usage: blender --background --factory-startup --python highway_props.py -- <out_dir> [...]")
-OUT = os.path.abspath(ARGV[0])
-STUD_COLOR = ARGV[1] if len(ARGV) > 1 else None
-STUD_NORMAL = ARGV[2] if len(ARGV) > 2 else None
-os.makedirs(OUT, exist_ok=True)
+sys.dont_write_bytecode = True  # no __pycache__ in the repo (a snapshot commits everything)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import highway_boosters as kit  # noqa: E402  the toy kit; importing it builds nothing
 
-UV_STUDS = 2.0  # one stud tile every 2 studs, like Diego's lobby meshes
-INK = "1C1530"  # Diego's map outline ink (SkyMapBuilder INK)
-D = math.pi / 180
-
-# -------------------------------------------------------------------------------------------------- the 7 pieces
-
-
-# id -> palette (key -> (hex, glows)) and the sheet's build (concept-kit.js line in each comment)
 PIECES = {}
 
 
@@ -53,383 +41,173 @@ def piece(pid, pal):
 	return wrap
 
 
-@piece("cm_gum_puddle", {"gum": ("FF9ED2", False), "bub": ("FF7FC0", False)})  # :282
+# ------------------------------------------------------------------------------------------------------ helpers
+
+
+def drop(k, key, rim, x, z, r, h):  # a spatter drop round a puddle, with its dark rim
+	k.ball(rim, 2, (x, 0, z), (r + 0.45, 0.32, r + 0.45), dome=True, seg=12)
+	k.ball(key, 2, (x, 0, z), (r, h, r), dome=True, seg=12)
+
+
+def shiny(k, key, shine, d, p, seg=20):  # a glossy ball with a shine dot up towards the cameras (+X)
+	k.ball(key, d, p, seg=seg)
+	n = Vector((0.45, 0.62, 0.1)).normalized() * (d / 2 * 0.93)
+	k.ball(shine, 2, (p[0] + n.x, p[1] + n.y, p[2] + n.z), (d * 0.1, d * 0.065, d * 0.1), seg=8)
+
+
+def mallow(k, key, d, h, p, r=None, toast=True, seg=14):  # a soft marshmallow standing on p, its toasty end on top
+	g = k.g(p, r)
+	g.ucyl(key, d, h, (0, 0, 0), soft=min(1.4, 0.24 * d), seg=seg)
+	if toast:
+		g.ucyl("toast", d * 0.72, 0.5, (0, h - 0.25, 0), soft=0.2, seg=seg)
+
+
+def lay(k, key, d, h, at, axis, toast=True):  # one lying along "x" or "z", centred on at = (x, its bottom y, z)
+	x, y, z = at
+	if axis == "z":  # local +Y -> +Z: the toasty end looks back to the start
+		mallow(k, key, d, h, (x, y + d / 2, z - h / 2), (90, 0, 0), toast)
+	else:  # local +Y -> +X: the toasty end looks right, at the end cameras
+		mallow(k, key, d, h, (x - h / 2, y + d / 2, z), (0, 0, -90), toast)
+
+
+def ring_at(deg, r):  # (x, z) at an angle from +X towards +Z (the back)
+	return r * math.cos(math.radians(deg)), r * math.sin(math.radians(deg))
+
+
+# --------------------------------------------------------------------------------------------- the 7 traps
+
+
+GUM_WAVES = ((3, 0.08, 0.4), (5, 0.06, 1.3), (7, 0.035, 2.1))
+
+
+@piece("cm_gum_puddle", {"edge": ("B0157A", "Smooth"), "gum": ("FF4FAE", "Smooth"), "bub": ("FF8AD0", "Smooth"),
+	"shine": ("FFFFFF", "Smooth")})  # 1 Candy Meadow, the sheet's :282: a gum puddle and a bubble
 def _(k):
-	k.u("gum", (8, 0.35, 5), (0, 0, 0))
-	k.u("gum", (5, 0.36, 6.5), (1, 0, 0))
-	k.u("gum", (3, 0.5, 3), (-2.4, 0, 1.4), (0, 20, 0))
-	k.s("bub", 2.2, (1.6, 1.2, -0.6))
+	k.blob("edge", kit.lobes(11.2, GUM_WAVES, 1.0, 1.05), 0.4)
+	k.blob("gum", kit.lobes(10.5, GUM_WAVES, 1.0, 1.05), 0.8)
+	for x, z, r in ((-12.2, 7.4, 1.3), (11.9, -5.6, 1.0), (6.4, 11.9, 0.9), (-7.6, -12.3, 1.1), (12.4, 4.2, 0.7)):
+		drop(k, "gum", "edge", x, z, r, 0.75)
+	shiny(k, "bub", "shine", 9.5, (-8.2, 5.1, 4.2))  # the big one, behind the squishy in the end camera
+	shiny(k, "bub", "shine", 5.0, (-5.2, 2.85, -7.4))
+	shiny(k, "bub", "shine", 3.0, (6.4, 1.85, 6.4))
 
 
-@piece("bt_jam_puddle", {"jam": ("C2185B", False), "seed": ("E0315F", False)})  # :285
+JAM_WAVES = ((2, 0.05, 0.9), (4, 0.07, 2.4), (7, 0.04, 0.2))
+DOLLOP = ((5.0, 0), (4.9, 1.0), (4.4, 2.2), (3.6, 3.2), (2.6, 4.0), (1.7, 4.6), (0.9, 5.1), (0.35, 5.45), (0, 5.6))
+
+
+def berry(k, x, z, s, turn):  # a plump berry bit sitting in the jam, gold seeds on top
+	r = 1.7 * s
+	y = 0.85 * r + 0.1
+	k.ball("berry", 2, (x, y, z), (r, 0.85 * r, r), (0, turn, 0), seg=12)
+	for i in range(5):
+		a = math.radians(turn) + i * kit.TAU / 5
+		n = Vector((0.62 * math.cos(a), 0.75, 0.62 * math.sin(a))).normalized()
+		k.ball("seed", 2, (x + n.x * r, y + n.y * 0.85 * r, z + n.z * r), (0.22 * s, 0.14 * s, 0.22 * s), seg=6)
+
+
+@piece("bt_jam_puddle", {"edge": ("5E0B2A", "Smooth"), "jam": ("D81458", "Smooth"), "berry": ("FF3D6B", "Smooth"),
+	"seed": ("FFD21F", "Smooth")})  # 2 Bakery Town, the sheet's :285: a jam puddle with berry bits
 def _(k):
-	k.u("jam", (7, 0.4, 5), (0, 0, 0))
-	k.u("jam", (4, 0.42, 7), (1.4, 0, 0.4), (0, 15, 0))
-	k.u("jam", (2.4, 0.6, 2.4), (-2.6, 0, -1.6), (0, 30, 0))
-	for x, z in ((-1, 1), (1.8, -1.2), (0.4, 2.6), (2.4, 1.6)):
-		k.u("seed", (0.6, 0.3, 0.6), (x, 0.4, z), (0, 45, 0))
+	k.blob("edge", kit.lobes(11.2, JAM_WAVES, 1.05, 1.0), 0.4)
+	k.blob("jam", kit.lobes(10.5, JAM_WAVES, 1.05, 1.0), 0.85)
+	for x, z, r in ((12.2, 6.4, 1.1), (-5.8, 12.2, 1.1), (8.4, -11.0, 0.9), (-12.2, -5.2, 1.0)):
+		drop(k, "jam", "edge", x, z, r, 0.8)
+	k.lathe("jam", DOLLOP, (-8.6, 0.4, 3.8), seg=20)  # a big dollop, behind the squishy in the end camera
+	k.lathe("jam", DOLLOP, (-4.8, 0.4, -8.4), seg=16, scale=(0.6, 0.62, 0.6))
+	for x, z, s, turn in ((-3.2, 8.0, 1.0, 20), (6.6, 3.4, 0.85, -35), (0.2, -10.4, 0.9, 60), (-10.6, -3.6, 1.1, 10)):
+		berry(k, x, z, s, turn)
 
 
-@piece("bl_splash_pool", {"rim": ("EED6B8", False), "water": ("7FD8D0", False), "drop": ("DFF4FF", False)})  # :288
+TEAR = ((0, 0), (0.55, 0.12), (0.8, 0.45), (0.78, 0.85), (0.55, 1.25), (0.28, 1.65), (0, 2.0))  # a drop, its tip up
+
+
+@piece("bl_splash_pool", {"rim": ("4A2460", "Stud"), "water": ("1FB8C8", "Smooth"), "ripple": ("BFF6FF", "Smooth"),
+	"drop": ("E8FBFF", "Smooth")})  # 3 Boba Lagoon, the sheet's :288: a board rim round milk-tea water, splash drops
 def _(k):
 	for s in (-1, 1):
-		k.u("rim", (10, 1, 1), (0, 0, s * 4.5))
-		k.u("rim", (1, 1, 8), (s * 4.5, 0, 0))
-	k.u("water", (8, 0.7, 8), (0, 0, 0))
-	for p in ((-1.5, 2, 0), (1.4, 2.8, -1), (0.2, 3.6, 1.2)):
-		k.b("drop", (0.8, 0.8, 0.8), p, (45, 45, 0))
+		k.ubox("rim", (25.4, 2.4, 3.2), (0, 0, s * 11.9), soft=0.9)
+		k.ubox("rim", (3.2, 2.4, 20.6), (s * 11.1, 0, 0), soft=0.9)
+	k.ubox("water", (19.6, 0.7, 21.0), (0, 0, 0), soft=0.3)
+	for radius, tube in ((4.4, 0.32), (7.4, 0.28)):
+		k.ring("ripple", radius, tube, (0, 0.75, 0), (90, 0, 0))
+	for i in range(7):  # the splash crown over the squishy, the tips leaning out
+		a = i / 7 * kit.TAU + 0.3
+		size = 1.25 if i % 2 else 1.0
+		k.lathe("drop", TEAR, (4.6 * math.cos(a), 4.2 + (i % 3) * 0.9, 4.6 * math.sin(a)),
+			(math.sin(a) * 25, 0, -math.cos(a) * 25), seg=10, scale=(size, size, size))
+	for x, y, z, size in ((-7.0, 8.0, 2.4, 1.6), (-4.4, 9.6, -3.0, 1.3)):  # big ones up on the left
+		k.lathe("drop", TEAR, (x, y, z), seg=12, scale=(size, size, size))
 
 
-@piece("fd_marshmallow", {"m": ("FFF3F7", False), "toast": ("F2C487", False)})  # :291
+MALLOW_WAVES = ((3, 0.07, 1.9), (5, 0.05, 0.3), (8, 0.03, 1.1))
+
+
+@piece("fd_marshmallow", {"edge": ("7A3E2A", "Smooth"), "goo": ("FFE4EF", "Smooth"), "m": ("FFF8FB", "Smooth"),
+	"pink": ("FF9CC9", "Smooth"), "toast": ("DE8A3E", "Smooth")})  # 4 Frozen Dessert Peaks, the sheet's :291
 def _(k):
-	k.c("m", 3.2, 2.4, (-1.8, 1.2, 0))
-	k.c("m", 3.2, 2.4, (1.8, 1.2, 0.4))
-	k.c("m", 3.0, 2.2, (0, 3.0, 0.2), (90, 0, 70))
-	k.c("toast", 3.0, 0.2, (-1.8, 2.5, 0))
+	k.blob("edge", kit.lobes(10.6, MALLOW_WAVES, 1.05, 1.0), 0.4)  # melted goo, burnt at the edge
+	k.blob("goo", kit.lobes(9.9, MALLOW_WAVES, 1.05, 1.0), 0.75)
+	for x, z, r in ((12.3, -6.8, 0.9), (5.0, 12.4, 1.0), (-2.0, -12.6, 0.8)):
+		drop(k, "goo", "edge", x, z, r, 0.6)
+	for z, key in ((3.7, "m"), (-3.7, "pink")):  # the sheet's 2 standing + 1 on top, on the left: behind the squishy
+		mallow(k, key, 6.6, 5.6, (-9.6, 0, z), toast=False)
+	lay(k, "m", 6.2, 9.6, (-9.6, 5.6, 0), "z")
+	mallow(k, "pink", 5.4, 4.6, (-5.6, 0, 7.0))  # a heap round the squishy, low on the cameras' side (+X)
+	mallow(k, "m", 5.4, 4.6, (-5.8, 0, -7.2))
+	lay(k, "pink", 4.8, 5.8, (-2.2, 0, -10.2), "x")
+	lay(k, "m", 4.8, 5.8, (-0.4, 0, 9.8), "x")
+	lay(k, "pink", 4.4, 5.2, (9.6, 0, 0.4), "z")
+	for x, z, key in ((-5.0, 4.8, "m"), (-5.2, -4.2, "pink")):  # small ones stuck in the goo
+		mallow(k, key, 3.2, 2.4, (x, 0.2, z), toast=False)
 
 
-@piece("lv_lava_pit", {"rim": ("3A2C3A", False), "lava": ("FF6A3D", True), "bub": ("FFB03A", True)})  # :294
+RIM = ((12.9, 0), (12.7, 0.9), (12.1, 1.9), (11.2, 2.5), (10.2, 2.5), (9.5, 1.9), (9.2, 1.2), (9.1, 0.5))
+
+
+@piece("lv_lava_pit", {"rim": ("4A2546", "Stud"), "rock": ("2E1A33", "Smooth"), "lava": ("FF5A1F", "Neon"),
+	"glow": ("FFB03A", "Neon")})  # 5 Lava Volcano, the sheet's :294: a basalt rim round lava, bubbles
 def _(k):
-	k.c("rim", 11, 0.8, (0, 0.4, 0))
-	k.c("lava", 9, 0.85, (0, 0.43, 0))
-	for x, z, s in ((-2, 1, 1), (1.6, -1.4, 0.8), (0.6, 2.2, 0.6)):
-		k.u("bub", (s, s * 0.6, s), (x, 0.85, z), (0, 30, 0))
+	k.lathe("rim", RIM, (0, 0, 0), seg=32)
+	k.blob("lava", kit.lobes(9.5, ()), 0.7, seg=32, edge=0.4)
+	k.ring("glow", 9.3, 0.42, (0, 0.75, 0), (90, 0, 0))  # a bright rim inside the dark one: the lava lane is dark
+	for x, z, d in ((4.0, 5.2, 2.6), (-3.6, -5.4, 2.0), (6.2, -2.6, 1.5), (-6.0, 1.0, 1.7)):
+		k.ball("glow", d, (x, 0.7, z), dome=True, seg=10)
+		k.ring("glow", d * 0.75, 0.16, (x, 0.78, z), (90, 0, 0), seg=12)
+	for x, z, w, h, turn, tilt in ((-11.2, 0.4, 4.0, 4.8, 15, 14), (-10.0, 6.0, 3.4, 3.8, 50, -18),
+			(-9.6, -6.2, 3.4, 3.4, -30, 20), (-5.0, 10.6, 2.8, 2.8, 80, -16), (-4.8, -10.8, 2.6, 2.4, 10, 18),
+			(2.4, 11.6, 2.2, 2.0, 40, -14)):  # chunky rocks sunk in the rim, high on the left
+		k.box("rock", (w, h, w * 0.9), (x, 1.4 + h / 2, z), (tilt, turn, tilt * 0.6), soft=0.45)
 
 
-@piece("rr_cloud_gap", {"cloud": ("FFFFFF", False), "shade": ("E6DDFF", False)})  # :297
+def puff(k, key, shade, d, x, z):  # a cloud puff on the lane, its shade round the foot
+	k.ball(shade, 2, (x, 0, z), (d * 0.54, d * 0.16, d * 0.54), dome=True, seg=16)  # an even ring count: a flat foot
+	k.ball(key, d, (x, 0.39 * d, z), (1, 0.78, 1))
+
+
+@piece("rr_cloud_gap", {"hole": ("2B1E66", "Smooth"), "swirl": ("7C5CFF", "Smooth"), "shade": ("C7B6FF", "Smooth"),
+	"cloud": ("FFFFFF", "Smooth")})  # 6 Rainbow Road, the sheet's :297: soft clouds round a gap, their shade
 def _(k):
-	k.u("shade", (12, 0.6, 9), (0, -0.6, 0))
-	for w, h, d, x, y, z in ((9, 1.6, 7, 0, 0.5, 0), (5, 1.4, 4, -2.6, 1.3, 1), (4, 1.2, 4, 2.8, 1.2, -1.2),
-			(3, 1, 3, 0.4, 2, 0.4)):
-		k.b("cloud", (w, h, d), (x, y, z))
+	k.blob("hole", kit.lobes(8.2, ((3, 0.05, 0.7), (5, 0.04, 2.0))), 0.3, edge=0.3)
+	for radius, tube in ((3.0, 0.24), (5.6, 0.24)):  # it swirls
+		k.ring("swirl", radius, tube, (0, 0.34, 0), (90, 0, 0))
+	for deg, r, d in ((110, 9.4, 6.0), (140, 9.6, 7.4), (172, 9.4, 8.0), (204, 9.6, 7.6), (232, 9.6, 6.4), (258, 9.8, 5.2),
+			(-88, 10.4, 4.6), (-18, 10.6, 4.2), (22, 10.6, 4.2), (88, 10.2, 4.8)):
+		puff(k, "cloud", "shade", d, *ring_at(deg, r))
 
 
-@piece("dh_soft_cloud", {"cloud": ("FFE9A8", False), "hi": ("FFF6EC", False)})  # :300
-def _(k):
-	for w, h, d, x, y, z in ((10, 1.6, 8, 0, 0.6, 0), (6, 1.6, 5, -2.4, 1.6, 0.8), (5, 1.4, 4, 2.6, 1.5, -1)):
-		k.b("cloud", (w, h, d), (x, y, z))
-	k.b("hi", (3, 1, 3), (0.4, 2.6, 0.2))
+SOFT_WAVES = ((3, 0.06, 2.6), (6, 0.05, 0.4))
 
 
-# ------------------------------------------------------------------------------------------------ the sheet's kit
+@piece("dh_soft_cloud", {"edge": ("D98A00", "Smooth"), "cloud": ("FFC93C", "Smooth"), "hi": ("FFF1BF", "Smooth")})
+def _(k):  # 7 Divine Heaven, the sheet's :300: a soft gold cloud with highlights
+	k.blob("edge", kit.lobes(11.0, SOFT_WAVES), 0.4)
+	k.blob("cloud", kit.lobes(10.3, SOFT_WAVES), 0.8)
+	for deg, r, d in ((112, 9.2, 6.4), (145, 9.6, 7.6), (178, 9.4, 8.2), (210, 9.6, 7.4), (240, 9.4, 6.0), (-80, 10.2, 4.4),
+			(-10, 10.6, 4.0), (30, 10.4, 4.4), (90, 10.0, 5.0)):
+		x, z = ring_at(deg, r)
+		k.ball("cloud", d, (x, 0.39 * d, z), (1, 0.78, 1))
+		k.ball("hi", d * 0.5, (x + 0.06 * d, 0.7 * d, z), (1, 0.45, 1), seg=14)  # a soft light cap on top
 
 
-def rot_matrix(r):  # three.js Euler "XYZ" = Rx * Ry * Rz (degrees)
-	if not r:
-		return Matrix.Identity(4)
-	return Matrix.Rotation(r[0] * D, 4, "X") @ Matrix.Rotation(r[1] * D, 4, "Y") @ Matrix.Rotation(r[2] * D, 4, "Z")
-
-
-def bm_box(s):
-	bm = bmesh.new()
-	bmesh.ops.create_cube(bm, size=1.0)
-	for v in bm.verts:
-		v.co = Vector((v.co.x * s[0], v.co.y * s[1], v.co.z * s[2]))
-	chamfer = min(0.12, 0.2 * min(s))  # toy-block edges
-	bmesh.ops.bevel(bm, geom=bm.verts[:] + bm.edges[:], offset=chamfer, offset_type="OFFSET", segments=1,
-		profile=0.5, affect="EDGES", clamp_overlap=True)
-	return bm
-
-
-def bm_cyl(top_d, bottom_d, h, seg):
-	bm = bmesh.new()
-	bmesh.ops.create_cone(bm, cap_ends=True, cap_tris=False, segments=seg, radius1=bottom_d / 2,
-		radius2=top_d / 2, depth=h)
-	for v in bm.verts:  # Blender's cone runs along Z: stand it up along Roblox Y
-		x, y, z = v.co
-		v.co = Vector((x, z, -y))
-	return bm
-
-
-def bm_ball(d):
-	bm = bmesh.new()
-	bmesh.ops.create_icosphere(bm, subdivisions=2, radius=d / 2)  # = three.js IcosahedronGeometry detail 1
-	return bm
-
-
-def hull_of(bm, flat_top):
-	"""Diego's ink hull: the part pushed out by t along its normals (even thickness), faces turned inward. A flat
-	slab on the lane keeps its hull below its top (Diego's floor: "ink hull below the top")."""
-	xs = [v.co for v in bm.verts]
-	size = [max(c[i] for c in xs) - min(c[i] for c in xs) for i in range(3)]
-	top = max(c.y for c in xs)
-	t = max(0.08, min(0.22, 0.1 * sum(size) / 3, 0.5 * min(size)))  # thinner than the maps' 0.32: seen up close
-	h = bm.copy()
-	h.normal_update()
-	for v in h.verts:
-		v.co = v.co + v.normal * (t * min(1.5, v.calc_shell_factor()))  # sharp corners would spike
-		if flat_top:
-			v.co.y = min(v.co.y, top)
-	bmesh.ops.reverse_faces(h, faces=h.faces)
-	return h
-
-
-class Kit:
-	def __init__(self):
-		self.parts = []  # (key, bmesh in piece space, Roblox axes)
-
-	def b(self, key, s, p, r=None):
-		self._put(key, bm_box(s), p, r)
-
-	def u(self, key, s, p, r=None):
-		self._put(key, bm_box(s), (p[0], p[1] + s[1] / 2, p[2]), r, s[1] <= 0.6 and p[1] <= 0)
-
-	def c(self, key, d, h, p, r=None, seg=8):
-		a, b = d if isinstance(d, tuple) else (d, d)
-		self._put(key, bm_cyl(a, b, h, seg), p, r)
-
-	def s(self, key, d, p):
-		self._put(key, bm_ball(d), p)
-
-	def _put(self, key, bm, p, r=None, flat_top=False):
-		hull = hull_of(bm, flat_top)
-		m = Matrix.Translation(Vector(p)) @ rot_matrix(r)
-		for g in (bm, hull):
-			bmesh.ops.transform(g, matrix=m, verts=g.verts)
-		self.parts.append((key, bm))
-		self.parts.append(("Outline", hull))
-
-
-# ------------------------------------------------------------------------------------------------------- Blender
-
-
-def srgb_to_linear(hexstr):
-	out = []
-	for k in (0, 2, 4):
-		c = int(hexstr[k:k + 2], 16) / 255
-		out.append(c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4)
-	return (*out, 1.0)
-
-
-def append(dst, src):
-	vmap = {v: dst.verts.new(v.co) for v in src.verts}
-	for f in src.faces:
-		dst.faces.new([vmap[v] for v in f.verts])
-
-
-def stud_uvs(bm):
-	"""Box-projected UVs in studs / UV_STUDS (the sheet's fin() and Diego's lobby meshes)."""
-	uv = bm.loops.layers.uv.new("UVMap")
-	bm.normal_update()
-	for f in bm.faces:
-		ax, ay, az = (abs(c) for c in f.normal)
-		for loop in f.loops:
-			x, y, z = loop.vert.co
-			a, b = (z, y) if ax >= ay and ax >= az else (x, z) if ay >= az else (x, y)
-			loop[uv].uv = (a / UV_STUDS, b / UV_STUDS)
-
-
-for o in list(bpy.data.objects):  # the factory scene's cube, camera and light
-	bpy.data.objects.remove(o)
-LIB = bpy.data.collections.new("SD_HighwayProps")
-bpy.context.scene.collection.children.link(LIB)
-manifest = {"uvStuds": UV_STUDS, "ink": INK, "objects": {}}
-piece_objects = {}
-problems = []
-
-for pid, (pal, build) in PIECES.items():
-	kit = Kit()
-	build(kit)
-	merged = {}
-	for key, bm in kit.parts:
-		if key != "Outline" and key not in pal:
-			problems.append(f"{pid}: no palette key {key}")
-		merged.setdefault(key, bmesh.new())
-		append(merged[key], bm)
-		bm.free()
-	objs = []
-	for key, bm in merged.items():
-		if key != "Outline":
-			stud_uvs(bm)
-		cos = [v.co.copy() for v in bm.verts]
-		lo = Vector((min(c.x for c in cos), min(c.y for c in cos), min(c.z for c in cos)))
-		hi = Vector((max(c.x for c in cos), max(c.y for c in cos), max(c.z for c in cos)))
-		for v in bm.verts:
-			v.co = Vector((v.co.x, -v.co.z, v.co.y))
-		bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="BEAUTY")
-		name = f"{pid}__{key}"
-		me = bpy.data.meshes.new(name)
-		bm.to_mesh(me)
-		bm.free()
-		me.shade_flat()
-		obj = bpy.data.objects.new(name, me)
-		LIB.objects.link(obj)
-		objs.append(obj)
-		manifest["objects"][name] = {
-			"piece": pid,
-			"key": key,
-			"center": [round((lo[i] + hi[i]) / 2, 4) for i in range(3)],
-			"size": [round(hi[i] - lo[i], 4) for i in range(3)],
-			"tris": len(me.polygons),
-		}
-	piece_objects[pid] = objs
-	print(pid, {o.name.split("__")[1]: len(o.data.polygons) for o in objs})
-
-with open(os.path.join(OUT, "manifest.json"), "w") as f:
-	json.dump(manifest, f, indent=1)
-if problems:
-	raise SystemExit("highway_props: " + "; ".join(problems))
-
-# ------------------------------------------------------------------------------------------------------- export
-
-bpy.ops.object.select_all(action="DESELECT")
-for o in LIB.objects:
-	o.select_set(True)
-bpy.context.view_layer.objects.active = LIB.objects[0]
-glb = os.path.join(OUT, "SD_HighwayProps.glb")
-bpy.ops.export_scene.gltf(
-	filepath=glb,
-	export_format="GLB",
-	use_selection=True,
-	export_yup=True,
-	export_apply=True,
-	export_texcoords=True,
-	export_normals=True,
-	export_tangents=False,
-	export_materials="NONE",
-	export_vertex_color="NONE",
-	export_attributes=False,
-	export_animations=False,
-	export_morph=False,
-	export_skins=False,
-	export_cameras=False,
-	export_lights=False,
-	export_extras=False,
-)
-print("EXPORTED", glb, os.path.getsize(glb), "bytes")
-
-# ------------------------------------------------------------------------------------------------------ previews
-
-
-def load_image(path, colour):
-	if not path or not os.path.exists(path):
-		return None
-	img = bpy.data.images.load(path)
-	if not colour:
-		img.colorspace_settings.name = "Non-Color"
-	return img
-
-
-STUD_IMG = load_image(STUD_COLOR, True)
-STUD_NRM = load_image(STUD_NORMAL, False)
-
-
-def material(name, hexstr, glows, ink):
-	m = bpy.data.materials.new(name)
-	m.use_nodes = True
-	nodes, links = m.node_tree.nodes, m.node_tree.links
-	bsdf = nodes["Principled BSDF"]
-	col = srgb_to_linear(hexstr)
-	bsdf.inputs["Roughness"].default_value = 0.85
-	if ink:
-		bsdf.inputs["Base Color"].default_value = col
-		m.use_backface_culling = True
-	elif glows:
-		bsdf.inputs["Base Color"].default_value = col
-		bsdf.inputs["Emission Color"].default_value = col
-		bsdf.inputs["Emission Strength"].default_value = 1.6
-	elif STUD_IMG:
-		tex = nodes.new("ShaderNodeTexImage")
-		tex.image = STUD_IMG
-		tint = nodes.new("ShaderNodeVectorMath")
-		tint.operation = "MULTIPLY"
-		tint.inputs[1].default_value = col[:3]
-		links.new(tex.outputs["Color"], tint.inputs[0])
-		links.new(tint.outputs["Vector"], bsdf.inputs["Base Color"])
-		if STUD_NRM:
-			ntex = nodes.new("ShaderNodeTexImage")
-			ntex.image = STUD_NRM
-			nmap = nodes.new("ShaderNodeNormalMap")
-			links.new(ntex.outputs["Color"], nmap.inputs["Color"])
-			links.new(nmap.outputs["Normal"], bsdf.inputs["Normal"])
-	else:
-		bsdf.inputs["Base Color"].default_value = col
-	return m
-
-
-for pid, objs in piece_objects.items():
-	pal = PIECES[pid][0]
-	for o in objs:
-		key = o.name.split("__")[1]
-		hexstr, glows = (INK, False) if key == "Outline" else pal[key]
-		o.data.materials.append(material(o.name, hexstr, glows, key == "Outline"))
-
-scene = bpy.context.scene
-for engine in ("BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"):
-	try:
-		scene.render.engine = engine
-		break
-	except TypeError:
-		continue
-scene.view_settings.view_transform = "Standard"
-scene.world = bpy.data.worlds.new("Sky")
-scene.world.use_nodes = True
-bg = scene.world.node_tree.nodes["Background"]
-bg.inputs["Color"].default_value = srgb_to_linear("D9CCFF")
-bg.inputs["Strength"].default_value = 0.9
-sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
-sun.data.energy = 3.2
-sun.rotation_euler = (math.radians(40), math.radians(10), math.radians(-35))
-scene.collection.objects.link(sun)
-ground_me = bpy.data.meshes.new("Ground")
-gbm = bmesh.new()
-bmesh.ops.create_grid(gbm, x_segments=1, y_segments=1, size=400)
-gbm.to_mesh(ground_me)
-gbm.free()
-ground = bpy.data.objects.new("Ground", ground_me)
-ground.location.z = -0.02
-ground.data.materials.append(material("Ground", "8E7CC3", False, False))
-scene.collection.objects.link(ground)
-cam_data = bpy.data.cameras.new("PreviewCam")
-cam_data.type = "ORTHO"
-cam_data.clip_end = 5000
-cam = bpy.data.objects.new("PreviewCam", cam_data)
-scene.collection.objects.link(cam)
-scene.camera = cam
-
-
-def render(path, objs, yaw, pitch, res):
-	"""Ortho view of `objs` from Roblox direction (yaw about Y from +Z, pitch up), framed to their bounds."""
-	scene.render.resolution_x, scene.render.resolution_y = res
-	scene.render.resolution_percentage = 100
-	corners = [o.matrix_world @ Vector(c) for o in objs for c in o.bound_box]
-	ctr = sum(corners, Vector()) / len(corners)
-	yr, pr = math.radians(yaw), math.radians(pitch)
-	d_b = Vector((math.sin(yr) * math.cos(pr), -math.cos(yr) * math.cos(pr), math.sin(pr)))
-	fwd = -d_b
-	right = fwd.cross(Vector((0, 0, 1))).normalized()
-	up = right.cross(fwd)
-	xs = [(c - ctr).dot(right) for c in corners]
-	ys = [(c - ctr).dot(up) for c in corners]
-	ctr = ctr + right * (max(xs) + min(xs)) / 2 + up * (max(ys) + min(ys)) / 2
-	cam.location = ctr + d_b * 1000
-	cam.rotation_euler = fwd.to_track_quat("-Z", "Y").to_euler()
-	cam_data.ortho_scale = max(max(xs) - min(xs), (max(ys) - min(ys)) * res[0] / res[1]) * 1.15
-	for o in LIB.objects:
-		o.hide_render = o not in objs
-	scene.render.filepath = path
-	bpy.ops.render.render(write_still=True)
-	print("RENDERED", path)
-
-
-TILE = (560, 440)
-for pid, objs in piece_objects.items():
-	render(os.path.join(OUT, f"{pid}.png"), objs, 35, 32, TILE)
-
-# the sheet: the previews tiled in highway order
-import numpy as np
-
-w, h = TILE
-rows = math.ceil(len(piece_objects) / 7)
-sheet = np.zeros((rows * h, 7 * w, 4), dtype=np.float32)
-for i, pid in enumerate(piece_objects):
-	row, col = divmod(i, 7)
-	img = bpy.data.images.load(os.path.join(OUT, f"{pid}.png"))
-	px = np.array(img.pixels[:], dtype=np.float32).reshape(h, w, 4)
-	sheet[(rows - 1 - row) * h:(rows - row) * h, col * w:(col + 1) * w] = px  # Blender rows run bottom-up
-out = bpy.data.images.new("sheet", 7 * w, rows * h, alpha=True)
-out.pixels = sheet.ravel()
-out.filepath_raw = os.path.join(OUT, "sheet.png")
-out.file_format = "PNG"
-out.save()
-print("DONE")
+kit.main(PIECES, yaw=32, figure=(12.6, -12.5), end_shot=True)

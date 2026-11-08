@@ -389,7 +389,8 @@ return function(t: Context)
 	end)
 
 	t.test("course: rooms: never stops in one or rolls through one; short of it, or past it by as much", function()
-		-- Lv 1 plain: touches down at 191.7 and would stop at 213; a booster's room is 14, a trap's 7.
+		-- Lv 1 plain: touches down at 191.7 and would stop at 213; a booster's room is 14, a trap's too (the toy traps,
+		-- 2026-11-07; it was 7).
 		local plain = HighwayMath.newPlan(900, ROOT, RELEASE)
 		local function stops(list: { any }): (number, number)
 			local r = HighwayMath.reach(plain, 0, list, 0)
@@ -403,8 +404,9 @@ return function(t: Context)
 			expect.equal(got, studs)
 			expect.near(touch, carry, 1e-9)
 		end
-		-- A trap between the touchdown and the stop: flies over its room, rolls on to the same stop.
-		expectStop(spots(205, "trap"), 213, 212)
+		-- A trap's room round the touchdown (7.3 off: just outside the catch) that ends at the stop: touches down at its
+		-- edge, the same stop.
+		expectStop(spots(199, "trap"), 213, 213)
 		-- A touchdown inside a booster's room (6.7 off: just outside the catch): touches down past it instead.
 		expectStop(spots(185, "a"), 213, 199)
 		-- A stop in the first half of a room stops that far short of it (199, clear) ...
@@ -412,9 +414,9 @@ return function(t: Context)
 		-- ... in the second half flies past it by as much (213 + 14) ...
 		expectStop(spots(205, "a"), 227, 219)
 		-- ... and in the first half with the trap's room behind it, past it by its whole room (213 + 28).
-		expectStop(spots(203, "trap", 220, "a"), 241, 234)
-		-- Past one room into the next: past that one too, the same way (227 is in the first half of 230's: + 14).
-		expectStop(spots(205, "a", 230, "trap"), 241, 237)
+		expectStop(spots(199, "trap", 220, "a"), 241, 234)
+		-- Past one room into the next: past that one too, the same way (227 is in the first half of 230's: + 28).
+		expectStop(spots(205, "a", 230, "trap"), 255, 244)
 		-- A room that ends before the stop is clear; one that starts after it does not count.
 		expectStop(spots(213 + H.course.clearStuds + 1, "a"), 213, 191.7)
 		-- A PERFECT (touches down at 231.3, stops at 257): the touchdown goes past the last room before the stop.

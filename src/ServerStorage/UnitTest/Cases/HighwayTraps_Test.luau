@@ -1,14 +1,15 @@
 --!strict
 -- HighwayTraps_Test: ReplicatedStorage.Shared.Art.HighwayTraps, the 7 traps of the owner's concept sheet (traps you
--- can see, plan step 5, 2026-10-31; blocky Blender meshes 2026-11-01). Builds each trap unparented and destroys it.
+-- can see, plan step 5, 2026-10-31; big toy models like the boosters, 2026-11-07). Builds each trap unparented and
+-- destroys it.
 -- Contract:
 --   * one trap per highway biome, in highway order (gum, jam, splash pool, marshmallow, lava pit, cloud gap, soft cloud);
---   * ServerStorage.SD_HighwayProps holds each trap's meshes: one MeshPart per palette key plus the Outline, nothing
---     else, all anchored and never colliding, queried or touched, the Outline one-sided;
---   * build(biome, origin) is that Model painted (the key's hex; Neon glows, the rest wears the stud tile; the Outline
---     is ink) with its pivot at the origin; it fits on the 26-stud lane top and stands on it (nothing more than 0.9
---     under the origin: the cloud gap's shade and its ink), and inside the room the course keeps clear round a trap
---     (course.trapClearStuds along the lane, 2026-11-07); any other biome builds nothing.
+--   * ServerStorage.SD_HighwayProps holds each trap's meshes: one MeshPart per palette key, nothing else (no ink hull),
+--     all anchored and never colliding, queried or touched;
+--   * build(biome, origin) is that Model painted at the origin ("Stud" the stud tile, "Smooth" plain, "Neon" glows), on
+--     the lane top, as wide as the rails, inside the room the course keeps clear round a trap (course.trapClearStuds
+--     along the lane, 2026-11-07: no stop lands in it) and big (at least 20 studs wide and long; the blocky ones of
+--     2026-11-01 were 8 to 12); any other biome builds nothing.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -22,7 +23,8 @@ return function(t: Context)
 	local WorldLayout = t.requireShared("World/WorldLayout")
 	local COURSE = t.requireShared("Config").Economy.Highway.course
 
-	local LANE_TOP_WIDTH = 26
+	local RAILS = 15 -- x: the rails stand at +-14
+	local BIG = 20
 	local props = game:GetService("ServerStorage"):FindFirstChild(HighwayTraps.PROPS)
 
 	t.test("one trap per biome, in highway order", function()
@@ -42,7 +44,7 @@ return function(t: Context)
 		})
 	end)
 
-	t.test("meshes: one MeshPart per palette key plus the Outline, inert", function()
+	t.test("meshes: one MeshPart per palette key, inert", function()
 		expect.truthy(props ~= nil)
 		for _, trap in HighwayTraps.list do
 			local template = props:FindFirstChild(trap.id)
@@ -52,20 +54,16 @@ return function(t: Context)
 				expect.truthy(part:IsA("MeshPart"))
 				local p = part :: MeshPart
 				expect.truthy(p.Anchored and not p.CanCollide and not p.CanQuery and not p.CanTouch)
-				expect.truthy(p.Name == HighwayTraps.OUTLINE or trap.pal[p.Name] ~= nil)
-				if p.Name == HighwayTraps.OUTLINE then
-					expect.equal(p.DoubleSided, false)
-				end
+				expect.truthy(trap.pal[p.Name] ~= nil)
 				names[p.Name] = true
 			end
-			expect.truthy(names[HighwayTraps.OUTLINE])
 			for key in trap.pal do
 				expect.truthy(names[key])
 			end
 		end
 	end)
 
-	t.test("build: painted, standing on the lane top at the origin, inside the lane", function()
+	t.test("build: the painted toy at the origin, on the lane top, inside the rails and the trap's room, big", function()
 		local origin = CFrame.new(100, 50, -300) * CFrame.Angles(0, math.rad(30), 0)
 		for biome = 1, #HighwayTraps.list do
 			local trap = HighwayTraps.list[biome]
@@ -77,23 +75,17 @@ return function(t: Context)
 			for _, part in model:GetChildren() do
 				local p = part :: BasePart
 				local entry = trap.pal[p.Name]
-				if entry == nil then
-					expect.equal(p.Material, Enum.Material.SmoothPlastic)
-					expect.equal(p.MaterialVariant, "")
-				else
-					expect.equal(p.Color:ToHex():upper(), entry[2])
-					if entry[1] == "Neon" then
-						expect.equal(p.Material, Enum.Material.Neon)
-					else
-						expect.equal(p.MaterialVariant, "SquishyStud")
-					end
-				end
+				expect.truthy(entry ~= nil)
+				expect.equal(p.Color:ToHex():upper(), entry[2])
+				expect.equal(p.Material, if entry[1] == "Neon" then Enum.Material.Neon else Enum.Material.SmoothPlastic)
+				expect.equal(p.MaterialVariant, if entry[1] == "Stud" then "SquishyStud" else "")
 			end
 			local box, size = model:GetBoundingBox()
-			local local_ = origin:PointToObjectSpace(box.Position)
-			expect.truthy(math.abs(local_.X) + size.X / 2 <= LANE_TOP_WIDTH / 2 + 2) -- within the lane (rotated parts)
-			expect.truthy(local_.Y - size.Y / 2 >= -0.9) -- stands on the lane top
-			expect.truthy(math.abs(local_.Z) + size.Z / 2 <= COURSE.trapClearStuds) -- no stop lands in it
+			local at = origin:PointToObjectSpace(box.Position)
+			expect.truthy(math.abs(at.X) + size.X / 2 <= RAILS)
+			expect.truthy(at.Y - size.Y / 2 >= -0.05) -- stands on the lane top
+			expect.truthy(math.abs(at.Z) + size.Z / 2 <= COURSE.trapClearStuds) -- no stop lands in it
+			expect.truthy(size.X >= BIG and size.Z >= BIG)
 			model:Destroy()
 		end
 		expect.equal(HighwayTraps.build(0, origin), nil)

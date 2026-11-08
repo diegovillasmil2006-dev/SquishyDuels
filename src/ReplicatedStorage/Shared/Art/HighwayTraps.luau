@@ -4,12 +4,13 @@
 -- can see, plan step 5, 2026-10-31: HighwayService shows the landing biome's trap under a trapped throw where it
 -- stops). Each stands on the lane top at its origin (y 0 = the lane top), x right and z back like the lane
 -- (WorldLayout.highwayCFrame).
--- 2026-11-01, the owner's style rule (blocky, made in Blender, like Steal an Egg): the sheet's shapes are Blender
--- meshes (tools/meshes/highway_props.py: chamfered blocks, the stud tile UVs of Diego's lobby, an ink hull round every
--- part), kept in ServerStorage.SD_HighwayProps as one Model per piece (MeshParts named by palette key, plus
--- "Outline"; pivot = the lane top centre; tools/meshes/highway_props_setup.luau). This module paints a clone: "Stud" =
--- SmoothPlastic with the lobby's stud tile, "Smooth" = plain SmoothPlastic (the boosters' toys, 2026-11-06), "Neon" glows
--- without a shadow, the Outline is Diego's map ink.
+-- 2026-11-07 (owner: "Yes, build all 7" on a sample, after the boosters' "more roblox style ... take hit a golf ball as
+-- an example"): big toy models like the boosters (tools/meshes/highway_props.py with highway_boosters.py's kit): smooth,
+-- loud colours, the stud tile only on rims, low and gooey with a dark edge so they look like a bad thing to hit, with
+-- room in the middle for the stuck squishy. They replace the blocky ones with an ink hull of 2026-11-01. Kept in
+-- ServerStorage.SD_HighwayProps as one Model per piece (MeshParts named by palette key; pivot = the lane top centre;
+-- tools/meshes/highway_props_setup.luau). This module paints a clone: "Stud" = SmoothPlastic with the lobby's stud tile,
+-- "Smooth" = plain SmoothPlastic, "Neon" glows without a shadow.
 --   HighwayTraps.build(biome, origin) -> Model?  an unparented decor Model (anchored, no collide, query or touch) of
 --                                                biome 1..7's trap at `origin`; nil for any other biome
 --   HighwayTraps.make(piece, origin) -> Model?   the same for any piece in this shape (Art/HighwayBoosters' too); nil
@@ -25,24 +26,68 @@ export type Trap = { id: string, pal: { [string]: { string } } }
 -- Constants
 
 local PROPS = "SD_HighwayProps" -- ServerStorage folder of the meshes
-local OUTLINE = "Outline"
 local STUD = "SquishyStud" -- the stud tile MaterialVariant of Diego's lobby (SquishyLobby/Theme.Stud)
-local INK = Color3.fromHex("#1c1530") -- Diego's map outline ink (SkyMapBuilder INK)
 
 local TRAPS: { Trap } = {
-	{ id = "cm_gum_puddle", pal = { gum = { "Stud", "FF9ED2" }, bub = { "Stud", "FF7FC0" } } }, -- 1 Candy Meadow
-	{ id = "bt_jam_puddle", pal = { jam = { "Stud", "C2185B" }, seed = { "Stud", "E0315F" } } }, -- 2 Bakery Town
-	{ -- 3 Boba Lagoon
+	{ -- 1 Candy Meadow: a gum puddle with a dark edge, big bubbles with a shine
+		id = "cm_gum_puddle",
+		pal = {
+			edge = { "Smooth", "B0157A" },
+			gum = { "Smooth", "FF4FAE" },
+			bub = { "Smooth", "FF8AD0" },
+			shine = { "Smooth", "FFFFFF" },
+		},
+	},
+	{ -- 2 Bakery Town: a jam puddle with dollops, berry bits with gold seeds
+		id = "bt_jam_puddle",
+		pal = {
+			edge = { "Smooth", "5E0B2A" },
+			jam = { "Smooth", "D81458" },
+			berry = { "Smooth", "FF3D6B" },
+			seed = { "Smooth", "FFD21F" },
+		},
+	},
+	{ -- 3 Boba Lagoon: a dark studded rim round milk-tea water, ripples, a splash crown
 		id = "bl_splash_pool",
-		pal = { rim = { "Stud", "EED6B8" }, water = { "Stud", "7FD8D0" }, drop = { "Stud", "DFF4FF" } },
+		pal = {
+			rim = { "Stud", "4A2460" },
+			water = { "Smooth", "1FB8C8" },
+			ripple = { "Smooth", "BFF6FF" },
+			drop = { "Smooth", "E8FBFF" },
+		},
 	},
-	{ id = "fd_marshmallow", pal = { m = { "Stud", "FFF3F7" }, toast = { "Stud", "F2C487" } } }, -- 4 Frozen Dessert Peaks
-	{ -- 5 Lava Volcano
+	{ -- 4 Frozen Dessert Peaks: a heap of marshmallows in melted goo, burnt at the edge, toasty tops
+		id = "fd_marshmallow",
+		pal = {
+			edge = { "Smooth", "7A3E2A" },
+			goo = { "Smooth", "FFE4EF" },
+			m = { "Smooth", "FFF8FB" },
+			pink = { "Smooth", "FF9CC9" },
+			toast = { "Smooth", "DE8A3E" },
+		},
+	},
+	{ -- 5 Lava Volcano: a studded basalt rim and rocks round glowing lava, a bright inner rim, bubbles
 		id = "lv_lava_pit",
-		pal = { rim = { "Stud", "3A2C3A" }, lava = { "Neon", "FF6A3D" }, bub = { "Neon", "FFB03A" } },
+		pal = {
+			rim = { "Stud", "4A2546" },
+			rock = { "Smooth", "2E1A33" },
+			lava = { "Neon", "FF5A1F" },
+			glow = { "Neon", "FFB03A" },
+		},
 	},
-	{ id = "rr_cloud_gap", pal = { cloud = { "Stud", "FFFFFF" }, shade = { "Stud", "E6DDFF" } } }, -- 6 Rainbow Road
-	{ id = "dh_soft_cloud", pal = { cloud = { "Stud", "FFE9A8" }, hi = { "Stud", "FFF6EC" } } }, -- 7 Divine Heaven
+	{ -- 6 Rainbow Road: soft clouds with a lilac shade round a dark swirling gap
+		id = "rr_cloud_gap",
+		pal = {
+			hole = { "Smooth", "2B1E66" },
+			swirl = { "Smooth", "7C5CFF" },
+			shade = { "Smooth", "C7B6FF" },
+			cloud = { "Smooth", "FFFFFF" },
+		},
+	},
+	{ -- 7 Divine Heaven: a soft gold cloud with an amber edge, light caps on its puffs
+		id = "dh_soft_cloud",
+		pal = { edge = { "Smooth", "D98A00" }, cloud = { "Smooth", "FFC93C" }, hi = { "Smooth", "FFF1BF" } },
+	},
 }
 
 -- Module table
@@ -51,16 +96,10 @@ local HighwayTraps = {}
 
 HighwayTraps.list = TRAPS
 HighwayTraps.PROPS = PROPS
-HighwayTraps.OUTLINE = OUTLINE
 
 -- Private
 
-local function paint(part: BasePart, entry: { string }?)
-	if entry == nil then -- the ink hull
-		part.Color = INK
-		part.Material = Enum.Material.SmoothPlastic
-		return
-	end
+local function paint(part: BasePart, entry: { string })
 	part.Color = Color3.fromHex(entry[2])
 	if entry[1] == "Neon" then
 		part.Material = Enum.Material.Neon
@@ -83,8 +122,9 @@ function HighwayTraps.make(piece: Trap, origin: CFrame): Model?
 	end
 	local model = template:Clone() :: Model
 	for _, part in model:GetChildren() do
-		if part:IsA("BasePart") then
-			paint(part, if part.Name == OUTLINE then nil else piece.pal[part.Name])
+		local entry = piece.pal[part.Name]
+		if part:IsA("BasePart") and entry ~= nil then
+			paint(part, entry)
 		end
 	end
 	model:PivotTo(origin)

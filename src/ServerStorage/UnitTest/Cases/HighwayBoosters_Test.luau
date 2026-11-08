@@ -20,7 +20,6 @@ return function(t: Context)
 	local Config = t.requireShared("Config")
 	local GearShop = t.requireShared("Config/GearShop")
 	local HighwayBoosters = t.requireShared("Art/HighwayBoosters")
-	local HighwayTraps = t.requireShared("Art/HighwayTraps")
 	local Palette = t.requireShared("Art/Palette")
 	local Strings = t.requireShared("Strings")
 	local WorldLayout = t.requireShared("World/WorldLayout")
@@ -79,7 +78,6 @@ return function(t: Context)
 					expect.equal(p.MaterialVariant, if entry[1] == "Stud" then "SquishyStud" else "")
 					names[p.Name] = true
 				end
-				expect.equal(names[HighwayTraps.OUTLINE], nil)
 				for key in def.pal do
 					expect.truthy(names[key])
 				end

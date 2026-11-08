@@ -130,7 +130,9 @@ local Highway = {
 		bounceDistance = 2,
 		maxBounces = 2,
 		clearStuds = 14,
-		trapClearStuds = 7,
+		-- 14 since the traps became big toys like the boosters (2026-11-07, up to 13.9 studs off their middle along the
+		-- lane, tools/meshes/highway_props.py); the money check above ran with 7.
+		trapClearStuds = 14,
 		trapSpread = 2.5,
 		-- Where a squishy touches each booster, in studs over the lane top, by kind and biome (the models:
 		-- tools/meshes/highway_boosters.py): the top of what it bounces on, the middle of what it flies through.

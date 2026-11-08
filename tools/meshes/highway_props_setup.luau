@@ -1,5 +1,6 @@
 -- Highway props setup (Studio command bar / MCP execute_luau, Edit mode), run once after File > Import 3D of
--- highway_props.py's SD_HighwayProps.glb (import name "SD_HighwayPropsImport", Anchored ticked, scale unit Stud).
+-- highway_props.py's (the traps) or highway_boosters.py's SD_HighwayProps.glb (import name "SD_HighwayPropsImport",
+-- Anchored ticked, scale unit Stud, meshes not merged).
 -- Prepend the manifest as `local MANIFEST = { ["<id>__<key>"] = { cx, cy, cz, sx, sy, sz }, ... }`, generated from
 -- manifest.json:
 --   node -e 'const m=require("./manifest.json");console.log("local MANIFEST = {\n"+Object.entries(m.objects).map(
@@ -43,7 +44,6 @@ for _, part in import:GetDescendants() do
 		part.CanCollide = false
 		part.CanQuery = false
 		part.CanTouch = false
-		part.CastShadow = key ~= "Outline"
 		part.CollisionFidelity = Enum.CollisionFidelity.Box
 		part.Parent = model
 		placed += 1

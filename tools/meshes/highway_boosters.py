@@ -602,193 +602,222 @@ def stud_uvs(bm):
 			loop[uv].uv = (a / UV_STUDS, b / UV_STUDS)
 
 
-for o in list(bpy.data.objects):  # the factory scene's cube, camera and light
-	bpy.data.objects.remove(o)
-LIB = bpy.data.collections.new("SD_HighwayProps")
-bpy.context.scene.collection.children.link(LIB)
-manifest = {"uvStuds": UV_STUDS, "objects": {}, "pieces": {}}
-piece_objects = {}
-problems = []
+def main(pieces, yaw=-32, figure=(-10.5, 13), end_shot=False):
+	"""Build, check, export and preview `pieces` (id -> (palette, build), like PIECES). yaw: the previews' camera in degrees
+	(-32 from the left, the boosters'; 32 from the right, where the game's end cameras look from); figure: the player's
+	(x, z) for scale; end_shot: also <id>_end.png, a squishy stuck in it as the game's end camera sees it."""
+	for o in list(bpy.data.objects):  # the factory scene's cube, camera and light
+		bpy.data.objects.remove(o)
+	LIB = bpy.data.collections.new("SD_HighwayProps")
+	bpy.context.scene.collection.children.link(LIB)
+	manifest = {"uvStuds": UV_STUDS, "objects": {}, "pieces": {}}
+	piece_objects = {}
+	problems = []
 
-for pid, (pal, build) in PIECES.items():
-	kit = Kit()
-	build(kit)
-	merged = {}
-	for key, bm in kit.parts:
-		if key not in pal:
-			problems.append(f"{pid}: no palette key {key}")
-		merged.setdefault(key, bmesh.new())
-		append(merged[key], bm)
-		bm.free()
-	objs = []
-	lows, highs, tris = [], [], 0
-	for key, bm in merged.items():
-		bmesh.ops.delete(bm, geom=[f for f in bm.faces if all(v.co.y < 0.02 for v in f.verts)], context="FACES")  # on the lane
-		stud_uvs(bm)
-		cos = [v.co.copy() for v in bm.verts]
-		lo = Vector((min(c.x for c in cos), min(c.y for c in cos), min(c.z for c in cos)))
-		hi = Vector((max(c.x for c in cos), max(c.y for c in cos), max(c.z for c in cos)))
-		lows.append(lo)
-		highs.append(hi)
+	for pid, (pal, build) in pieces.items():
+		kit = Kit()
+		build(kit)
+		merged = {}
+		for key, bm in kit.parts:
+			if key not in pal:
+				problems.append(f"{pid}: no palette key {key}")
+			merged.setdefault(key, bmesh.new())
+			append(merged[key], bm)
+			bm.free()
+		objs = []
+		lows, highs, tris = [], [], 0
+		for key, bm in merged.items():
+			bmesh.ops.delete(bm, geom=[f for f in bm.faces if all(v.co.y < 0.02 for v in f.verts)], context="FACES")  # on the lane
+			stud_uvs(bm)
+			cos = [v.co.copy() for v in bm.verts]
+			lo = Vector((min(c.x for c in cos), min(c.y for c in cos), min(c.z for c in cos)))
+			hi = Vector((max(c.x for c in cos), max(c.y for c in cos), max(c.z for c in cos)))
+			lows.append(lo)
+			highs.append(hi)
+			for v in bm.verts:
+				v.co = Vector((v.co.x, -v.co.z, v.co.y))
+			bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="BEAUTY")
+			name = f"{pid}__{key}"
+			me = bpy.data.meshes.new(name)
+			bm.to_mesh(me)
+			bm.free()
+			obj = bpy.data.objects.new(name, me)
+			LIB.objects.link(obj)
+			obj.modifiers.new("Normals", "WEIGHTED_NORMAL").keep_sharp = True  # big faces stay flat, the bevels stay round
+			objs.append(obj)
+			tris += len(me.polygons)
+			manifest["objects"][name] = {
+				"piece": pid,
+				"key": key,
+				"center": [round((lo[i] + hi[i]) / 2, 4) for i in range(3)],
+				"size": [round(hi[i] - lo[i], 4) for i in range(3)],
+				"tris": len(me.polygons),
+			}
+		lo = Vector((min(v.x for v in lows), min(v.y for v in lows), min(v.z for v in lows)))
+		hi = Vector((max(v.x for v in highs), max(v.y for v in highs), max(v.z for v in highs)))
+		manifest["pieces"][pid] = {"tris": tris, "keys": len(objs), "min": [round(c, 2) for c in lo], "max": [round(c, 2) for c in hi]}
+		piece_objects[pid] = objs
+		print(pid, "tris", tris, "keys", len(objs), "x", round(lo.x, 1), round(hi.x, 1), "y", round(lo.y, 1), round(hi.y, 1), "z",
+			round(lo.z, 1), round(hi.z, 1))
+		if tris > MAX_TRIS:
+			problems.append(f"{pid}: {tris} tris, the limit is {MAX_TRIS}")
+		if len(objs) > MAX_KEYS:
+			problems.append(f"{pid}: {len(objs)} keys, the limit is {MAX_KEYS}")
+		if max(abs(lo.z), abs(hi.z)) > MAX_Z:
+			problems.append(f"{pid}: reaches z {round(lo.z, 2)} .. {round(hi.z, 2)}, the limit is +-{MAX_Z}")
+		if max(abs(lo.x), abs(hi.x)) > WIDE.get(pid, MAX_X):
+			problems.append(f"{pid}: reaches x {round(lo.x, 2)} .. {round(hi.x, 2)}, the limit is +-{WIDE.get(pid, MAX_X)}")
+		if lo.y < -0.01:
+			problems.append(f"{pid}: goes under the lane top ({round(lo.y, 2)})")
+
+	with open(os.path.join(OUT, "manifest.json"), "w") as f:
+		json.dump(manifest, f, indent=1)
+	if problems:
+		raise SystemExit("highway toys: " + "; ".join(problems))
+
+	# ---------------------------------------------------------------------------------------------------- export
+
+	bpy.ops.object.select_all(action="DESELECT")
+	for o in LIB.objects:
+		o.select_set(True)
+	bpy.context.view_layer.objects.active = LIB.objects[0]
+	glb = os.path.join(OUT, "SD_HighwayProps.glb")
+	bpy.ops.export_scene.gltf(
+		filepath=glb,
+		export_format="GLB",
+		use_selection=True,
+		export_yup=True,
+		export_apply=True,
+		export_texcoords=True,
+		export_normals=True,
+		export_tangents=False,
+		export_materials="NONE",
+		export_vertex_color="NONE",
+		export_attributes=False,
+		export_animations=False,
+		export_morph=False,
+		export_skins=False,
+		export_cameras=False,
+		export_lights=False,
+		export_extras=False,
+	)
+	print("EXPORTED", glb, os.path.getsize(glb), "bytes")
+
+	# -------------------------------------------------------------------------------------------------- previews
+
+	def material(name, hexstr, kind):
+		m = bpy.data.materials.new(name)
+		m.use_nodes = True
+		b = m.node_tree.nodes["Principled BSDF"]
+		b.inputs["Base Color"].default_value = linear(hexstr)
+		b.inputs["Roughness"].default_value = {"Smooth": 0.28, "Stud": 0.8, "Neon": 0.4}[kind]
+		if kind == "Neon":
+			b.inputs["Emission Color"].default_value = linear(hexstr)
+			b.inputs["Emission Strength"].default_value = 1.2
+		return m
+
+	for pid, objs in piece_objects.items():
+		pal = pieces[pid][0]
+		for o in objs:
+			hexstr, kind = pal[o.name.split("__")[1]]
+			o.data.materials.append(material(o.name, hexstr, kind))
+
+	scene = bpy.context.scene
+	for engine in ("BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"):
+		try:
+			scene.render.engine = engine
+			break
+		except TypeError:
+			continue
+	scene.view_settings.view_transform = "Standard"
+	scene.world = bpy.data.worlds.new("Sky")
+	scene.world.use_nodes = True
+	bg = scene.world.node_tree.nodes["Background"]
+	bg.inputs["Color"].default_value = linear("BFE6FF")
+	bg.inputs["Strength"].default_value = 0.62
+	sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
+	sun.data.energy = 2.3
+	sun.rotation_euler = (40 * D, 10 * D, -35 * D)
+	scene.collection.objects.link(sun)
+
+	STAGE = bpy.data.collections.new("Stage")
+	scene.collection.children.link(STAGE)
+
+	def stage_box(hexstr, size, at):  # Roblox axes
+		bm = bmesh.new()
+		bmesh.ops.create_cube(bm, size=1.0)
+		me = bpy.data.meshes.new("stage")
 		for v in bm.verts:
-			v.co = Vector((v.co.x, -v.co.z, v.co.y))
-		bmesh.ops.triangulate(bm, faces=bm.faces, quad_method="BEAUTY", ngon_method="BEAUTY")
-		name = f"{pid}__{key}"
-		me = bpy.data.meshes.new(name)
+			v.co = Vector((v.co.x * size[0] + at[0], -(v.co.z * size[2] + at[2]), v.co.y * size[1] + at[1]))
 		bm.to_mesh(me)
 		bm.free()
-		obj = bpy.data.objects.new(name, me)
-		LIB.objects.link(obj)
-		obj.modifiers.new("Normals", "WEIGHTED_NORMAL").keep_sharp = True  # big faces stay flat, the bevels stay round
-		objs.append(obj)
-		tris += len(me.polygons)
-		manifest["objects"][name] = {
-			"piece": pid,
-			"key": key,
-			"center": [round((lo[i] + hi[i]) / 2, 4) for i in range(3)],
-			"size": [round(hi[i] - lo[i], 4) for i in range(3)],
-			"tris": len(me.polygons),
-		}
-	lo = Vector((min(v.x for v in lows), min(v.y for v in lows), min(v.z for v in lows)))
-	hi = Vector((max(v.x for v in highs), max(v.y for v in highs), max(v.z for v in highs)))
-	manifest["pieces"][pid] = {"tris": tris, "keys": len(objs), "min": [round(c, 2) for c in lo], "max": [round(c, 2) for c in hi]}
-	piece_objects[pid] = objs
-	print(pid, "tris", tris, "keys", len(objs), "x", round(lo.x, 1), round(hi.x, 1), "y", round(lo.y, 1), round(hi.y, 1), "z",
-		round(lo.z, 1), round(hi.z, 1))
-	if tris > MAX_TRIS:
-		problems.append(f"{pid}: {tris} tris, the limit is {MAX_TRIS}")
-	if len(objs) > MAX_KEYS:
-		problems.append(f"{pid}: {len(objs)} keys, the limit is {MAX_KEYS}")
-	if max(abs(lo.z), abs(hi.z)) > MAX_Z:
-		problems.append(f"{pid}: reaches z {round(lo.z, 2)} .. {round(hi.z, 2)}, the limit is +-{MAX_Z}")
-	if max(abs(lo.x), abs(hi.x)) > WIDE.get(pid, MAX_X):
-		problems.append(f"{pid}: reaches x {round(lo.x, 2)} .. {round(hi.x, 2)}, the limit is +-{WIDE.get(pid, MAX_X)}")
-	if lo.y < -0.01:
-		problems.append(f"{pid}: goes under the lane top ({round(lo.y, 2)})")
+		o = bpy.data.objects.new("stage", me)
+		o.data.materials.append(material("stage", hexstr, "Stud"))
+		STAGE.objects.link(o)
+		return o
 
-with open(os.path.join(OUT, "manifest.json"), "w") as f:
-	json.dump(manifest, f, indent=1)
-if problems:
-	raise SystemExit("highway_boosters: " + "; ".join(problems))
+	# the lane top and the ground of each zone (Art/Palette), and the rails
+	ZONES = {"cm": ("FFE3EF", "9EE89B"), "bt": ("F2C487", "F3D9A4"), "bl": ("EED6B8", "7FD8D0"), "fd": ("DFF4FF", "F4FBFF"),
+		"lv": ("4A3B4F", "3A2C3A"), "rr": ("FF9C5B", "BFE6FF"), "dh": ("FFF6EC", "BFE6FF")}
+	lanes = {}
+	for zone, (lane, ground) in ZONES.items():
+		parts = [stage_box(lane, (26, 1, 120), (0, -0.5, 0)), stage_box(ground, (500, 1, 500), (0, -2, 0))]
+		for s in (-1, 1):
+			parts.append(stage_box("FF8FBF", (0.6, 0.6, 120), (s * 14, 1, 0)))
+		lanes[zone] = parts
+	fx, fz = figure
+	figure = [stage_box("2E7BFF", (0.9, 2, 0.9), (fx - 0.5, 1, fz)), stage_box("2E7BFF", (0.9, 2, 0.9), (fx + 0.5, 1, fz)),
+		stage_box("FF4D4D", (2, 2, 1), (fx, 3, fz)), stage_box("FFD21F", (0.9, 2, 0.9), (fx - 1.5, 3, fz)),
+		stage_box("FFD21F", (0.9, 2, 0.9), (fx + 1.5, 3, fz)), stage_box("FFD21F", (1.2, 1.2, 1.2), (fx, 4.6, fz))]
 
-# ------------------------------------------------------------------------------------------------------- export
+	cam_data = bpy.data.cameras.new("PreviewCam")
+	cam_data.type = "ORTHO"
+	cam_data.clip_end = 5000
+	cam_data.ortho_scale = 62
+	cam = bpy.data.objects.new("PreviewCam", cam_data)
+	scene.collection.objects.link(cam)
+	scene.camera = cam
+	yaw, pitch = yaw * D, 24 * D
+	d = Vector((math.sin(yaw) * math.cos(pitch), -math.cos(yaw) * math.cos(pitch), math.sin(pitch)))
+	cam.location = Vector((0, 0, 11)) + d * 300
+	cam.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
+	scene.render.resolution_x, scene.render.resolution_y = 640, 520
+	scene.render.resolution_percentage = 100
 
-bpy.ops.object.select_all(action="DESELECT")
-for o in LIB.objects:
-	o.select_set(True)
-bpy.context.view_layer.objects.active = LIB.objects[0]
-glb = os.path.join(OUT, "SD_HighwayProps.glb")
-bpy.ops.export_scene.gltf(
-	filepath=glb,
-	export_format="GLB",
-	use_selection=True,
-	export_yup=True,
-	export_apply=True,
-	export_texcoords=True,
-	export_normals=True,
-	export_tangents=False,
-	export_materials="NONE",
-	export_vertex_color="NONE",
-	export_attributes=False,
-	export_animations=False,
-	export_morph=False,
-	export_skins=False,
-	export_cameras=False,
-	export_lights=False,
-	export_extras=False,
-)
-print("EXPORTED", glb, os.path.getsize(glb), "bytes")
+	def render_all(suffix):
+		for pid, objs in piece_objects.items():
+			for o in LIB.objects:
+				o.hide_render = o not in objs
+			for zone, parts in lanes.items():
+				for o in parts:
+					o.hide_render = zone != pid[:2]
+			scene.render.filepath = os.path.join(OUT, f"{pid}{suffix}.png")
+			bpy.ops.render.render(write_still=True)
 
-# ----------------------------------------------------------------------------------------------------- previews
-
-
-def material(name, hexstr, kind):
-	m = bpy.data.materials.new(name)
-	m.use_nodes = True
-	b = m.node_tree.nodes["Principled BSDF"]
-	b.inputs["Base Color"].default_value = linear(hexstr)
-	b.inputs["Roughness"].default_value = {"Smooth": 0.28, "Stud": 0.8, "Neon": 0.4}[kind]
-	if kind == "Neon":
-		b.inputs["Emission Color"].default_value = linear(hexstr)
-		b.inputs["Emission Strength"].default_value = 1.2
-	return m
+	render_all("")
+	if end_shot:  # the game's end camera (Config.HighwayFx.hero: 9 right, 3.5 up, 11 ahead, FOV 58) on a stuck squishy
+		bm = bmesh.new()  # 1.6 studs x flyScale 3 wide, its centre 1 stud over the lane (HighwayMath CLEAR)
+		bmesh.ops.create_uvsphere(bm, u_segments=24, v_segments=12, radius=2.4)
+		me = bpy.data.meshes.new("squishy")
+		bm.to_mesh(me)
+		bm.free()
+		me.shade_smooth()
+		squishy = bpy.data.objects.new("squishy", me)
+		squishy.location = (0, 0, 1)
+		squishy.data.materials.append(material("squishy", "8FD3FF", "Smooth"))
+		STAGE.objects.link(squishy)
+		for o in figure:
+			o.hide_render = True
+		cam_data.type = "PERSP"
+		cam_data.sensor_fit = "VERTICAL"
+		cam_data.angle_y = 58 * D
+		eye, look = Vector((9, 11, 4.5)), Vector((0, 0, 1))  # Roblox (9, 4.5, -11) looking at (0, 1, 0)
+		cam.location = eye
+		cam.rotation_euler = (look - eye).to_track_quat("-Z", "Y").to_euler()
+		scene.render.resolution_x, scene.render.resolution_y = 640, 296  # a phone held sideways
+		render_all("_end")
+	print("DONE")
 
 
-for pid, objs in piece_objects.items():
-	pal = PIECES[pid][0]
-	for o in objs:
-		hexstr, kind = pal[o.name.split("__")[1]]
-		o.data.materials.append(material(o.name, hexstr, kind))
-
-scene = bpy.context.scene
-for engine in ("BLENDER_EEVEE", "BLENDER_EEVEE_NEXT"):
-	try:
-		scene.render.engine = engine
-		break
-	except TypeError:
-		continue
-scene.view_settings.view_transform = "Standard"
-scene.world = bpy.data.worlds.new("Sky")
-scene.world.use_nodes = True
-bg = scene.world.node_tree.nodes["Background"]
-bg.inputs["Color"].default_value = linear("BFE6FF")
-bg.inputs["Strength"].default_value = 0.62
-sun = bpy.data.objects.new("Sun", bpy.data.lights.new("Sun", "SUN"))
-sun.data.energy = 2.3
-sun.rotation_euler = (40 * D, 10 * D, -35 * D)
-scene.collection.objects.link(sun)
-
-STAGE = bpy.data.collections.new("Stage")
-scene.collection.children.link(STAGE)
-
-
-def stage_box(hexstr, size, at):  # Roblox axes
-	bm = bmesh.new()
-	bmesh.ops.create_cube(bm, size=1.0)
-	me = bpy.data.meshes.new("stage")
-	for v in bm.verts:
-		v.co = Vector((v.co.x * size[0] + at[0], -(v.co.z * size[2] + at[2]), v.co.y * size[1] + at[1]))
-	bm.to_mesh(me)
-	bm.free()
-	o = bpy.data.objects.new("stage", me)
-	o.data.materials.append(material("stage", hexstr, "Stud"))
-	STAGE.objects.link(o)
-	return o
-
-
-# the lane top and the ground of each zone (Art/Palette), and the rails
-ZONES = {"cm": ("FFE3EF", "9EE89B"), "bt": ("F2C487", "F3D9A4"), "bl": ("EED6B8", "7FD8D0"), "fd": ("DFF4FF", "F4FBFF"),
-	"lv": ("4A3B4F", "3A2C3A"), "rr": ("FF9C5B", "BFE6FF"), "dh": ("FFF6EC", "BFE6FF")}
-lanes = {}
-for zone, (lane, ground) in ZONES.items():
-	parts = [stage_box(lane, (26, 1, 120), (0, -0.5, 0)), stage_box(ground, (500, 1, 500), (0, -2, 0))]
-	for s in (-1, 1):
-		parts.append(stage_box("FF8FBF", (0.6, 0.6, 120), (s * 14, 1, 0)))
-	lanes[zone] = parts
-figure = [stage_box("2E7BFF", (0.9, 2, 0.9), (-10.5 - 0.5, 1, 13)), stage_box("2E7BFF", (0.9, 2, 0.9), (-10.5 + 0.5, 1, 13)),
-	stage_box("FF4D4D", (2, 2, 1), (-10.5, 3, 13)), stage_box("FFD21F", (0.9, 2, 0.9), (-10.5 - 1.5, 3, 13)),
-	stage_box("FFD21F", (0.9, 2, 0.9), (-10.5 + 1.5, 3, 13)), stage_box("FFD21F", (1.2, 1.2, 1.2), (-10.5, 4.6, 13))]
-
-cam_data = bpy.data.cameras.new("PreviewCam")
-cam_data.type = "ORTHO"
-cam_data.clip_end = 5000
-cam_data.ortho_scale = 62
-cam = bpy.data.objects.new("PreviewCam", cam_data)
-scene.collection.objects.link(cam)
-scene.camera = cam
-yaw, pitch = -32 * D, 24 * D
-d = Vector((math.sin(yaw) * math.cos(pitch), -math.cos(yaw) * math.cos(pitch), math.sin(pitch)))
-cam.location = Vector((0, 0, 11)) + d * 300
-cam.rotation_euler = (-d).to_track_quat("-Z", "Y").to_euler()
-scene.render.resolution_x, scene.render.resolution_y = 640, 520
-scene.render.resolution_percentage = 100
-
-for pid, objs in piece_objects.items():
-	for o in LIB.objects:
-		o.hide_render = o not in objs
-	for zone, parts in lanes.items():
-		for o in parts:
-			o.hide_render = zone != pid[:2]
-	scene.render.filepath = os.path.join(OUT, f"{pid}.png")
-	bpy.ops.render.render(write_still=True)
-print("DONE")
+if __name__ == "__main__":
+	main(PIECES)
