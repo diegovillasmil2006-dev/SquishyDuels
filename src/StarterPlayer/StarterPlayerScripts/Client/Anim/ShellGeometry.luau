@@ -16,6 +16,7 @@
 --              along its normal, faces turned inward (only their inside shows, as a rim); it follows the shell
 --              (SoftShell.hullBatch), it does not deform by itself. shell.hull = { first, count, triFirst, thickness }:
 --              shell vertex i (i <= count) has its copy at first + i - 1, shell triangle j its copy at triFirst + j - 1.
+--              outline.skip (a size rank): that one big shell has no copy and goes right after the covered ones.
 --     One part per closed shell, biggest first (SoftBody's bulge and thumbs use the biggest, as the design's big,
 --     squish.js:143); normals from the triangles; one shared UV (no atlas); shell.colors = per vertex, anchors white.
 --     The vertices keep the mesh's own count: the mesh is made for the quality's budget. Raises on no triangles, a flat
@@ -119,7 +120,7 @@ export type Hull = { first: number, count: number, triFirst: number, thickness: 
 
 export type MeshInput = { positions: { Vector3 }, colors: { Color3 }, tris: { number } }
 
-export type Outline = { thickness: number, color: Color3, shells: number }
+export type Outline = { thickness: number, color: Color3, shells: number, skip: number? }
 
 -- One closed shell of a mesh: its first vertex, its vertices and where its triangles start in the mesh's list.
 type Group = { first: number, vertices: { number }, triangles: { number } }
@@ -654,6 +655,11 @@ function ShellGeometry.fromMesh(mesh: MeshInput, part: PartInput, quality: Quali
 		end
 		return a.first < b.first
 	end)
+	-- A big shell with no outline (outline.skip = its rank): it goes right after the covered ones, which stay first.
+	if outline and outline.skip and outline.skip <= #groups then
+		local plain = table.remove(groups, outline.skip) :: Group
+		table.insert(groups, math.min(outline.shells + 1, #groups + 1), plain)
+	end
 
 	local px: { number }, py: { number }, pz: { number } = {}, {}, {}
 	local colors: { Color3 } = {}
@@ -708,6 +714,30 @@ function ShellGeometry.fromMesh(mesh: MeshInput, part: PartInput, quality: Quali
 	for i = 1, vertexCount do
 		local normal = if sum[i].Magnitude > 0 then sum[i].Unit else Vector3.yAxis
 		nx[i], ny[i], nz[i] = normal.X, normal.Y, normal.Z
+	end
+	-- A plain shell stuck on the body (seeds, sprinkles, claws) takes the normal of the body vertex nearest its middle: a bulge
+	-- carries it with the surface (its own round normals would swell it or swallow it).
+	if outline then
+		local bodyParts = math.min(outline.shells + (if outline.skip and outline.skip <= #groups then 1 else 0), #shellParts)
+		local bodyVertices = shellParts[bodyParts].first + shellParts[bodyParts].count - 1
+		for index = bodyParts + 1, #shellParts do
+			local info = shellParts[index]
+			local cx, cy, cz = 0, 0, 0
+			for i = info.first, info.first + info.count - 1 do
+				cx, cy, cz = cx + px[i], cy + py[i], cz + pz[i]
+			end
+			cx, cy, cz = cx / info.count, cy / info.count, cz / info.count
+			local nearest, best = 1, math.huge
+			for i = 1, bodyVertices do
+				local d = (px[i] - cx) ^ 2 + (py[i] - cy) ^ 2 + (pz[i] - cz) ^ 2
+				if d < best then
+					nearest, best = i, d
+				end
+			end
+			for i = info.first, info.first + info.count - 1 do
+				nx[i], ny[i], nz[i] = nx[nearest], ny[nearest], nz[nearest]
+			end
+		end
 	end
 
 	local shell = finish({

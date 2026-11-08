@@ -193,6 +193,17 @@ return function(t: Context)
 		expect.equal(SoftShell.hullBatch(a, b, n, plainIds.vertex, plain, { 1 }, 1, plain.px, plain.py, plain.pz), 1)
 	end)
 
+	t.test("hullBatch: a copy stays inside the bounds anchors on a far pull", function()
+		local s = meshShell()
+		local ids = SoftShell.writeMesh((colourRecorder()), s, false)
+		local px: { number }, py: { number }, pz: { number } = table.clone(s.px), table.clone(s.py), table.clone(s.pz)
+		px[1] = s.boundsMax.X -- the body's own clamp stops here; its copy would stand out by the thickness
+		local idList, values = {}, {}
+		local count = SoftShell.hullBatch(idList, values, 0, ids.vertex, s, { 1 }, 1, px, py, pz)
+		expect.equal(count, 1)
+		expect.near(values[1].X, s.boundsMax.X - s.center.X, 1e-5)
+	end)
+
 	t.test("hullBatch: a moved vertex outside the covered shells has no copy", function()
 		local positions = {
 			Vector3.new(1, 0, 0),

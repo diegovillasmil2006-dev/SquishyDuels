@@ -61,7 +61,8 @@
 --     squish mouth per face.
 --   * setSections(angles?): angles (radians) per slot (SquishRig.sectionNames of the blueprint's sections, read from
 --     SquishyBlueprints[SD_BlueprintId].sections × SD_Scale, or options.sections) turn each section part (SD_Section)
---     about its pivot; nil turns the section path off. A section part moves (spec §8.1 #5 exception), always from base:
+--     about its pivot (a model slot's SD_Hinge part: about its own SD_Contact); nil turns the section path off. A section
+--     part moves (spec §8.1 #5 exception), always from base:
 --     Q = turn about the axis through pivot h, p' = h + Q(p - h), R' = Q·R; mesh.Scale = base ∘ kv(R', S) ∘ look,
 --     Offset = base; placed at CFrame(p' ∘ S)·R' through its SD_PartWeld.C0 (Held/World) or as pivot·CFrame(p' ∘ S)·R'
 --     with the model's current pivot, before the twist's PivotTo (Viewport). At θ = 0 it renders like the mesh path, so
@@ -197,6 +198,8 @@ local ROUNDED_BOX = "RB"
 local RB_CENTRE_TOLERANCE = 1e-3 -- studs / rotation-matrix units; authoring check only
 local LOOK_ATTRIBUTE = "SD_Look"
 local SECTION_ATTRIBUTE = "SD_Section"
+local HINGE_ATTRIBUTE = "SD_Hinge"
+local CONTACT_ATTRIBUTE = "SD_Contact"
 local BLUEPRINT_ATTRIBUTE = "SD_BlueprintId"
 local SCALE_ATTRIBUTE = "SD_Scale"
 
@@ -348,8 +351,25 @@ local function collectParts(
 	return list
 end
 
+-- World hinges a model slot's moving parts carry (SD_Hinge: the part's SD_Contact is what its section turns about): a
+-- blueprint's pivot fits the blueprint's own part shapes, not the slot's.
+local function slotHinges(model: Model): { [string]: Vector3 }
+	local hinges: { [string]: Vector3 } = {}
+	for _, descendant in model:GetDescendants() do
+		if descendant:IsA("BasePart") and descendant:GetAttribute(HINGE_ATTRIBUTE) == true then
+			local section = descendant:GetAttribute(SECTION_ATTRIBUTE)
+			local contact = descendant:GetAttribute(CONTACT_ATTRIBUTE)
+			if type(section) == "string" and typeof(contact) == "Vector3" then
+				hinges[section] = descendant.CFrame:PointToWorldSpace(contact * descendant.Size / 2)
+			end
+		end
+	end
+	return hinges
+end
+
 -- The hinged sections of a built model (spec §3.2): options.sections, else its blueprint's, scaled by SD_Scale and
--- turned into pivot space. Returns the slot names (SquishRig.sectionNames order) and the data by slot.
+-- turned into pivot space (a slot part's own hinge wins). Returns the slot names (SquishRig.sectionNames order) and the
+-- data by slot.
 local function collectSections(
 	model: Model,
 	pivot: CFrame,
@@ -369,10 +389,11 @@ local function collectSections(
 	local scaleValue = model:GetAttribute(SCALE_ATTRIBUTE)
 	local scale = if type(scaleValue) == "number" then scaleValue else 1
 	local modelPivot = model:GetPivot()
+	local hinges = slotHinges(model)
 	for index, name in names do
 		local section = sections[name]
 		data[index] = {
-			pivot = pivot:PointToObjectSpace(modelPivot:PointToWorldSpace(section.pivot * scale)),
+			pivot = pivot:PointToObjectSpace(hinges[name] or modelPivot:PointToWorldSpace(section.pivot * scale)),
 			axis = pivot:VectorToObjectSpace(modelPivot:VectorToWorldSpace(axisVector(section.axis))).Unit,
 		}
 	end

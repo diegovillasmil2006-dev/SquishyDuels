@@ -159,15 +159,19 @@ function SoftShell.hullBatch(
 	local nx, ny, nz = shell.nx, shell.ny, shell.nz
 	local t, center = hull.thickness, shell.center
 	local cx, cy, cz = center.X, center.Y, center.Z
+	local lo, hi = shell.boundsMin, shell.boundsMax
 	local before = hull.first - 1
-	-- shortcut: a copy can pass the bounds anchors at SoftBody's clamp (a tiny rescale), reached only by mochi-feel pulls;
-	-- clamp here when a mochi toy gets a mesh body.
 	for k = 1, count do
 		local i = written[k]
 		if i <= hull.count then
 			n += 1
 			ids[n] = vertexIds[before + i]
-			values[n] = Vector3.new(px[i] + nx[i] * t - cx, py[i] + ny[i] * t - cy, pz[i] + nz[i] * t - cz)
+			-- Inside the bounds anchors, as SoftBody clamps the body: a far mochi pull must not rescale the mesh.
+			values[n] = Vector3.new(
+				math.clamp(px[i] + nx[i] * t, lo.X, hi.X) - cx,
+				math.clamp(py[i] + ny[i] * t, lo.Y, hi.Y) - cy,
+				math.clamp(pz[i] + nz[i] * t, lo.Z, hi.Z) - cz
+			)
 		end
 	end
 	return n

@@ -1288,6 +1288,28 @@ return function(t: Context)
 			model:Destroy()
 		end)
 
+		t.test("a slot part's SD_Hinge: its section turns about its SD_Contact, the other keeps the blueprint's pivot", function()
+			local model = buildFixture("Viewport")
+			local ear = assert(model:FindFirstChild("EarL")) :: BasePart
+			local other = assert(model:FindFirstChild("EarR")) :: BasePart
+			local contact = ear:GetAttribute("SD_Contact") :: Vector3
+			ear:SetAttribute("SD_Hinge", true)
+			local hinge = ear.CFrame:PointToWorldSpace(contact * ear.Size / 2)
+			local inPart = ear.CFrame:PointToObjectSpace(hinge)
+			local otherBase = other.CFrame
+			local earUp = ear.CFrame.UpVector
+			local deformer = attachFixture(model)
+			deformer:setSections({ math.rad(30), math.rad(30) })
+			expectVector(ear.CFrame:PointToWorldSpace(inPart), hinge, 1e-3, "the hinge stays put")
+			expect.truthy((ear.CFrame.UpVector - earUp).Magnitude > 0.1) -- it did turn
+			-- EarR still turns about the blueprint's pivot: the same rigid turn about (0.33, 0.48, 0).
+			local pivot = model:GetPivot():PointToWorldSpace(Vector3.new(0.33, 0.48, 0))
+			local turn = CFrame.new(pivot) * CFrame.fromAxisAngle(Vector3.zAxis, math.rad(30)) * CFrame.new(-pivot)
+			expectVector(other.CFrame.Position, (turn * otherBase).Position, 1e-3, "the blueprint's pivot")
+			deformer:destroy()
+			model:Destroy()
+		end)
+
 		t.test("Viewport sections at θ = 0 still match the mesh path after many twisted frames", function()
 			local turned, plain = buildFixture("Viewport"), buildFixture("Viewport")
 			local a, b = attachFixture(turned, "pivot"), attachFixture(plain, "pivot")

@@ -66,7 +66,8 @@
 --   colours stored in it. The build reads that mesh (on Low the lighter one in SD_ShellLow) into the shell
 --   (ShellGeometry.fromMesh): no atlas and no wax (a stored fade would be lost on a tile). The part with SD_Outline is
 --   its dark shell: it hides while live and the shell carries a copy of it that follows the dents (SD_OutlineShells: how
---   many of the biggest closed shells it covers). Its still bits (paws, stripes) are in the mesh, so such a model has
+--   many of the biggest closed shells it covers; SD_OutlineSkip: the size rank of a big shell among them that it doesn't
+--   cover). Its still bits (paws, stripes) are in the mesh, so such a model has
 --   no other plain still part. A section's parts share one anchor vertex (shareAnchors), so an ear and its rim never
 --   slip apart under a dent. A second shell part, an outline no bigger than the body or a mesh over its quality's vertex
 --   budget stop the knead with one warning (today's squeeze). The body is not turned (readModel's rest size assumes it).
@@ -124,7 +125,7 @@ export type BodyPart = {
 export type Rider = { part: BasePart, point: Vector3, group: string, section: boolean, squish: boolean }
 
 -- A mesh body's dark shell (SD_Outline): the part, how far it stands out, its ink and how many closed shells it covers.
-export type OutlinePart = { part: BasePart, thickness: number, color: Color3, shells: number }
+export type OutlinePart = { part: BasePart, thickness: number, color: Color3, shells: number, skip: number? }
 
 export type Reading = {
 	body: { BodyPart },
@@ -254,6 +255,7 @@ local ATTR_LOOK = "SD_Look" -- owner 2026-10-26: what joins the shell, what squa
 local ATTR_ATTACHED = "SD_AttachedTo"
 local ATTR_OUTLINE = "SD_Outline"
 local ATTR_OUTLINE_SHELLS = "SD_OutlineShells"
+local ATTR_OUTLINE_SKIP = "SD_OutlineSkip"
 local ATTR_SHELL_LOW = "SD_ShellLow"
 local RIDER = KNEAD.rider
 local SQUASH_REST = 1e-4 -- a released group's squash (and its speed ×10) below this is done
@@ -377,11 +379,13 @@ function KneadController.readModel(model: Model, scale: Vector3): Reading
 	end
 	if outlinePart and body[1] and body[1].shape == MESH_SHAPE then
 		local shells = outlinePart:GetAttribute(ATTR_OUTLINE_SHELLS)
+		local skip = outlinePart:GetAttribute(ATTR_OUTLINE_SKIP)
 		reading.outline = {
 			part = outlinePart,
 			thickness = (outlinePart.Size.X / scale.X - body[1].size.X) / 2,
 			color = outlinePart.Color,
 			shells = if type(shells) == "number" then shells else 1,
+			skip = if type(skip) == "number" then skip else nil,
 		}
 	end
 	return reading

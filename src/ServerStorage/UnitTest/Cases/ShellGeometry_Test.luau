@@ -407,6 +407,44 @@ return function(t: Context)
 		expect.equal(all.triTotal, all.triCount + 8 + all.triCount)
 	end)
 
+	t.test("fromMesh: outline.skip leaves a big shell out: it goes after the covered ones, the biggest stays first", function()
+		-- Sizes 6, 4, 4; the tie goes to the file's first tetra (x = 3): rank 2 is skipped, the one at x = -3 is covered.
+		local shell = ShellGeometry.fromMesh(meshFixture(), PART, "High", { thickness = 0.1, color = INK, shells = 2, skip = 2 })
+		expect.equal(shell.hull.count, 10)
+		expect.equal(shell.parts[1].count, 6)
+		local covered, plain = shell.parts[2].first, shell.parts[3].first
+		expect.truthy(shell.px[covered] < 0)
+		expect.truthy(shell.px[plain] > 0)
+		local copy = shell.hull.first + covered - 1
+		expect.truthy(shell.px[copy] < 0)
+		expect.equal(shell.colors[copy], INK)
+	end)
+
+	t.test("fromMesh: a plain shell takes the normal of the covered vertex nearest its middle; a skipped one keeps its own", function()
+		local function normalAt(shell: any, i: number): Vector3
+			return Vector3.new(shell.nx[i], shell.ny[i], shell.nz[i])
+		end
+		local shell = ShellGeometry.fromMesh(meshFixture(), PART, "High", { thickness = 0.1, color = INK, shells = 1 })
+		local function coveredNormal(x: number): Vector3
+			for i = 1, shell.parts[1].count do
+				if math.sign(shell.px[i]) == x then
+					return normalAt(shell, i)
+				end
+			end
+			error("no such vertex")
+		end
+		for index = 2, 3 do
+			local info = shell.parts[index]
+			local want = coveredNormal(math.sign(shell.px[info.first]))
+			for i = info.first, info.first + info.count - 1 do
+				expect.near((normalAt(shell, i) - want).Magnitude, 0, 1e-5)
+			end
+		end
+		local skipped = ShellGeometry.fromMesh(meshFixture(), PART, "High", { thickness = 0.1, color = INK, shells = 2, skip = 2 })
+		local big = skipped.parts[3]
+		expect.truthy((normalAt(skipped, big.first) - normalAt(skipped, big.first + 1)).Magnitude > 0.5)
+	end)
+
 	t.test("fromMesh: each axis fits on its own, in a turned part", function()
 		-- The fixture's box is 6.4 x 2 x 2; a quarter turn about Y sends the part's X to world -Z and its Z to world X.
 		local part = { cframe = CFrame.new(1, 2, 3) * CFrame.Angles(0, math.rad(90), 0), size = Vector3.new(3.2, 1, 8) }

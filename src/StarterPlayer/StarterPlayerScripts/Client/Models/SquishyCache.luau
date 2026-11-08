@@ -51,8 +51,9 @@
 --     only, fitted and built like any slot. Without the form's one, clonePen gives the normal World model.
 --   * A mesh body (the squish window dents its own mesh, see Controllers/KneadController): a MeshPart with SD_Body and
 --     SD_Shape "M", its colours stored in the mesh, SD_ShellLow = the lighter mesh's uri for Low quality; SD_Outline =
---     true on its one dark shell, SD_OutlineShells = how many of the biggest closed shells that covers. A part that must
---     ride, flap or squash is a Part + FileMesh SpecialMesh.
+--     true on its one dark shell, SD_OutlineShells = how many of the biggest closed shells that covers, SD_OutlineSkip =
+--     the size rank of a big shell among them that it doesn't cover. A part that must ride, flap or squash is a Part +
+--     FileMesh SpecialMesh; with SD_Hinge = true its section turns about its SD_Contact, not the blueprint's pivot.
 --
 -- API:
 --   SquishyCache.clone(id, mode, scale?) -> Model   id = a squishy id (mapped through Catalog blueprintId) or a

@@ -139,6 +139,7 @@ return function(t: Context)
 		outline.Name = "BodyOutline"
 		outline:SetAttribute("SD_Outline", true)
 		outline:SetAttribute("SD_OutlineShells", 3)
+		outline:SetAttribute("SD_OutlineSkip", 2)
 		outline.Size = Vector3.new(2.1, 1.1, 1.6) * S
 		outline.CFrame = body.CFrame
 		outline.Color = Color3.new(0.1, 0.05, 0.1)
@@ -156,6 +157,7 @@ return function(t: Context)
 		expect.equal(reading.outline.part, outline)
 		expect.near(reading.outline.thickness, 0.05, EPS)
 		expect.equal(reading.outline.shells, 3)
+		expect.equal(reading.outline.skip, 2)
 		expect.equal(reading.outline.color, outline.Color)
 		expect.equal(Knead.meshUri(reading.body[1], "Low"), "rbxassetid://5")
 		expect.equal(Knead.meshUri(reading.body[1], "High"), body.MeshId)
