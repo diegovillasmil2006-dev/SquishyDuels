@@ -12,9 +12,9 @@
 --   * Config.LobbyMove: a quicker lobby run, a slide that pushes past the run and eases out, its pose over the dash's
 --     and under the throw's; the remote, its rate and the LobbySlide action (C in the Lobby context);
 --   * LobbyMoveController (pure): gate, speedAt, poseWeight; the touch Slide button (touchShown: touch in the lobby
---     only; touchRect: left of the jump button, bottoms aligned, a gap apart, a touch target, on screen, out of the
---     thumbstick zone and inside the duel Throw button's box the HUD keeps clear; touchProgress); LobbyMoveService
---     (pure): inLobby, validate.
+--     only, never while the touch Throw button shows, as on the highway deck; touchRect: left of the jump button,
+--     bottoms aligned, a gap apart, a touch target, on screen, out of the thumbstick zone and inside the duel Throw
+--     button's box the HUD keeps clear; touchProgress); LobbyMoveService (pure): inLobby, validate.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -179,10 +179,18 @@ return function(t: Context)
 		expect.equal(Slide.poseWeight(0 / 0, SLIDE.seconds), 0)
 	end)
 
-	t.test("the touch Slide button: touch in the lobby only, beside the jump button, its shade", function()
+	t.test("the touch Slide button: touch in the lobby only, never with Throw, beside the jump button, its shade", function()
 		local TOUCH = Config.UI.Touch
 		local function facts(over: { [string]: any }?): any
-			local base = { touch = true, lobby = true, practice = false, inMatch = false, blocked = false, alive = true }
+			local base = {
+				touch = true,
+				lobby = true,
+				practice = false,
+				inMatch = false,
+				blocked = false,
+				alive = true,
+				throwShown = false,
+			}
 			for k, v in over or {} do
 				base[k] = v
 			end
@@ -192,7 +200,9 @@ return function(t: Context)
 		for _, key in { "touch", "lobby", "alive" } do
 			expect.falsy(Slide.touchShown(facts({ [key] = false })))
 		end
-		for _, key in { "practice", "inMatch", "blocked" } do
+		-- throwShown (2026-11-08): on the highway deck the Lobby context stays on beside the touch Throw button, and
+		-- touchRect puts Slide inside Throw's box, so a tap on Throw slid.
+		for _, key in { "practice", "inMatch", "blocked", "throwShown" } do
 			expect.falsy(Slide.touchShown(facts({ [key] = true })))
 		end
 		for _, screen in { Vector2.new(844, 332), Vector2.new(667, 317), Vector2.new(1024, 708), Vector2.new(1920, 1036) } do

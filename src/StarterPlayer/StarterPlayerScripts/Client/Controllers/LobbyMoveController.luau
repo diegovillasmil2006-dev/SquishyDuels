@@ -24,9 +24,11 @@
 --   "slideEnd" when the slide ends (an early end also stops its held dust, sprinkles and streak).
 -- * Touch (phones and tablets, 2026-10-17): a round Slide button (its own ScreenGui SD_SlideTouch, safe insets, with the
 --   duel's SD_Touch order) shows while touchShown() (pure): touch input, the Lobby context on, not the throw box, not in
---   a duel or a match, no screen blocking the controls, alive. touchRect() (pure) puts it left of Roblox's jump button,
---   bottoms aligned, Config.UI.Touch.gap apart, Touch.dashButton x the UI scale (at least the touch floor): inside the
---   duel Throw button's box, which the lobby HUD already keeps clear on narrow layouts. A press slides as C does (the
+--   a duel or a match, no screen blocking the controls, alive, and not while the touch Throw button shows
+--   (ControlsController.touchButtonsShown; 2026-11-08: the highway deck keeps the Lobby context on beside Throw, and a
+--   tap on Throw slid). touchRect() (pure) puts it left of Roblox's jump button, bottoms aligned, Config.UI.Touch.gap
+--   apart, Touch.dashButton x the UI scale (at least the touch floor): inside the duel Throw button's box, which the
+--   lobby HUD already keeps clear on narrow layouts. A press slides as C does (the
 --   same gate). Its shade (touchProgress, pure): clear when a slide would start, clearing from the bottom while the
 --   cooldown runs, shaded while standing or in the air. Studio: Workspace attribute SD_PhonePreview (the phone HUD
 --   preview) shows it with the mouse too.
@@ -82,6 +84,7 @@ export type TouchFacts = {
 	inMatch: boolean,
 	blocked: boolean, -- a screen blocks the controls (ControlsController.isBlocked)
 	alive: boolean,
+	throwShown: boolean, -- the touch Throw button shows (ControlsController.touchButtonsShown), e.g. on the highway deck
 }
 
 export type Rect = { x: number, y: number, w: number, h: number }
@@ -138,7 +141,7 @@ local FLOOR_LIFT = 0.1
 local MIN_STEP = 1 / 240
 local TOUCH = Config.UI.Touch
 local TOUCH_GUI_NAME = "SD_SlideTouch"
-local TOUCH_DISPLAY_ORDER = 12 -- with SD_Touch (the duel's round buttons, never shown in the lobby)
+local TOUCH_DISPLAY_ORDER = 12 -- with SD_Touch (the round touch buttons: touchShown never shows Slide with them)
 local TOUCH_ACCENT = "sky" -- as the duel's Dash
 local TOUCH_SHADE_TRANSPARENCY = 0.45 -- the shaded part (ControlsController's touch buttons' look)
 local PHONE_PREVIEW = "SD_PhonePreview" -- Studio: UIController's phone HUD preview
@@ -207,6 +210,7 @@ function LobbyMoveController.touchShown(facts: TouchFacts): boolean
 		and not facts.inMatch
 		and not facts.blocked
 		and facts.alive
+		and not facts.throwShown
 end
 
 -- The touch Slide button's box in `screen` px (the safe-inset space) at `uiScale`, beside the jump button `jump` (nil:
@@ -672,6 +676,7 @@ local function stepTouch()
 		inMatch = facts.inMatch,
 		blocked = ControlsController.isBlocked(),
 		alive = facts.alive,
+		throwShown = ControlsController.touchButtonsShown(),
 	})
 	if view.gui.Enabled ~= shown then
 		view.gui.Enabled = shown
