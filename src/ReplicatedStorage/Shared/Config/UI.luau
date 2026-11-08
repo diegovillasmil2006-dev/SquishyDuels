@@ -4628,6 +4628,28 @@ local UI = {
 		slashLength = 3.4, -- the two light slashes (emblems)
 		reducedFadeSeconds = 0.15, -- ReducedMotion: a plain fade in and out, no slam, shake, spin or shards
 	},
+
+	-- Owner 2026-11-08 ("i want banners like where people can see them everywhere", a picture of white names floating
+	-- over a lobby's places): StationLabelController's floating name over each Hub station (`model` = the Hub child,
+	-- `textKey` = its Strings key), liftStuds over the station's top, turned to the camera. Its size is sizeStuds
+	-- (studs: real size up close) plus minPx (pixels: still readable far away, LihFolk "World-Space UI"), wide enough
+	-- for TARGET PRACTICE; seen within maxStuds, never through walls; the text's dark outline strokePx.
+	StationLabels = {
+		sizeStuds = Vector2.new(32, 3),
+		minPx = Vector2.new(150, 14),
+		liftStuds = 1.5,
+		maxStuds = 500,
+		strokePx = 3,
+		stations = {
+			{ model = "Shop", textKey = "world.station.shop" },
+			{ model = "MysteryBox", textKey = "world.station.boxes" },
+			{ model = "QuestBoard", textKey = "world.station.quests" },
+			{ model = "DailyReward", textKey = "world.station.daily" },
+			{ model = "KittyBread", textKey = "world.station.kittyBread" },
+			{ model = "HighwayPortal", textKey = "world.station.highway" },
+			{ model = "Portal", textKey = "world.station.practice" },
+		},
+	},
 }
 
 return UI

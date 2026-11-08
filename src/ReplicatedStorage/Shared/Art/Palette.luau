@@ -593,6 +593,8 @@ local Palette = {
 	PenSignText = Color3.fromHex("#1E1428"), -- K:92 the material Ink (the face's text)
 	PenLabelText = Color3.fromHex("#FFFFFF"), -- K:4266-4270 the "+N/s" coin label: white text
 	PenLabelStroke = Color3.fromHex("#1E1428"), -- its stroke
+	StationLabelText = Color3.fromHex("#FFFFFF"), -- owner 2026-11-08: the floating names over the hub's stations
+	StationLabelStroke = Color3.fromHex("#1E1428"), -- their dark outline
 	-- Pens3 phase 8 (K:3882-3920): the fusion forms' colours on a walking squishy (Config.UI.Pen.forms): Golden, and
 	-- Rainbow's 7 height bands, bottom to top.
 	PenFormGolden = Color3.fromHex("#FFC93C"),

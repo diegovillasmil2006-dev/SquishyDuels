@@ -1461,6 +1461,16 @@ local Strings = {
 		arenaPlay = "PLAY",
 		arenaToyworks = "TOYWORKS",
 		arenaPrizes = "PRIZES",
+		-- Owner 2026-11-08: the floating names over the hub's stations (Config.UI.StationLabels).
+		station = {
+			shop = "SHOP",
+			boxes = "SQUISHY BOXES",
+			quests = "QUESTS",
+			daily = "DAILY REWARD",
+			kittyBread = "KITTY BREAD",
+			highway = "HIGHWAY",
+			practice = "TARGET PRACTICE",
+		},
 	},
 
 	-- The island's bases (lobby bases spec 2026-10-11 §4, §9; build plan Phase 4): the gate's name sign (BaseService
