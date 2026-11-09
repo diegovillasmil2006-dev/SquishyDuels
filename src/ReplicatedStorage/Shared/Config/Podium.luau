@@ -10,6 +10,9 @@ return {
 	podium = {
 		at = 2.4, -- S:824: the podium cue, 2.4 s after the last squish (the jelly wave covers the screen)
 		skipAt = 3.4, -- E:317: a skip jumps here, every clip done
+		-- owner 2026-11-09 ("Same cake + party" for duels): a won or lost duel's podium shows this long from the result,
+		-- then DuelController's VICTORY / DEFEAT card (inside Config.Duel.Rules.ResultSeconds)
+		duelSeconds = 5,
 		lift = 0.1, -- the maps' floor art sits 0.1 over the floor (JAR_Decal_JellyFloor, SPF_Decal_SugarFloor ...)
 		-- the map's middle prop: its parts within hideRadius of the centre, up to hideTop over the floor (the cake's 12
 		-- and the line's 13.5 plus room); the floor art (under hideFloor) stays

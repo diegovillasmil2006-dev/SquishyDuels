@@ -22,6 +22,7 @@
 -- Exit (idempotent, on every end): CameraMode and MouseIconEnabled back, the min zoom held at the saved distance for one
 --   frame (the camera cuts back out to where it was), then the saved min and max; the shoulder offset back.
 --   "One frame" is two render steps here, so the camera module reads it whatever the order of the two in a frame.
+--   While the camera is Scriptable (the duel's cake podium) it waits: Roblox's camera pushes out only once it drives.
 -- Mouse icon while on: hidden only while MouseBehavior is LockCenter, the Roblox menu is closed and the forfeit
 --   dialog is closed (setDialogOpen), so only the reticle shows at the centre and the cursor comes back when the mouse
 --   is freed.
@@ -399,8 +400,15 @@ function Machine.step(m: Machine): boolean
 	m.frame += 1
 	local r = m.restore
 	if r ~= nil and m.frame >= r.frame then
-		m.restore = nil
-		writeRestore(m, r)
+		local camera = m.env.camera()
+		if camera ~= nil and camera.CameraType == Enum.CameraType.Scriptable then
+			-- A scripted camera (the duel podium) holds the view: Roblox's camera pushes out only once it drives again
+			-- (owner bug 2026-11-09: back in first person, mouse locked)
+			r.frame = m.frame + RESTORE_STEPS
+		else
+			m.restore = nil
+			writeRestore(m, r)
+		end
 	end
 	update(m)
 	return m.mode ~= nil or m.restore ~= nil

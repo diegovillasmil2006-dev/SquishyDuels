@@ -1135,7 +1135,8 @@ return function(t: Context)
 		local problems = validateBrokenCopy(t.Shared, "Social", function(social)
 			social.Rematch.windowSeconds = 10
 		end)
-		expect.truthy(containsText(problems, "Config.Social.Rematch.windowSeconds (10) must be >= 13.5"))
+		-- 8 s Result (owner 2026-11-09: the duel podium) + 2 x 0.25 s fades + 6 s card + 3 s cooldown
+		expect.truthy(containsText(problems, "Config.Social.Rematch.windowSeconds (10) must be >= 17.5"))
 	end)
 
 	t.test("validate reports a Studio board store without _STUDIO and a board read past 100", function()

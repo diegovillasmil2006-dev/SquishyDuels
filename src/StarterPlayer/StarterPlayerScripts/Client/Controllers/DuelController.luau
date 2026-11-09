@@ -226,10 +226,15 @@ local QuestFormat = require(Client.UI.QuestFormat)
 local SideIcon = require(Client.UI.Components.SideIcon)
 local Theme = require(Client.UI.Theme)
 local Waypoint = require(Client.UI.Waypoint)
+local MatchHudFormat = require(Client.UI.MatchHudFormat)
+local MatchPodium = require(Client.UI.Match.MatchPodium)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
+local CameraController = require(script.Parent.CameraController)
 local CharacterAnimController = require(script.Parent.CharacterAnimController)
 local ControlsController = require(script.Parent.ControlsController)
+local FirstPersonController = require(script.Parent.FirstPersonController)
+local HeldSquishyController = require(script.Parent.HeldSquishyController)
 local HudController = require(script.Parent.HudController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
@@ -1430,6 +1435,136 @@ local function startPoses(outcome: string, view: StateController.DuelView)
 	end
 end
 
+-- Cake podium (owner 2026-11-09: "Same cake + party" as Team / Free for All) -----------------------------------------
+-- A won or lost duel: MatchPodium's scene in this duel's own arena clone, the winner on the cake's top with the crown,
+-- the loser on the tier below, the party (the confetti cannons on a win); after PODIUM.duelSeconds the result card.
+
+local PODIUM = Config.UI.Match.finish.podium
+local PODIUM_HIDE = "podium" -- HeldSquishyController.setHidden's reason (as MatchHudController's)
+local ARENA_SLOTS = "SD_ArenaSlots" -- ArenaService: the arena clones, attribute SD_ArenaSlot = DuelArenaView.slot
+local PODIUM_DEPS: MatchPodium.Deps = {
+	saveCamera = CameraController.save,
+	restoreCamera = function(snapshot: any)
+		-- Taken in first person, which hides the mouse; never put that back (first person hides it while it is on)
+		snapshot.mouseIconEnabled = true
+		CameraController.restore(snapshot)
+	end,
+	setHeldHidden = function(player: Player, hidden: boolean)
+		HeldSquishyController.setHidden(player, PODIUM_HIDE, hidden)
+	end,
+	gripC0 = HeldSquishyController.gripC0,
+	setAway = FirstPersonController.setAway,
+}
+local podium: MatchPodium.Podium? = nil
+local podiumStep: Scheduler.Handle? = nil
+
+local function endPodium()
+	local stepHandle, pod = podiumStep, podium
+	podiumStep, podium = nil, nil
+	if stepHandle then
+		stepHandle:disconnect()
+	end
+	if pod then
+		local ok, err = pcall(pod.destroy, pod)
+		if not ok then
+			log:warn("the duel podium did not end cleanly:", err)
+		end
+	end
+end
+
+local function onPodiumEvent(name: string, data: { [string]: any })
+	if name == "poseHit" then
+		local steps = PODIUM.poseSteps
+		local slot = math.max(0, data.slot or 0)
+		SoundController.play("match.end.poseHit", { pitch = 2 ^ (steps[slot % #steps + 1] / 12) })
+	elseif name == "mvpSlam" then
+		SoundController.play("match.end.mvpSlam")
+	elseif name == "crown" then
+		SoundController.play("match.end.crownDrop")
+	end
+end
+
+-- True when the scene started (a win or a loss of `view`'s duel, its arena clone found).
+local function startPodium(outcome: string, view: StateController.DuelView): boolean
+	endPodium()
+	if outcome ~= "win" and outcome ~= "loss" then
+		return false
+	end
+	local slots = Workspace:FindFirstChild(ARENA_SLOTS)
+	local map: Model? = nil
+	for _, clone in if slots then slots:GetChildren() else {} do
+		if clone:IsA("Model") and clone:GetAttribute("SD_ArenaSlot") == view.arena.slot then
+			map = clone
+		end
+	end
+	if map == nil then
+		return false
+	end
+	local won = outcome == "win"
+	local winner, loser = if won then view.you else view.opponent, if won then view.opponent else view.you
+	local players = { view.you, view.opponent }
+	local look = MatchHudFormat.playerLook("tdm", Config.Match.teamNames[if won then 1 else 2], nil)
+	local compact = UIController.layoutClass() == "compact"
+	local podiumView = {
+		mode = "1v1",
+		mapName = view.arena.arenaId,
+		players = { { userId = view.you.userId, displayName = view.you.displayName }, {
+			userId = view.opponent.userId,
+			displayName = view.opponent.displayName,
+		} },
+	}
+	if won then
+		local ok, err = pcall(MatchPodium.cannons, {
+			view = podiumView,
+			map = map,
+			preview = false,
+			compact = compact,
+			main = look.mid or look.faceEnd,
+			light = look.top,
+		})
+		if not ok then
+			log:warn("the duel's confetti cannons did not fire:", err)
+		end
+	end
+	local ok, made = pcall(MatchPodium.new, {
+		view = podiumView,
+		map = map,
+		lineup = { cake = true, ids = { winner.userId, loser.userId }, mvp = winner.userId },
+		who = function(userId: number): any
+			for _, p in players do
+				if p.userId == userId then
+					return { userId = userId, name = p.displayName, squishyId = p.squishyId }
+				end
+			end
+			return nil
+		end,
+		kind = if won then "victory" else "defeat",
+		preview = false,
+		compact = compact,
+		reduced = Tweens.reducedMotion(),
+		shake = StateController.settings().cameraShake ~= false,
+		look = look.top,
+		main = look.mid or look.faceEnd,
+		onEvent = onPodiumEvent,
+	}, PODIUM_DEPS)
+	if not ok or made == nil then
+		if not ok then
+			log:warn("the duel podium did not start:", made)
+		end
+		return false
+	end
+	podium = made
+	podiumStep = Scheduler.add(function(): boolean
+		local pod = podium
+		if pod == nil then
+			return false
+		end
+		pod:step(os.clock())
+		return true
+	end, "render")
+	return true
+end
+
 -- Result panel -------------------------------------------------------------------------------------------------------
 
 local function closeResult()
@@ -1438,6 +1573,7 @@ local function closeResult()
 	if waiting and waiting ~= coroutine.running() then
 		task.cancel(waiting)
 	end
+	endPodium()
 	local panel = resultPanel
 	if panel then
 		resultPanel = nil
@@ -2097,8 +2233,10 @@ local function showResult(payload: Types.DuelResultPayload)
 	closeResult()
 	local model = DuelFormat.result(payload, QuestFormat.namer(StateController.get(QUESTS_FIELD)))
 	local view = StateController.duel()
+	local podiumOn = false
 	if view and view.matchId == payload.matchId then
 		startPoses(model.outcome, view)
+		podiumOn = startPodium(model.outcome, view)
 	end
 	-- Batch 3: who the card may offer a rematch with (never the Studio test dummy).
 	local opponent = if view
@@ -2109,12 +2247,16 @@ local function showResult(payload: Types.DuelResultPayload)
 	-- Foam fix 2: the eliminator's "K.O.!" banner (SD_Vfx, drawn over SD_Modal) ends first, so it never sits on the
 	-- card's title (the impact that set it arrives before DuelResult).
 	local wait = DuelFormat.resultWait(VfxController.koBannerUntil(), os.clock(), LAYOUT.RESULT_WAIT_MAX)
+	if podiumOn then
+		wait = math.max(wait, PODIUM.duelSeconds) -- the cake podium first, then the card
+	end
 	if wait <= 0 then
 		openResult(model, opponent)
 		return
 	end
 	resultWait = task.delay(wait, function()
 		resultWait = nil
+		endPodium()
 		openResult(model, opponent)
 	end)
 end
@@ -2724,6 +2866,7 @@ local function endMatch()
 	telegraphUntil = nil
 	setResetCallback(false)
 	liftFade()
+	endPodium() -- never past the arena (the card waits for it inside the Result phase)
 	local panel = resultPanel
 	if panel then
 		resultAfterReturn(panel)

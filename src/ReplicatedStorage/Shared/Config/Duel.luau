@@ -17,7 +17,7 @@ local Duel = {
 		FoundHoldSeconds = 4,
 		PositioningTimeoutSeconds = 5,
 		CountdownSeconds = 3, -- frozen, no throws
-		ResultSeconds = 4, -- result shown in the arena before return
+		ResultSeconds = 8, -- result shown in the arena before return (was 4; owner 2026-11-09: the cake podium plays first)
 		HitInvulnSeconds = 1.5, -- victim can't be hit (projectiles pass through) but can throw
 		OutOfBoundsInvulnSeconds = 1.0,
 		-- Rounds (2026-11-01, owner "Yes: reset + 3-2-1"): a hit that is not the last ends the round: both freeze and

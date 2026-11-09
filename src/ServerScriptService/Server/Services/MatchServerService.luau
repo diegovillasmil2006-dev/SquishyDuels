@@ -13,7 +13,8 @@
 --   each player's own ticket names the lobby server they came from. Once every ticket player is in with a character
 --   (or waitSeconds after the first arrived), settleSeconds later it starts: a Team / Free for All match by putting
 --   them all in this server's own queue (MatchService: MATCH FOUND, the map vote, the bots, as in a lobby), a 1v1
---   through QueueService.startHosted (on the ticket's map, if it names one). When nobody here has a match (SD_MatchId)
+--   through QueueService.startHosted (on the ticket's map, if it names one), a 1v1 ticket of one player against a new
+--   practice bot (BotService.startHostedAsync, owner 2026-11-09). When nobody here has a match (SD_MatchId)
 --   for homeAfterSeconds (the end screen, a Rematch), everyone goes home.
 -- * goHome(player, requeue?) (owner 2026-11-01: "if they hit go back to lobby again, they teleport to the main lobby
 --   where all of the squishies and pens are"): the end screen's LOBBY, the 1v1 result's X, Play Again and Queue Again
@@ -143,6 +144,16 @@ local function startHosted(t: MatchTicket.Ticket, players: { Player })
 	if t.kind == "duel" then
 		local ArenaService = require(script.Parent.ArenaService) :: any
 		local QueueService = require(script.Parent.QueueService) :: any
+		if #t.players == 1 and #players == 1 then
+			-- A lone player's duel against the practice bot (a lobby's BotService sent them, owner 2026-11-09)
+			local BotService = require(script.Parent.BotService) :: any
+			local ok, result = pcall(BotService.startHostedAsync, players[1])
+			if not ok or not result then
+				log:error(`1v1 {t.matchId} against the bot could not start:`, result)
+				sendHome()
+			end
+			return
+		end
 		if #players < 2 then
 			log:warn(`1v1 {t.matchId}: the opponent never arrived`)
 			sendHome()

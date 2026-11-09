@@ -675,4 +675,26 @@ return function(t: Context)
 		expect.equal(QueueService.state(p1), "Searching")
 		expect.equal(QueueService.searchingCount(), 1)
 	end)
+
+	-- Bot duels in their own server (owner 2026-11-09): a live lobby's BotService takes the lone ticket, then teleports.
+	t.test("takeLone: only the one Searching player; the ticket goes quietly and no duel starts here", function()
+		local w = setup(2)
+		local p1, p2 = w.players[1], w.players[2]
+		expect.equal((QueueService.takeLone(p1)), false) -- not Searching
+		join(w, 1)
+		join(w, 2)
+		expect.equal((QueueService.takeLone(p1)), false) -- a real player is waiting too: they pair instead
+		expect.equal(QueueService.state(p1), "Searching")
+		QueueService.leave(p2)
+		w.flags.restart = true
+		expect.equal((QueueService.takeLone(p1)), false) -- the queue may not start matches
+		expect.equal(QueueService.state(p1), "Searching")
+		w.flags.restart = false
+		local ok, why = QueueService.takeLone(p1)
+		expect.equal(ok, true)
+		expect.equal(why, nil)
+		expect.equal(QueueService.state(p1), "Idle")
+		expect.equal(QueueService.searchingCount(), 0)
+		expect.equal(#w.started, 0)
+	end)
 end

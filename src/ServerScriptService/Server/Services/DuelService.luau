@@ -585,7 +585,7 @@ local function sendDuelState(match: Match)
 	end
 end
 
--- The 1v1 map vote: its view to each real player ({} when the vote ends without a result: the show fades out).
+-- The 1v1 map vote: its view to each real player ({} once the duel closes: the client's vote view ends).
 local function sendVote(match: Match, over: boolean?)
 	local vote = match.vote
 	if vote == nil then
@@ -703,10 +703,9 @@ local function closeMatch(match: Match)
 	end
 	match.closed = true
 	local matchId = match.matchId
-	local vote = match.vote
-	if vote and vote.result == nil then
-		sendVote(match, true) -- ended during the vote (a leave, a forfeit): the show fades out
-	end
+	-- {} ends the client's vote view, which locks the lobby (hides the HUD) while it has an id; ended during the vote
+	-- (a leave, a forfeit), the show fades out. Like MatchService, which sends {} once its match starts.
+	sendVote(match, true)
 	try(CombatService.unregisterMatch, matchId)
 	try(AbilityService.detachMatch, matchId)
 	local slot = match.slot

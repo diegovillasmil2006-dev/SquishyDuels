@@ -96,6 +96,7 @@ export type Deps = {
 
 export type Spec = {
 	view: any, -- the Result freeze
+	map: Model?, -- owner 2026-11-09: a duel's own arena clone (DuelController); nil = view.mapName's map
 	lineup: Lineup,
 	who: (userId: number) -> any, -- MatchKit.who
 	kind: string, -- MatchEnd's Result kind: "victory" | "defeat" | "draw"
@@ -109,7 +110,7 @@ export type Spec = {
 }
 
 -- Round B2: the cannons at the "!".
-export type CannonSpec = { view: any, preview: boolean, compact: boolean, main: Color3, light: Color3 }
+export type CannonSpec = { view: any, map: Model?, preview: boolean, compact: boolean, main: Color3, light: Color3 }
 
 export type Shots = { ticks: { number }, kickAt: number?, strong: boolean }
 
@@ -801,7 +802,7 @@ end
 
 -- Round B2 (E:93-105): the confetti cannons at the "!" (header), round the map's centre in the map's own turn.
 function MatchPodium.cannons(spec: CannonSpec)
-	local map = findMap(spec.view, spec.preview)
+	local map = spec.map or findMap(spec.view, spec.preview)
 	if map == nil then
 		return
 	end
@@ -838,7 +839,7 @@ end
 function MatchPodium.new(spec: Spec, deps: Deps): Podium?
 	local view = spec.view
 	local lineup = spec.lineup
-	local map = findMap(view, spec.preview)
+	local map = spec.map or findMap(view, spec.preview)
 	if map == nil then
 		log:warn(`no map {tostring(view.mapName)}: the podium is skipped`)
 		return nil

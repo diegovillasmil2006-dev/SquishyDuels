@@ -7,7 +7,8 @@
 --   shutdown or restart is pending, that player's lone-wait timer runs (BotRules.watch: a random fillDelay, 8-10 s).
 --   When it is due a bot is built and QueueService.startWithBot starts the duel; startWithBot refuses unless the
 --   player is still the only one Searching, so a real player who queues first always takes the spot (QueueService pairs
---   two tickets at once). One fill at a time.
+--   two tickets at once). One fill at a time. A live lobby (MatchServerService.canSend, owner 2026-11-09 "Bot duels
+--   too") sends that player to a new server instead (a 1v1 ticket of one player), whose startHostedAsync builds the bot.
 -- * The bot is a Player-shaped table (kind "bot", like TestHarness's Studio dummy): a random UserId of -200001 or below
 --   (never a real player's, a Studio test player's -1, -2, ... or a dummy's -100001, ...), a random real-looking name
 --   (BotRules.name from the Strings.bot word lists), a random catalog squishy each duel, Character = a plain Roblox
@@ -33,6 +34,7 @@
 
 -- Services
 
+local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local PathfindingService = game:GetService("PathfindingService")
 local PhysicsService = game:GetService("PhysicsService")
@@ -56,6 +58,8 @@ local CharacterService = require(script.Parent.CharacterService)
 local CombatService = require(script.Parent.CombatService)
 local DashService = require(script.Parent.DashService)
 local DuelService = require(script.Parent.DuelService)
+local MatchServerService = require(script.Parent.MatchServerService)
+local NetService = require(script.Parent.NetService)
 local QueueService = require(script.Parent.QueueService)
 local ShutdownService = require(script.Parent.ShutdownService)
 local WorldService = require(script.Parent.WorldService)
@@ -105,6 +109,7 @@ local BOTS = Config.Duel.Bots
 local DASH = Config.Duel.Rules.Dash
 local WALK_SPEED = Config.Duel.Rules.Movement.WalkSpeed
 local FOLDER_NAME = "SD_Bots"
+local CODE_JOIN_FAILED = "match.joinFailed" -- the trip to the bot's own server failed (as GlobalQueueService's)
 local ROOT_PART = "HumanoidRootPart"
 local USER_ID_MIN, USER_ID_MAX = 200001, 999999999 -- bots are -200001 .. -999999999
 local HOLD_CFRAME = CFrame.new(0, 1000, 0) -- out of sight until DuelService teleports it to its pad
@@ -581,31 +586,53 @@ local function canFill(): boolean
 		and QueueService.counts().arenasFree > 0
 end
 
-local function fillAsync(player: Player)
+-- `hosted`: a match server's lone player (startHostedAsync) instead of the lobby queue's lone waiter. True when the
+-- duel started.
+local function fillAsync(player: Player, hosted: boolean?): boolean
 	local rig = buildRigAsync()
 	if rig == nil then
-		return
+		return false
 	end
 	local folder = getFolder()
 	local bot = makeBot(rig, folder)
 	table.insert(bots, bot)
 	local okSetup, setupError = pcall(setupRig :: any, bot, rig, folder)
-	if not okSetup or loneWaiter() ~= player or not canFill() then
+	if not okSetup or (not hosted and (loneWaiter() ~= player or not canFill())) then
 		destroyBot(bot) -- a real player came first (or the player left) while the character loaded
 		if not okSetup then
 			log:error("setting up the bot's character failed:", setupError)
 		end
-		return
+		return false
 	end
-	local ok, why = QueueService.startWithBot(player, bot)
+	local ok, why
+	if hosted then
+		ok, why = QueueService.startHosted(player, bot, true)
+	else
+		ok, why = QueueService.startWithBot(player, bot)
+	end
 	if not ok then
 		destroyBot(bot)
 		log:info(`no bot duel for user {player.UserId}: {tostring(why)}`)
-		return
+		return false
 	end
 	bot.opponent = player
 	log:info(`bot {bot.userId} ({bot.squishyId}) fills the duel of user {player.UserId}`)
 	task.spawn(pilot, bot)
+	return true
+end
+
+-- A live lobby (owner 2026-11-09, "Bot duels too"): the lone waiter goes to a new server of this game with a 1v1
+-- ticket of one player, where MatchServerService has this module give them the bot (startHostedAsync).
+local function sendAway(player: Player)
+	local ok, why = QueueService.takeLone(player)
+	if not ok then
+		log:info(`no bot server for user {player.UserId}: {tostring(why)}`)
+		return
+	end
+	local serverId = HttpService:GenerateGUID(false)
+	if not MatchServerService.sendTo(serverId, "1v1", serverId, { player.UserId }, { player }) then
+		NetService.notify(player, CODE_JOIN_FAILED, nil, "warn")
+	end
 end
 
 -- One fill check (every checkSeconds).
@@ -619,12 +646,23 @@ local function check()
 	watch = nil
 	filling = true
 	task.spawn(function()
-		local ok, err = pcall(fillAsync :: any, waiter)
+		local ok, err = pcall(if MatchServerService.canSend() then sendAway else fillAsync :: any, waiter)
 		if not ok then
 			log:error("filling a duel with a bot failed:", err)
 		end
 		filling = false
 	end)
+end
+
+-- Public: a match server's practice bot (owner 2026-11-09, "Bot duels too") -------------------------------------------
+
+-- MatchServerService: `player` came alone with a 1v1 ticket (sendAway); their duel against a new bot starts here, with
+-- the MATCH FOUND show and the vote. Yields while the bot's character loads. True when the duel started.
+function BotService.startHostedAsync(player: Player): boolean
+	if not enabled or closed then
+		return false
+	end
+	return fillAsync(player, true)
 end
 
 -- Public: the match bots' kit (MatchBotService, 2026-10-17) ------------------------------------------------------------

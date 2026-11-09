@@ -253,6 +253,23 @@ return function(t: Context)
 		expect.deepEqual(r.shoulder, { true, false })
 	end)
 
+	-- Owner bug 2026-11-09 ("the mouse cursor disappears"): a scripted camera over the exit (the duel's cake podium)
+	-- kept Roblox's camera from pushing out, so it came back in first person with the mouse locked.
+	t.test("a scripted camera over the exit holds the push-out until Roblox's camera drives again", function()
+		local r = rig()
+		Machine.setPhase(r.m, "Active")
+		r.step(2)
+		r.camera.CameraType = Enum.CameraType.Scriptable -- the podium takes the camera
+		Machine.setPhase(r.m, "Cancelled")
+		r.step(10)
+		expect.near(r.player.CameraMinZoomDistance, DISTANCE, 1e-4) -- held while the camera is scripted
+		r.camera.CameraType = Enum.CameraType.Custom
+		r.step(1)
+		expect.near(r.player.CameraMinZoomDistance, DISTANCE, 1e-4) -- a frame for Roblox's camera to push out
+		r.step(1)
+		expect.equal(r.player.CameraMinZoomDistance, SAVED_MIN)
+	end)
+
 	t.test("ReducedMotion: entry cuts in with the max zoom at 0.5 for one frame", function()
 		local r = rig(true)
 		Machine.setPhase(r.m, "Countdown")

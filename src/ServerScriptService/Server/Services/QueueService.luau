@@ -1038,24 +1038,35 @@ function QueueService.startDirect(a: any, b: any): (boolean, any)
 	return true, match
 end
 
--- Practice bot (2026-10-16, BotService): starts `player`'s duel against `bot` when `player` is the only ticket and the
--- queue may start matches (as pairOnce: open, not closing, no restart pending). Returns (true, match) with the player
--- Matched (status sent), or (false, why) with the ticket left as it was.
-function QueueService.startWithBot(player: any, bot: any): (boolean, any)
+-- `player`'s ticket when it is the only one and the queue may start matches (as pairOnce: open, not closing, no restart
+-- pending), out of the queue shared by every server; else (nil, why) with the ticket left as it was.
+local function loneTicket(player: any): (any, string?)
 	local d = getDeps()
 	local record = records[player]
 	if record == nil or record.state ~= "Searching" or #queue ~= 1 then
-		return false, "notAlone"
+		return nil, "notAlone"
 	end
 	if closed or not accepting or d.closing() or d.restartPending() then
-		return false, CODE_UNAVAILABLE
+		return nil, CODE_UNAVAILABLE
 	end
 	-- The queue shared by every server (2026-11-01): out of it first (yields); a player another server's match already
 	-- claimed keeps the ticket and goes there.
 	if not GlobalQueueService.cancel(player) then
-		return false, "matchedElsewhere"
+		return nil, "matchedElsewhere"
 	elseif record.state ~= "Searching" or records[player] ~= record then
-		return false, "notAlone"
+		return nil, "notAlone"
+	end
+	return record, nil
+end
+
+-- Practice bot (2026-10-16, BotService): starts `player`'s duel against `bot` when `player` is the only ticket
+-- (loneTicket). Returns (true, match) with the player Matched (status sent), or (false, why) with the ticket left as it
+-- was.
+function QueueService.startWithBot(player: any, bot: any): (boolean, any)
+	local d = getDeps()
+	local record, why = loneTicket(player)
+	if record == nil then
+		return false, why
 	end
 	local ok, match = startMatchWith(player, bot, true)
 	if not ok then
@@ -1066,6 +1077,18 @@ function QueueService.startWithBot(player: any, bot: any): (boolean, any)
 	end
 	markMatched(player, bot, match, d.now())
 	return true, match
+end
+
+-- Practice bot in a live lobby (owner 2026-11-09, "Bot duels too"): `player`'s ticket, when it is the only one
+-- (loneTicket), goes quietly so BotService can send them to their own server. Returns (true) or (false, why) with the
+-- ticket left as it was.
+function QueueService.takeLone(player: any): (boolean, string?)
+	local record, why = loneTicket(player)
+	if record == nil then
+		return false, why
+	end
+	dropTicket(record, nil, nil, nil)
+	return true, nil
 end
 
 -- The queue shared by every server (2026-11-01, GlobalQueueService) matched `player`: the ticket goes quietly (they
