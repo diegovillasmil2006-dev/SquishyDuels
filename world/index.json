@@ -18,6 +18,12 @@
 		"container": "ReplicatedStorage"
 	},
 	{
+		"file": "ReplicatedStorage/SD_Models.rbxm",
+		"class": "Folder",
+		"name": "SD_Models",
+		"container": "ReplicatedStorage"
+	},
+	{
 		"file": "ReplicatedStorage/SD_MoveVfx.rbxm",
 		"class": "Folder",
 		"name": "SD_MoveVfx",
@@ -81,12 +87,6 @@
 		"file": "ServerStorage/SD_MeshLibrary.rbxm",
 		"class": "Model",
 		"name": "SD_MeshLibrary",
-		"container": "ServerStorage"
-	},
-	{
-		"file": "ServerStorage/SD_ModelsTest.rbxm",
-		"class": "Folder",
-		"name": "SD_ModelsTest",
 		"container": "ServerStorage"
 	},
 	{
