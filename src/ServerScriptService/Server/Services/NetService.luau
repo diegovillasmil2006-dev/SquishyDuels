@@ -448,9 +448,22 @@ local function toResult(player: Player, value: any): Result
 	return { ok = true, v = versionOf(player), data = value }
 end
 
+-- The emergency switches' gate (big job item 3, 2026-11-10; Services/SwitchService sets it in its init): asked before
+-- every handler, after the guard. A refused RemoteFunction answers gateReason; a refused RemoteEvent has no reply, so
+-- gateRefused(player) tells the player (rate-limited there). No gate = every request passes, as before.
+local gate: ((name: string) -> boolean)? = nil
+local gateRefused: ((player: Player) -> ())? = nil
+local gateReason = "error.generic"
+
 local function handleEvent(name: string, argCount: number, player: Player, n: number, ...: any)
 	local verdict, args = getGuard():check(player, name, n, ...)
 	if verdict ~= "ok" or args == nil then
+		return
+	end
+	if gate and not gate(name) then
+		if gateRefused then
+			gateRefused(player)
+		end
 		return
 	end
 	local handler = eventHandlers[name]
@@ -481,6 +494,9 @@ local function handleInvoke(
 		return errorResult(player, REASON_RATE_LIMITED)
 	elseif verdict ~= "ok" or args == nil then
 		return errorResult(player, REASON_INVALID)
+	end
+	if gate and not gate(name) then
+		return errorResult(player, gateReason)
 	end
 	local handler = invokeHandlers[name]
 	if handler == nil then
@@ -597,6 +613,15 @@ function NetService.err(reason: string, charged: boolean?): any
 end
 
 -- StateService (Part 5) provides the per-player state version used as Result.v. Until then v = 0.
+-- The emergency switches' gate (see handleEvent): `allows(remoteName)` false refuses that request; nil removes it.
+function NetService.setGate(
+	allows: ((name: string) -> boolean)?,
+	onRefused: ((player: Player) -> ())?,
+	reason: string?
+)
+	gate, gateRefused, gateReason = allows, onRefused, reason or REASON_GENERIC
+end
+
 function NetService.setVersionProvider(provider: ((player: Player) -> number)?)
 	versionProvider = provider
 end

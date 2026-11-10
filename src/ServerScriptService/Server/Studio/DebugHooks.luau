@@ -288,6 +288,23 @@ local function setAccepting(on: unknown): Reply
 	return { ok = true }
 end
 
+-- Big job item 3 (2026-11-10): an emergency switch on this Studio server only (SwitchService.debugSet: ConfigService's
+-- testing value). SD_DebugServer:Invoke("switch", "boxes", false) closes box openings; on = nil clears the override;
+-- no feature = only the state. Inline require: SwitchService is a higher layer than most of this file's services.
+local function switch(feature: unknown, on: unknown): Reply
+	local SwitchService = require(script.Parent.Parent.Services.SwitchService)
+	if feature ~= nil then
+		if type(feature) ~= "string" or (on ~= nil and type(on) ~= "boolean") then
+			return { ok = false, error = "switch needs a feature name and true, false or nil" }
+		end
+		local ok, err = SwitchService.debugSet(feature, on :: boolean?)
+		if not ok then
+			return { ok = false, error = err }
+		end
+	end
+	return { ok = true, state = SwitchService.debugState() }
+end
+
 local function dummyThrows(on: unknown): Reply
 	if type(on) ~= "boolean" then
 		return { ok = false, error = "dummyThrows needs true or false" }
@@ -584,6 +601,7 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 	forceArena = forceArena,
 	scenario = scenario,
 	setAccepting = setAccepting,
+	switch = switch,
 	dummyThrows = dummyThrows,
 	queue = function(): Reply
 		return { ok = true, queue = QueueService.debugState() }

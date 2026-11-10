@@ -79,6 +79,10 @@ local Strings = {
 			rateLimited = "You're doing that too fast. Please wait a moment.",
 			invalid = "That request wasn't valid. Please try again.",
 		},
+		-- Big job item 3 (2026-11-10): an emergency switch closed this feature (Config.Switches).
+		feature = {
+			off = "This is closed for a moment while we fix something. Try again soon!",
+		},
 		data = {
 			notReady = "Coins are paused because your data didn't load. Please rejoin.",
 			offline = "Your progress couldn't load, so this is turned off for now.",

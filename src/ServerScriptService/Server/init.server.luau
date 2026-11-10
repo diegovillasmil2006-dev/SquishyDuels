@@ -48,6 +48,7 @@ type Module = {
 local SERVICE_ORDER = {
 	"MonetizationService",
 	"NetService",
+	"SwitchService", -- 2026-11-10: the emergency switches (sets NetService's gate at init, reads ConfigService)
 	"ShutdownService",
 	"DataService",
 	"StateService",
