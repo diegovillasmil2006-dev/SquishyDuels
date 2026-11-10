@@ -156,7 +156,7 @@ return function(t: Context)
 		expect.truthy(bp ~= nil)
 		expect.equal(bp.meshModel, "box_frosty")
 		expect.near(bp.nodes.hinge.pos.Y, 0.226 * 1.3 / 0.28, 1e-3)
-		expect.equal(bp.top, bp.nodes.hinge.pos.Y)
+		expect.near(bp.top, bp.nodes.hinge.pos.Y, 1e-5) -- a Vector3 keeps 32-bit numbers
 		local built = BoxBuilder.build(bp, 1)
 		local source = game:GetService("ReplicatedStorage").SD_Models.box_frosty
 		for _, name in { "Base", "BaseOutline", "Glow", "Lid", "LidOutline" } do
