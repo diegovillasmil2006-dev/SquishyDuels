@@ -519,6 +519,12 @@ local function flyCoins(from: CoinFlight.Source, amount: number, count: number?)
 		-- UI FINAL R2: each landing a semitone higher (the design's coin(i), lib:145; plan §2.2; PR8 batches them).
 		SoundController.play(COIN_SOUND, { pitch = SoundController.coinPitch(i) })
 		landing(i >= k)
+		-- Big job 2026-11-10 (the owner: effects "more attractive to kids"): the last coin of a flight is the payoff,
+		-- so the counter gets the candy pop (a white core flash, a ring, chunky gold stars). Flights only: the pen's
+		-- every-second pay keeps its small sparks (small prizes stay small).
+		if i >= k and require(Shared.Config.JoyFx).enabled then
+			UiFx.burst(anchor, "small", nil, { glow = false })
+		end
 	end, options)
 	if ok then
 		cancelPendingGain() -- the coins show the held gain coin by coin

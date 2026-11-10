@@ -26,8 +26,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local AssetTable = require(Shared.AssetTable)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
+local JoyFx = require(Shared.Config.JoyFx)
 local Palette = require(Shared.Art.Palette)
 local Types = require(Shared.Types)
 
@@ -115,6 +117,98 @@ local function particleProps(color: Color3, speed: NumberRange?): FxPool.Props
 	}
 end
 
+-- The candy look (big job 2026-11-10, Config.JoyFx.squeeze): the squeeze's world particles are the candy kit's
+-- pictures at a size that reads from the third-person camera (the old plain puffs were 0.15 studs: invisible).
+local JOY = JoyFx.squeeze
+local WHITE = Color3.new(1, 1, 1)
+
+local function seq(rows: { { number } }): NumberSequence
+	local keys = {}
+	for _, row in rows do
+		table.insert(keys, NumberSequenceKeypoint.new(row[1], row[2]))
+	end
+	return NumberSequence.new(keys)
+end
+
+local function span(pair: { number }): NumberRange
+	return NumberRange.new(pair[1], pair[2])
+end
+
+local function puffProps(color: Color3): FxPool.Props
+	local p = JOY.puff
+	return {
+		Texture = AssetTable.image("img.kit.puff") or Config.Vfx.Textures.smoke,
+		Color = ColorSequence.new(color:Lerp(WHITE, p.tintToWhite)),
+		Size = seq(p.size),
+		Transparency = seq(p.transparency),
+		Lifetime = span(p.lifetime),
+		Speed = span(p.speed),
+		SpreadAngle = Vector2.new(p.spreadDeg, p.spreadDeg),
+		Drag = p.drag,
+		Rotation = NumberRange.new(0, 360),
+		RotSpeed = NumberRange.new(-p.rotSpeed, p.rotSpeed),
+		LightInfluence = 0,
+		ZOffset = JOY.zOffset,
+	}
+end
+
+local STAR_PROPS: FxPool.Props = {
+	Texture = AssetTable.image("img.kit.starGold") or Config.Vfx.Textures.sparkles,
+	Color = ColorSequence.new(WHITE),
+	Size = seq(JOY.star.size),
+	Lifetime = span(JOY.star.lifetime),
+	Speed = span(JOY.star.speed),
+	SpreadAngle = Vector2.new(JOY.star.spreadDeg, JOY.star.spreadDeg),
+	Drag = JOY.star.drag,
+	Acceleration = Vector3.new(0, JOY.star.gravity, 0),
+	Rotation = NumberRange.new(0, 360),
+	RotSpeed = NumberRange.new(-JOY.star.rotSpeed, JOY.star.rotSpeed),
+	LightInfluence = 0,
+	ZOffset = JOY.zOffset,
+}
+local POP_PROPS: FxPool.Props = {
+	Texture = AssetTable.image("img.kit.sparkle") or Config.Vfx.Textures.sparkles,
+	Color = ColorSequence.new(WHITE),
+	Size = seq(JOY.pop.size),
+	Lifetime = span(JOY.pop.lifetime),
+	Speed = span(JOY.pop.speed),
+	SpreadAngle = Vector2.new(JOY.pop.spreadDeg, JOY.pop.spreadDeg),
+	Rotation = NumberRange.new(0, 90),
+	LightEmission = JOY.pop.lightEmission,
+	LightInfluence = 0,
+	ZOffset = JOY.zOffset,
+}
+local HEART = JOY.bigPop.heart
+local HEART_PROPS: FxPool.Props = {
+	Texture = AssetTable.image("img.kit.heart") or Config.Vfx.Textures.sparkles,
+	Color = ColorSequence.new(WHITE),
+	Size = seq(HEART.size),
+	Lifetime = span(HEART.lifetime),
+	Speed = span(HEART.speed),
+	SpreadAngle = Vector2.new(HEART.spreadDeg, HEART.spreadDeg),
+	Drag = HEART.drag,
+	Acceleration = Vector3.new(0, HEART.gravity, 0),
+	Rotation = NumberRange.new(-HEART.rotation, HEART.rotation),
+	RotSpeed = NumberRange.new(-HEART.rotSpeed, HEART.rotSpeed),
+	LightInfluence = 0,
+	ZOffset = JOY.zOffset,
+}
+
+-- The peak burst in the world: candy puffs in a light tint of the squishy and gold stars flying up and out, `count`
+-- pieces in all (the same count as before); the old plain puffs while Config.JoyFx is off.
+local function worldPuffs(at: Vector3, count: number, color: Color3)
+	local pool = FxPool.default()
+	if not JoyFx.enabled then
+		pool:emit(at, count, particleProps(color))
+		return
+	end
+	local stars = math.floor(count * JOY.starShare)
+	pool:emit(at, count - stars, puffProps(color))
+	if stars > 0 then
+		pool:emit(at, stars, STAR_PROPS)
+	end
+end
+
 local function isOwn(state: Active): boolean
 	return not state.other and state.player == Players.LocalPlayer
 end
@@ -127,7 +221,7 @@ end
 local function emitPuffs(state: Active, now: number)
 	if state.particles > 0 and state.model.Parent ~= nil then
 		if not toMirror(state, "puffs", state.particles, state.particleColor) then
-			FxPool.default():emit(state.model:GetPivot().Position, state.particles, particleProps(state.particleColor))
+			worldPuffs(state.model:GetPivot().Position, state.particles, state.particleColor)
 		end
 		if isOwn(state) then
 			lastOwnPuffsAt = now
@@ -182,15 +276,25 @@ local function emitPop(state: Active, sparkles: number, bigPop: boolean)
 	end
 	local at = state.model:GetPivot().Position
 	if sparkles > 0 and not toMirror(state, "sparkles", sparkles, state.particleColor) then
-		local p = RELEASE_POP
-		FxPool.default():emit(at, sparkles, {
-			Texture = Config.Vfx.Textures.sparkles,
-			Lifetime = NumberRange.new(p.lifetimeMin, p.lifetimeMax),
-			Size = NumberSequence.new(p.sizeFrom, p.sizeTo),
-			Speed = NumberRange.new(p.speedMin, p.speedMax),
-			SpreadAngle = Vector2.new(SQUEEZE.particles.spreadDeg, SQUEEZE.particles.spreadDeg),
-			Color = ColorSequence.new(state.particleColor),
-		})
+		local pool = FxPool.default()
+		if JoyFx.enabled then
+			-- White twinkles; the big pop (a bigger prize) adds a layer: hearts floating up and more stars.
+			pool:emit(at, sparkles, POP_PROPS)
+			if bigPop then
+				pool:emit(at, JOY.bigPop.hearts, HEART_PROPS)
+				pool:emit(at, JOY.bigPop.stars, STAR_PROPS)
+			end
+		else
+			local p = RELEASE_POP
+			pool:emit(at, sparkles, {
+				Texture = Config.Vfx.Textures.sparkles,
+				Lifetime = NumberRange.new(p.lifetimeMin, p.lifetimeMax),
+				Size = NumberSequence.new(p.sizeFrom, p.sizeTo),
+				Speed = NumberRange.new(p.speedMin, p.speedMax),
+				SpreadAngle = Vector2.new(SQUEEZE.particles.spreadDeg, SQUEEZE.particles.spreadDeg),
+				Color = ColorSequence.new(state.particleColor),
+			})
+		end
 	end
 	if bigPop then
 		SoundController.play(SOUND_POP, { at = at, priority = OWN_SOUND_PRIORITY })
@@ -223,7 +327,7 @@ local function mergeInterrupted(state: Active, now: number)
 	if fx.puffs > 0 then
 		state.emitted = true
 		if not toMirror(state, "puffs", fx.puffs, state.particleColor) then
-			FxPool.default():emit(state.model:GetPivot().Position, fx.puffs, particleProps(state.particleColor))
+			worldPuffs(state.model:GetPivot().Position, fx.puffs, state.particleColor)
 		end
 		lastOwnPuffsAt = now
 	end

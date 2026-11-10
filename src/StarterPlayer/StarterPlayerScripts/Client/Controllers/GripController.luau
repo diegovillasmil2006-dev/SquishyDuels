@@ -1299,6 +1299,21 @@ local function pulseRow()
 	end, "render")
 end
 
+-- Big job 2026-11-10 (Config.JoyFx.moments; the owner: effects "more attractive to kids"): the level-up's burst round
+-- the own character at the show's main cue: a gold ring, stars and confetti from the feet (a rank unlock adds hearts
+-- and a second wave). Inline requires: neither module requires this one back.
+local function levelBurst(unlock: boolean)
+	local JoyFx = require(Shared.Config.JoyFx)
+	local player = Players.LocalPlayer
+	local character = player and player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not JoyFx.enabled or character == nil or root == nil or not root:IsA("BasePart") or Tweens.reducedMotion() then
+		return
+	end
+	local actor = require(script.Parent.MoveFxController).actorFor(player, character, root)
+	require(Client.Anim.FeelFx).play(JoyFx.moments[if unlock then "levelUpUnlock" else "levelUp"], actor, JoyFx)
+end
+
 local function playShow(show: LevelUpShow.Pending)
 	shownShow = show
 	lastShowAt = os.clock()
@@ -1325,6 +1340,8 @@ local function playShow(show: LevelUpShow.Pending)
 			end
 			if cue == "arrive" then
 				pulseRow()
+			elseif cue == "main" then
+				levelBurst(show.unlock ~= nil)
 			end
 		end,
 		onDone = function()

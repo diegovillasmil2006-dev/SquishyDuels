@@ -444,6 +444,11 @@ local function claim()
 			for _, ring in CLAIM_FX.rings do
 				UiFx.ring(at, UiFx.colors({ ring.color })[1], ring.size)
 			end
+			-- Big job 2026-11-10 (the owner: effects "more attractive to kids"): a daily reward is a real prize, so the
+			-- candy burst joins in: its white core flash, chunky gold stars and confetti (UiFx tier "medium").
+			if require(Shared.Config.JoyFx).enabled then
+				UiFx.burst(at, "medium", nil, { glow = false })
+			end
 		end
 		local data = if type(result.data) == "table" then result.data else {}
 		local coins = if type(data.coins) == "number" then math.floor(data.coins) else 0

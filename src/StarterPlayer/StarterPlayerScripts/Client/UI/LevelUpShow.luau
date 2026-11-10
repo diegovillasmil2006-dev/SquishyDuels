@@ -548,6 +548,11 @@ function LevelUpShow.play(spec: Spec)
 			local sparks = table.clone(FX.sparks) :: any
 			sparks.colors = UiFx.colors(FX.sparks.colors)
 			UiFx.sparks(fly, sparks)
+			-- Big job 2026-11-10 (the owner: effects "more attractive to kids"): the candy burst round the badge, its
+			-- white core flash, chunky stars and confetti; a rank unlock is the bigger prize: a tier up, with hearts.
+			if require(Shared.Config.JoyFx).enabled then
+				UiFx.burst(fly, if spec.unlock then "large" else "medium", Palette.CandyGold, { glow = false })
+			end
 			UiFx.jolt(centre, FX.jolt)
 		end
 	end

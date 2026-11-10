@@ -151,6 +151,8 @@ local WorldLayout = require(Shared.World.WorldLayout)
 
 local Client = script.Parent.Parent
 local AmbientMath = require(Client.Anim.AmbientMath)
+local FxPool = require(Client.Anim.FxPool)
+local JoyFx = require(Shared.Config.JoyFx)
 local MeshQuality = require(Client.Anim.MeshQuality)
 local Scheduler = require(Client.Anim.Scheduler)
 local Timeline = require(Client.Anim.Timeline)
@@ -352,6 +354,9 @@ local pendingReq: PenFormat.Pending? = nil -- the request a BuyFood / Feed press
 local pendingTap: { input: InputObject, from: Vector3, at: number, index: number, look: PenMath.Look }? = nil
 local shadows = true -- owner 2026-10-17: the pen models cast shadows (refreshShadows)
 local qualityWatch: RBXScriptConnection? = nil -- the graphics level's signal (start)
+-- Big job 2026-11-10 (Config.JoyFx.penCoin): the Coins shown when the pen last paid, and when its coins last hopped.
+local hopCoinsFrom: number? = nil
+local lastCoinHopAt = -math.huge
 
 local function rnd(): number
 	return random:NextNumber()
@@ -832,6 +837,72 @@ local function stepSquishes()
 		else
 			w.model:ScaleTo(squish.scale * (1 - VISITS.squishDepth * math.sin(math.pi * t / VISITS.squishSeconds)))
 		end
+	end
+end
+
+-- Big job 2026-11-10 (the owner: effects "more attractive to kids"; vault "Collectible Pickup FX"): when the own
+-- Coins go up, a coin hops out of every squishy of the own pen (walkers and shelf) and drops back, at most once every
+-- penCoin.everySeconds: the pen's pay reads in the world, not only on the counter. One pooled particle a squishy
+-- (FxPool: capped, none under ReducedMotion), only while the pen is shown and within its animation distance.
+local COIN_HOP = JoyFx.penCoin
+local COIN_HOP_PROPS: FxPool.Props = (function()
+	local function seq(rows: { { number } }): NumberSequence
+		local keys = {}
+		for _, row in rows do
+			table.insert(keys, NumberSequenceKeypoint.new(row[1], row[2]))
+		end
+		return NumberSequence.new(keys)
+	end
+	return {
+		Texture = AssetTable.image("img.coin") or "",
+		Size = seq(COIN_HOP.size),
+		Transparency = seq(COIN_HOP.transparency),
+		Lifetime = NumberRange.new(COIN_HOP.lifetime[1], COIN_HOP.lifetime[2]),
+		Speed = NumberRange.new(COIN_HOP.speed[1], COIN_HOP.speed[2]),
+		SpreadAngle = Vector2.new(COIN_HOP.spreadDeg, COIN_HOP.spreadDeg),
+		Acceleration = Vector3.new(0, COIN_HOP.gravity, 0),
+		Rotation = NumberRange.new(-COIN_HOP.rotation, COIN_HOP.rotation),
+		RotSpeed = NumberRange.new(-COIN_HOP.rotSpeed, COIN_HOP.rotSpeed),
+		LightInfluence = 0,
+	}
+end)()
+
+local function hopCoins(value: any)
+	local coins = if type(value) == "number" then value else nil
+	local before = hopCoinsFrom
+	hopCoinsFrom = coins
+	local now = os.clock()
+	if
+		not JoyFx.enabled
+		or coins == nil
+		or before == nil
+		or coins <= before
+		or now - lastCoinHopAt < COIN_HOP.everySeconds
+	then
+		return
+	end
+	local plot = ownPlot()
+	local pen = if plot then pens[plot] else nil
+	local camera = Workspace.CurrentCamera
+	if pen == nil or camera == nil or not pen.shown then
+		return
+	end
+	if (pen.centre - camera.CFrame.Position).Magnitude > P.animateStuds then
+		return
+	end
+	lastCoinHopAt = now
+	local fx = FxPool.default()
+	local function hop(w: Walker)
+		if w.model.Parent ~= nil then
+			-- FxPool's emitters fire up (+Y; checked in a test game 2026-11-10): the coin hops up and drops back.
+			fx:emit(w.root.Position + Vector3.new(0, w.labelY - COIN_HOP.liftStuds, 0), 1, COIN_HOP_PROPS)
+		end
+	end
+	for _, w in pen.walkers do
+		hop(w)
+	end
+	for _, w in pen.shelf do
+		hop(w)
 	end
 end
 
@@ -1657,6 +1728,8 @@ function PenController.start()
 	for _, field in { "coins", "pen" } do
 		c:add(StateController.changed(field):connect(paintOwnSign))
 	end
+	hopCoinsFrom, lastCoinHopAt = nil, -math.huge
+	c:add(StateController.changed("coins"):connect(hopCoins)) -- big job 2026-11-10: the pen's coins hop
 	c:add(StateController.changed(FIELD_AWAY):connect(showAway))
 	-- Pens3 phase 6: the pen screen, the tap that opens it, and its redraw on every pen change.
 	c:add(UIController.registerScreen(SCREEN, {

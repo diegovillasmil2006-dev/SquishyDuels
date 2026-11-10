@@ -610,6 +610,11 @@ local function claim(view: RowView)
 			for _, ring in CLAIM_FX.rings do
 				UiFx.ring(from, UiFx.colors({ ring.color })[1], ring.size)
 			end
+			-- Big job 2026-11-10 (the owner: effects "more attractive to kids"): a finished quest is a real prize, so
+			-- the candy burst joins in: its white core flash, chunky gold stars and confetti (UiFx tier "medium").
+			if require(Shared.Config.JoyFx).enabled then
+				UiFx.burst(from, "medium", nil, { glow = false })
+			end
 		end
 		if reward > 0 then
 			HudController.flyCoins(from, reward, CLAIM_FX.coins)

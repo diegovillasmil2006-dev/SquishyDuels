@@ -63,6 +63,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local AssetTable = require(Shared.AssetTable)
 local Config = require(Shared.Config)
+local JoyFx = require(Shared.Config.JoyFx)
 local Palette = require(Shared.Art.Palette)
 
 local UI = script.Parent
@@ -87,7 +88,8 @@ export type TierSpec = {
 	droplets: number,
 }
 
-export type Options = { neutral: boolean?, radius: number? }
+-- glow = false: no soft disc at the centre (a burst over something the player must keep reading, e.g. a level number).
+export type Options = { neutral: boolean?, radius: number?, glow: boolean? }
 
 export type CascadeOptions = { from: number?, ms: number?, staggerMs: number?, maxStaggerMs: number? }
 
@@ -191,6 +193,13 @@ local FX = Config.UI.Fx
 local DIAMOND = math.sqrt(0.5) -- a square turned 45° spans its side / DIAMOND
 local SPARK_IMAGE_KEY = "img.fx.spark" -- lib:225's pinched star (pack 2)
 local REDUCED_FADE_SECONDS = Config.UI.motion.reducedMotionMaxFadeMs / 1000
+-- Big job 2026-11-10 (Config.JoyFx.ui; the owner: effects "more attractive to kids"): the candy kit's pictures. A
+-- burst's sparkles are chunky stars (and hearts from the "large" tier) with a white core flash; the design sparks'
+-- stars are the same chunky star, drawn starScale bigger so its ink outline still reads on a phone.
+local JOY = JoyFx.ui
+local KIT_STAR_KEY = "img.kit.star" -- white to tint: ink outline, shaded body
+local KIT_HEART_KEY = "img.kit.heart" -- full colour
+local KIT_CORE_KEY = "img.kit.sparkle"
 
 -- Module table
 
@@ -281,8 +290,23 @@ local function circle(name: string, px: number, color: Color3, parent: Instance)
 	return frame
 end
 
--- A four-point star: two tapered pills crossed and a bright centre, in a holder scaled by its UIScale.
-local function sparkle(color: Color3, parent: Instance): (Frame, UIScale)
+-- A burst's sparkle: the candy kit's chunky star tinted `color` (or its heart, `heart`), scaled by its UIScale. While
+-- Config.JoyFx is off or the picture has no id: the old four-point star, two tapered pills crossed and a bright centre.
+local function sparkle(color: Color3, parent: Instance, heart: boolean?): (GuiObject, UIScale)
+	local content = if JoyFx.enabled then AssetTable.image(if heart then KIT_HEART_KEY else KIT_STAR_KEY) else nil
+	if content then
+		local image: ImageLabel = Create("ImageLabel", {
+			Name = if heart then "Heart" else "Star",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundTransparency = 1,
+			Image = content,
+			ImageColor3 = if heart then WHITE else color,
+			Size = UDim2.fromOffset(JOY.starPx, JOY.starPx),
+			Active = false,
+			Parent = parent,
+		})
+		return image, Create("UIScale", { Scale = 0, Parent = image })
+	end
 	local holder: Frame = Create("Frame", {
 		Name = "Sparkle",
 		AnchorPoint = Vector2.new(0.5, 0.5),
@@ -410,8 +434,25 @@ function UiFx.burst(at: GuiObject | Vector2, tier: Tier, color: Color3?, opts: O
 
 	local glow = circle("Glow", radius * GLOW_FROM * 2, main, holder)
 	glow.BackgroundTransparency = GLOW_TRANSPARENCY
+	glow.Visible = o.glow ~= false
 	local rings: { { frame: Frame, stroke: UIStroke, delay: number } } = {}
 	local pieces: { Piece } = {}
+	-- The white core (the hot frame): a white twinkle at the centre, grown and gone within 2 x coreSeconds.
+	local core: ImageLabel? = nil
+	local coreImage = if JoyFx.enabled and not reduced then AssetTable.image(KIT_CORE_KEY) else nil
+	if coreImage then
+		core = Create("ImageLabel", {
+			Name = "Core",
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			BackgroundTransparency = 1,
+			Image = coreImage,
+			Size = UDim2.fromOffset(0, 0),
+			ZIndex = 2,
+			Active = false,
+			Parent = holder,
+		})
+	end
+	local hearts = JoyFx.enabled and JOY.heartFromTier[tier] == true
 	if not reduced then
 		for i = 1, spec.rings do
 			local ring = circle("Ring", radius * RING_FROM * 2, main, holder)
@@ -446,7 +487,8 @@ function UiFx.burst(at: GuiObject | Vector2, tier: Tier, color: Color3?, opts: O
 			table.insert(pieces, { kind = "ray", frame = ray, angle = 0, reach = 0, spin = 0, delay = 0 })
 		end
 		for i = 1, spec.sparkles do
-			local frame, scale = sparkle(palette[(i - 1) % #palette + 1], holder)
+			local heart = hearts and i % JOY.heartEvery == 0
+			local frame, scale = sparkle(palette[(i - 1) % #palette + 1], holder, heart)
 			local angle = (i - 1) * 2 * math.pi / math.max(1, spec.sparkles) + rng:NextNumber(-0.3, 0.3)
 			table.insert(pieces, {
 				kind = "sparkle",
@@ -454,7 +496,7 @@ function UiFx.burst(at: GuiObject | Vector2, tier: Tier, color: Color3?, opts: O
 				scale = scale,
 				angle = angle,
 				reach = radius * rng:NextNumber(SPARKLE_MIN, SPARKLE_MAX),
-				spin = rng:NextNumber(-180, 180),
+				spin = if heart then rng:NextNumber(-40, 40) else rng:NextNumber(-180, 180), -- a heart stays upright
 				delay = rng:NextNumber(0, 0.08),
 			})
 		end
@@ -511,6 +553,12 @@ function UiFx.burst(at: GuiObject | Vector2, tier: Tier, color: Color3?, opts: O
 		local glowSize = radius * 2 * (if reduced then GLOW_FROM else GLOW_FROM + (GLOW_TO - GLOW_FROM) * easeOut(u))
 		glow.Size = UDim2.fromOffset(glowSize, glowSize)
 		glow.BackgroundTransparency = GLOW_TRANSPARENCY + (1 - GLOW_TRANSPARENCY) * u
+		if core then
+			local cu = elapsed / JOY.coreSeconds
+			local coreSize = radius * JOY.corePx * (0.4 + 0.85 * math.min(cu, 1))
+			core.Size = UDim2.fromOffset(coreSize, coreSize)
+			core.ImageTransparency = math.clamp(cu - 1, 0, 1)
+		end
 		for _, ring in rings do
 			local ru = math.clamp((elapsed - ring.delay) / (life * 0.7), 0, 1)
 			local d = radius * 2 * (RING_FROM + (RING_TO - RING_FROM) * easeOut(ru))
@@ -940,15 +988,18 @@ end
 -- One burst star (lib:225's pinched four-point star): the img.fx.spark picture tinted, or while it has no id a square
 -- turned 45° (a diamond of the same span).
 local function star(color: Color3, size: number, parent: Instance): GuiObject
-	local content = AssetTable.image(SPARK_IMAGE_KEY)
+	-- Big job 2026-11-10: the candy kit's chunky star (ink outline), sparkStarScale bigger so it reads on a phone.
+	local kit = if JoyFx.enabled then AssetTable.image(KIT_STAR_KEY) else nil
+	local content = kit or AssetTable.image(SPARK_IMAGE_KEY)
 	if content then
+		local px = if kit then size * JOY.sparkStarScale else size
 		return Create("ImageLabel", {
 			Name = "Star",
 			AnchorPoint = Vector2.new(0.5, 0.5),
 			BackgroundTransparency = 1,
 			Image = content,
 			ImageColor3 = color,
-			Size = UDim2.fromOffset(size, size),
+			Size = UDim2.fromOffset(px, px),
 			Active = false,
 			Parent = parent,
 		})

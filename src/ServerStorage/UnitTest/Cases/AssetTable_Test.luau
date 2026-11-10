@@ -803,6 +803,8 @@ return function(t: Context)
 				"img.kit.jelly",
 				"img.kit.confetti",
 				"img.kit.ring",
+				"img.kit.starGold", -- the candy kit (big job 2026-11-10): the gold star and the heart
+				"img.kit.heart",
 				"img.kit.speedline",
 				"img.kit.footprint",
 				-- Restyle part 2 (2026-11-01): the Friends pill's icon.

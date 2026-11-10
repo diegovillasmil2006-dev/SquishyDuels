@@ -341,6 +341,22 @@ local function fxKit(key: string, id: number, use: string): AssetSlot
 	}
 end
 
+-- The candy kit (2026-11-10, the owner: effects "6/10 ... more attractive to kids"; big job item 1): the same shapes
+-- redrawn by Claude with a dark ink outline, a shaded body and a white shine (tools/fxkit/make_kit.mjs, pictures in
+-- docs/squishy-fx-spec/kit/png-v2; vault "VFX Readability and Value": dark ink + colour body + white core). The tintable
+-- ones stay white to tint; starGold and heart are full colour (played with a white particle Color).
+local function candyKit(key: string, id: number, use: string): AssetSlot
+	return {
+		key = key,
+		kind = "image",
+		id = id,
+		source = `jayyyyy upload (Studio MCP upload_image): 'kit/png-v2/{string.match(key, "[^.]+$")}.png' (drawn by Claude)`,
+		license = "Own upload; drawn for the game",
+		verifiedAt = "2026-11-10",
+		notes = use,
+	}
+end
+
 -- §14.2 sound slots and §14.3 animation and image slots, in document order.
 local SLOTS: { AssetSlot } = {
 	-- SFX (§14.2)
@@ -2261,13 +2277,18 @@ local SLOTS: { AssetSlot } = {
 	matchHud("img.medal.face", 131392992364061, "the medal's gold face with its top highlight, a circle (S:73)"),
 	matchHud("img.medal.rays", 118728654062426, "the gold rays turning behind the medal, 216 px box (S:72)"),
 	-- Game-feel kit (2026-10-28, docs/squishy-fx-spec/kit.html): particles, rings and screen lines of the 4 physics parts.
-	fxKit("img.kit.puff", 122238719185576, "dust puffs: steps, jumps, landings, dash, slide"),
-	fxKit("img.kit.star", 102594930640784, "stars: hard landings, double jump"),
-	fxKit("img.kit.sparkle", 89379435106762, "sparkles: double jump, flip streak"),
-	fxKit("img.kit.pow", 87261002910971, "the POW burst (part 2)"),
-	fxKit("img.kit.jelly", 95085356654375, "jelly drops (parts 2-3)"),
-	fxKit("img.kit.confetti", 101790383174494, "confetti and sprinkles: slide, mega landing"),
-	fxKit("img.kit.ring", 94752683020130, "flat rings and shockwaves"),
+	-- 2026-11-10: these 7 are the candy kit now (ink outline, shaded body, shine). The flat 2026-10-28 pictures they
+	-- replace, for an undo: puff 122238719185576, star 102594930640784, sparkle 89379435106762, pow 87261002910971,
+	-- jelly 95085356654375, confetti 101790383174494, ring 94752683020130.
+	candyKit("img.kit.puff", 103445992938180, "dust puffs: steps, jumps, landings, dash, slide, squeezes"),
+	candyKit("img.kit.star", 76391187340560, "stars: hard landings, double jump, the UI bursts"),
+	candyKit("img.kit.sparkle", 96096187507150, "sparkles: double jump, flip streak, the UI sparks"),
+	candyKit("img.kit.pow", 97224116572105, "the POW burst (part 2)"),
+	candyKit("img.kit.jelly", 108838418914845, "jelly drops (parts 2-3)"),
+	candyKit("img.kit.confetti", 123320528931433, "confetti and sprinkles: slide, mega landing"),
+	candyKit("img.kit.ring", 95904093087396, "flat rings and shockwaves"),
+	candyKit("img.kit.starGold", 128878284283571, "a gold star, full colour: squeezes, level ups, pen coins"),
+	candyKit("img.kit.heart", 128532893389973, "a candy pink heart, full colour: big squeezes, new squishies"),
 	fxKit("img.kit.speedline", 81819232656092, "speed lines: wind, dash sparks, screen lines"),
 	-- Extra 6 (2026-10-28, NOT IN DESIGN): a cartoon shoe print drawn by Claude (scratchpad tools/make_footprint.mjs),
 	-- white to tint, for the lobby's fading footprints (MoveFxController).

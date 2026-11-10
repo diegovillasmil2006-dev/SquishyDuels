@@ -28,7 +28,9 @@ local AssetTable = require(ReplicatedStorage.Shared.AssetTable)
 -- Constants
 
 local GENERATOR_ID = "feel_vfx"
-local VERSION = 4 -- 2: part 2's hit templates; 3: part 3's flight templates; 4: part 4's highway templates
+-- 2: part 2's hit templates; 3: part 3's flight templates; 4: part 4's highway templates; 5: the candy kit pictures
+-- and the joy templates (big job 2026-11-10)
+local VERSION = 5
 local ROOT_NAME = "Feel"
 local POINT = 0.05 -- the part size of a template with no shape (a point)
 local RIBBON_HALF = 0.5 -- a trail's attachments are width apart: +- width x this
@@ -144,6 +146,35 @@ local SPECS: { [string]: Spec } = {
 		Texture = "confetti", Tints = { "#FF8FB1", "#8EDFC4", "#FFD86B", "#8CC8FF" }, Rate = 24,
 		Lifetime = { 0.35, 0.6 }, Speed = { 10, 16 }, SpreadAngle = { 30, 30 }, Size = 0.32,
 		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -110, 0 }, Drag = 1,
+		Rotation = { 0, 360 }, RotSpeed = { -420, 420 }, LightEmission = 0,
+	},
+	-- Big job 2026-11-10 (NOT IN DESIGN; the owner: effects "more attractive to kids"): the everyday moments' candy
+	-- pieces (Config.JoyFx): full-colour gold stars and candy pink hearts (a white Color keeps their own colours) and
+	-- white twinkles and candy confetti. Each starts on a ring round the feet (the Cylinder shape) and flies up and
+	-- out, so nothing is ever drawn over the player's body (seen in a test game: a burst from the chest covered it).
+	joyStars = {
+		Page = "JoyFx", Texture = "starGold", Count = 14, Lifetime = { 0.45, 0.7 }, Speed = { 16, 26 },
+		SpreadAngle = { 30, 30 }, Shape = "Cylinder", ShapeRadius = 2.2,
+		Size = { { 0, 0.3 }, { 0.15, 1.15 }, { 0.7, 0.9 }, { 1, 0 } }, Color = "#FFFFFF",
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -55, 0 }, Drag = 2.5,
+		Rotation = { 0, 360 }, RotSpeed = { -240, 240 }, LightEmission = 0,
+	},
+	joyHearts = {
+		Page = "JoyFx", Texture = "heart", Count = 6, Lifetime = { 0.6, 0.85 }, Speed = { 8, 12 },
+		SpreadAngle = { 15, 15 }, Shape = "Cylinder", ShapeRadius = 1.9,
+		Size = { { 0, 0.2 }, { 0.2, 1 }, { 0.8, 0.85 }, { 1, 0 } }, Color = "#FFFFFF",
+		Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, 10, 0 }, Drag = 2.5,
+		Rotation = { -20, 20 }, RotSpeed = { -50, 50 }, LightEmission = 0,
+	},
+	joySparkles = {
+		Page = "JoyFx", Texture = "sparkle", Count = 10, Lifetime = { 0.3, 0.5 }, Speed = { 6, 12 },
+		SpreadAngle = { 12, 12 }, Shape = "Cylinder", ShapeRadius = 2.6, Size = { { 0, 0 }, { 0.3, 0.9 }, { 1, 0 } },
+		Color = "#FFFFFF", Transparency = 0, Drag = 2, Rotation = { 0, 45 }, RotSpeed = { -90, 90 }, LightEmission = 0.6,
+	},
+	joyConfetti = {
+		Page = "JoyFx", Texture = "confetti", Tints = { "#FF8FB1", "#8EDFC4", "#FFD86B", "#8CC8FF" }, Count = 24,
+		Lifetime = { 0.55, 0.85 }, Speed = { 20, 32 }, SpreadAngle = { 25, 25 }, Shape = "Cylinder", ShapeRadius = 2,
+		Size = 0.45, Transparency = { { 0, 0 }, { 0.8, 0 }, { 1, 1 } }, Acceleration = { 0, -90, 0 }, Drag = 1.5,
 		Rotation = { 0, 360 }, RotSpeed = { -420, 420 }, LightEmission = 0,
 	},
 	-- Extra 4 (NOT IN DESIGN): the mega landing's confetti pop, the slide sprinkles' look, upward.

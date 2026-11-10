@@ -38,6 +38,7 @@ return function(t: Context)
 	local Palette = t.requireShared("Art/Palette")
 	local Theme = t.requireClient("UI/Theme")
 	local AssetTable = t.requireShared("AssetTable")
+	local JoyFx = t.requireShared("Config/JoyFx")
 	local FX = Config.UI.Fx
 	local SPARKS = FX.sparks
 	local systemReduced = GuiService.ReducedMotionEnabled
@@ -267,9 +268,10 @@ return function(t: Context)
 			local holder = gui:FindFirstChild("SD_Sparks")
 			expect.truthy(holder ~= nil)
 			expect.equal(#(holder :: Instance):GetChildren(), 5)
-			-- T10: the stars are the img.fx.spark picture, tinted; a 45° diamond while it has no id.
+			-- Big job 2026-11-10 (the new look): the stars are the candy kit's chunky star (img.kit.star), tinted. With
+			-- Config.JoyFx off T10's rule holds: the img.fx.spark picture, a 45° diamond while it has no id.
 			local first = (holder :: Instance):GetChildren()[1]
-			if AssetTable.image("img.fx.spark") then
+			if (JoyFx.enabled and AssetTable.image("img.kit.star")) or AssetTable.image("img.fx.spark") then
 				expect.truthy(first:IsA("ImageLabel"))
 			else
 				expect.truthy(first:IsA("Frame") and (first :: Frame).Rotation == 45)
