@@ -589,7 +589,14 @@ function BoxReveal.start(spec: Spec): Run
 	local viewport = stage.viewport
 	local camera = stage.camera
 	local orbit = BoxFormat.orbitStart()
+	-- Big job item 2 (2026-11-10): true once the stage went to Inspect (close "inspect"). This run's frame kept
+	-- calling placeCamera() until it was removed, which took the camera back from Inspect: the squish window opened
+	-- from a reveal showed the toy turned and low (the reveal's eye, its higher target and its 34° lens).
+	local handedOff = false
 	local function placeCamera()
+		if handedOff then
+			return
+		end
 		stage:setManualCamera(
 			CFrame.lookAt(BoxFormat.orbitEye(orbit), A.camera.target),
 			A.camera.fovDeg,
@@ -2020,6 +2027,7 @@ function BoxReveal.start(spec: Spec): Run
 				writeToy(toyParts, toyRoot, toyOffset, 1, toyOffset, 0, 1)
 				local model = toy
 				toy = nil
+				handedOff = true -- from here the stage's camera is Inspect's
 				stage:removeProp(model, false)
 				stage:resetLook()
 				stage:setModel(model)
