@@ -771,6 +771,191 @@ local LOOPS: { [string]: Loop } = {
 			},
 		},
 	},
+	-- Prism Box (2026-11-10): Claude Design's SHOWOFF2 (sd/anims2.js), the same way as Series 01's (each ease on
+	-- the key that ends its segment).
+	-- TaffyTadpole: Tadpole Swim. Wiggles side to side and bobs like it is swimming.
+	taffy_tadpole = {
+		length = 1.5,
+		tracks = {
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.5, 25, "Sine InOut" },
+					{ 1, -25, "Sine InOut" },
+					{ 1.5, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.75, 0.3, "Sine InOut" },
+					{ 1.5, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- JellybeanPiglet: Bean Roll. Hops high and does a full sideways roll like a tossed jellybean.
+	jellybean_piglet = {
+		length = 2,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.4, 1.1, "Quad Out" },
+					{ 0.8, 0, "Quad In" },
+					{ 2, 0, "-" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.8, 360, "Sine InOut" },
+					{ 2, 360, "-" },
+				},
+			},
+		},
+	},
+	-- CottonCandyAlpaca: Cloud Drift. Drifts up like spun sugar and sways back down.
+	cotton_candy_alpaca = {
+		length = 2.4,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.2, 0.6, "Sine InOut" },
+					{ 2.4, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.6, 5, "Sine InOut" },
+					{ 1.8, -5, "Sine InOut" },
+					{ 2.4, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- LollipopLemur: Lolly Twirl. Spins once so the lollipop tail sweeps round, then a sway.
+	lollipop_lemur = {
+		length = 2.2,
+		tracks = {
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1, 360, "Quad InOut" },
+					{ 2.2, 360, "-" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1, 0, "-" },
+					{ 1.3, 8, "Sine InOut" },
+					{ 1.6, -8, "Sine InOut" },
+					{ 1.9, 0, "Sine InOut" },
+					{ 2.2, 0, "-" },
+				},
+			},
+		},
+	},
+	-- GumballGoat: Headbutt Hop. Leans back, headbutts forward, then a proud hop.
+	gumball_goat = {
+		length = 2.2,
+		tracks = {
+			{
+				prop = "rotX",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.4, -10, "Sine InOut" },
+					{ 0.6, 12, "Back Out" },
+					{ 0.9, 0, "Sine InOut" },
+					{ 2.2, 0, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.9, 0, "-" },
+					{ 1.2, 0.4, "Quad Out" },
+					{ 1.5, 0, "Quad In" },
+					{ 2.2, 0, "-" },
+				},
+			},
+		},
+	},
+	-- GummyPufferfish: Puffer Bob. Bobs and wiggles like it is floating in a candy aquarium.
+	gummy_pufferfish = {
+		length = 2.8,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.7, 0.45, "Sine InOut" },
+					{ 1.4, 0.25, "Sine InOut" },
+					{ 2.1, 0.45, "Sine InOut" },
+					{ 2.8, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.7, 20, "Sine InOut" },
+					{ 1.4, -20, "Sine InOut" },
+					{ 2.1, 20, "Sine InOut" },
+					{ 2.8, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- CandyglassQilin: Prism Prance. Two prancing hops, then a slow turn so every panel catches the light.
+	candyglass_qilin = {
+		length = 3,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.3, 0.4, "Quad Out" },
+					{ 0.6, 0, "Quad In" },
+					{ 0.9, 0.4, "Quad Out" },
+					{ 1.2, 0, "Quad In" },
+					{ 3, 0, "-" },
+				},
+			},
+			{
+				prop = "rotX",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.3, -8, "Sine InOut" },
+					{ 0.6, 0, "Sine InOut" },
+					{ 0.9, -8, "Sine InOut" },
+					{ 1.2, 0, "Sine InOut" },
+					{ 3, 0, "-" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.2, 0, "-" },
+					{ 2.4, 360, "Cubic InOut" },
+					{ 3, 360, "-" },
+				},
+			},
+		},
+	},
 }
 
 -- qb1: the posY / rot stand-ins of the scale-only loops (same length and key times as K, the same eases).

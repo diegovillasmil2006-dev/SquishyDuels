@@ -493,6 +493,98 @@ local EXPECTED: { Expected } = {
 		elimination = "behemoth_bonfire",
 		shopPrice = 600_000_000_000_000,
 	},
+	-- Prism Box (2026-11-10): the Prism ceilings (8T box), the Uncommons half theirs; throws = their siblings'.
+	{
+		id = "taffy_tadpole",
+		name = "Taffy Tadpole",
+		rarity = "Common",
+		speed = 95,
+		gravity = 35,
+		radius = 1.0,
+		cooldown = 1.00,
+		windup = 0.18,
+		elimination = "standard",
+		shopPrice = 26_600_000_000_000,
+	},
+	{
+		id = "jellybean_piglet",
+		name = "Jellybean Piglet",
+		rarity = "Common",
+		speed = 105,
+		gravity = 25,
+		radius = 0.8,
+		cooldown = 1.05,
+		windup = 0.18,
+		elimination = "standard",
+		shopPrice = 26_600_000_000_000,
+	},
+	{
+		id = "cotton_candy_alpaca",
+		name = "Cotton Candy Alpaca",
+		rarity = "Uncommon",
+		speed = 95,
+		gravity = 30,
+		radius = 0.9,
+		cooldown = 1.05,
+		windup = 0.15,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 30_700_000_000_000,
+	},
+	{
+		id = "lollipop_lemur",
+		name = "Lollipop Lemur",
+		rarity = "Uncommon",
+		speed = 90,
+		gravity = 40,
+		radius = 1.4,
+		cooldown = 1.00,
+		windup = 0.18,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 30_700_000_000_000,
+	},
+	{
+		id = "gumball_goat",
+		name = "Gumball Goat",
+		rarity = "Rare",
+		speed = 90,
+		gravity = 40,
+		radius = 1.4,
+		cooldown = 1.00,
+		windup = 0.18,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 80_000_000_000_000,
+	},
+	{
+		id = "gummy_pufferfish",
+		name = "Gummy Pufferfish",
+		rarity = "Epic",
+		speed = 110,
+		gravity = 20,
+		radius = 0.9,
+		cooldown = 1.10,
+		windup = 0.18,
+		trail = "twinRibbon",
+		ultimate = "puff_burst",
+		elimination = "puffer_pop_rocks",
+		shopPrice = 205_000_000_000_000,
+	},
+	{
+		id = "candyglass_qilin",
+		name = "Candyglass Qilin",
+		rarity = "Exclusive",
+		speed = 92,
+		gravity = 35,
+		radius = 1.0,
+		cooldown = 1.05,
+		windup = 0.19,
+		trail = "twinRibbon",
+		ultimate = "prism_pen",
+		elimination = "qilin_prism_parade",
+		shopPrice = 8_000_000_000_000_000,
+	},
 }
 
 -- Spec 2026-10-09 §3.3: each new squishy plays exactly like this same-rarity sibling.
@@ -526,6 +618,14 @@ local SIBLING: { [string]: string } = {
 	pizza_pangolin = "strawberry_frog",
 	lava_cake_hippo = "donut",
 	mallow_behemoth = "dragon",
+	-- Prism Box (2026-11-10)
+	taffy_tadpole = "kitty_bread",
+	jellybean_piglet = "toast",
+	cotton_candy_alpaca = "butter",
+	lollipop_lemur = "chocolate",
+	gumball_goat = "strawberry_frog",
+	gummy_pufferfish = "cloud_bunny",
+	candyglass_qilin = "dragon",
 }
 
 -- DESIGN §4.2 presentation table. The "ears/wings rigidity" notes are blueprint part rigidities (§8.2), not hooks.
@@ -874,6 +974,76 @@ local PRESENTATION: { [string]: Presentation } = {
 		accent = "#EDB06A",
 		spin = "wobble",
 	},
+	taffy_tadpole = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.34,
+		accent = "#FFB3D1",
+		spin = "wobble",
+	},
+	jellybean_piglet = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.32,
+		accent = "#FF8FB4",
+		spin = "wobble",
+	},
+	cotton_candy_alpaca = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.40,
+		accent = "#FFB8DA",
+		spin = "wobble",
+	},
+	lollipop_lemur = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.34,
+		accent = "#FF8FC8",
+		spin = "wobble",
+	},
+	gumball_goat = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.36,
+		accent = "#FFD36B",
+		spin = "wobble",
+	},
+	gummy_pufferfish = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.30,
+		accent = "#FFB36B",
+		spin = "wobble",
+	},
+	candyglass_qilin = {
+		grip = Vector3.new(0, -0.55, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.40,
+		accent = "#C7A0FF",
+		spin = "wobble",
+	},
 }
 
 local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Exclusive" } -- Rare: 2026-11-01
@@ -987,7 +1157,7 @@ return function(t: Context)
 
 	t.test("list returns the 8 squishies of DESIGN §4.2 in table order, then the 6 new ones, Series 01, the Frosty Box", function()
 		local list = Catalog.list()
-		expect.equal(#list, 34)
+		expect.equal(#list, 41)
 		expect.equal(#list, #EXPECTED)
 		expect.equal(ids(list), ids(EXPECTED))
 	end)
@@ -1133,7 +1303,9 @@ return function(t: Context)
 				expect.truthy(def.rarity == "Epic" or def.rarity == "Exclusive")
 			end
 		end
-		expect.equal(count, 10) -- + Cosmo (Series 01), Gelato Narwhal, Parfait Wyvern (Frosty), Lava Cake Hippo, Mallow Behemoth (Lava)
+		-- + Cosmo (Series 01), Gelato Narwhal, Parfait Wyvern (Frosty), Lava Cake Hippo, Mallow Behemoth (Lava), Gummy
+		-- Pufferfish, Candyglass Qilin (Prism)
+		expect.equal(count, 12)
 		for _, def in Catalog.byRarity("Epic") do
 			expect.truthy(def.ultimateId ~= nil)
 		end
@@ -1287,6 +1459,8 @@ return function(t: Context)
 		expect.equal(Catalog.getPower("parfait_wyvern"), 768)
 		expect.equal(Catalog.getPower("cocoa_quokka"), 9) -- the Lava Box: x9
 		expect.equal(Catalog.getPower("mallow_behemoth"), 2304)
+		expect.equal(Catalog.getPower("taffy_tadpole"), 27) -- the Prism Box: x27
+		expect.equal(Catalog.getPower("candyglass_qilin"), 6912)
 		expect.equal(Catalog.getPower("unknown"), 0)
 		expect.equal(Catalog.getPower(nil), 0)
 	end)
@@ -1308,7 +1482,7 @@ return function(t: Context)
 		expect.equal(#Catalog.list(), #EXPECTED)
 		local commons = Catalog.byRarity("Common")
 		table.clear(commons)
-		expect.equal(#Catalog.byRarity("Common"), 11) -- 5 + Series 01's Berry Jelly and Peachy, the Frosty and Lava Boxes' 2 each
+		expect.equal(#Catalog.byRarity("Common"), 13) -- 5 + Series 01's Berry Jelly and Peachy, the 3 zone boxes' 2 each
 	end)
 
 	-- Rarity (§2.2, §4.3, §6.5) --------------------------------------------------------------------------------------

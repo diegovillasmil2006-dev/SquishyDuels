@@ -448,6 +448,32 @@ local Vfx = {
 		campfireEmberSize = 0.03 / 0.28,
 		campfireEmberLifetime = 0.6,
 		campfireEmberGravity = 1 / 0.28,
+		-- Puff Burst (Gummy Pufferfish, Prism Box 2026-11-10; design: sd/lab50.js:359-374): 8 lane marks pulse through the
+		-- wind-up; at the release a gummy spike (a capsule in one of 4 colours) runs out along each.
+		spikeLaneHalfWidth = 0.06 / 0.28, -- lab50.js:362 (PlaneGeometry width 0.12)
+		spikeLaneOpacity = 0.45, -- lab50.js:365 (0.35·k + 0.1·sin)
+		spikeLanePulseHz = 30 / (2 * math.pi), -- lab50.js:365 (sin(30t))
+		spikeLaneFadeSeconds = 0.45, -- lab50.js:365 (0.45 - (t - 0.6))
+		spikeLengthStuds = 0.16 / 0.28, -- lab50.js:364 (CapsuleGeometry(0.03, 0.1))
+		spikeWidthStuds = 0.06 / 0.28,
+		-- Prism Pen (Candyglass Qilin; design: sd/lab50.js:376-388): the outline pulses while 3 candy panels rise on the
+		-- triangle's sides (open corners); at the shatter they burst into candy cubes with a lilac flash ring.
+		penPanelHeightStuds = 0.5 / 0.28, -- lab50.js:381 (BoxGeometry(len, 0.5, 0.05))
+		penPanelThickStuds = 0.05 / 0.28,
+		penCornerGapStuds = 1, -- lab50.js:380 (len = side - 2 studs): 1 stud open at each end of a side
+		penPanelSinkStuds = 0.26 / 0.28, -- lab50.js:381 (the panels start at y -0.26)
+		penPanelRiseStuds = 0.51 / 0.28, -- lab50.js:387 (-0.26 + 0.51·k)
+		penOutlineWidthStuds = 0.08 / 0.28, -- lab50.js:382 (PlaneGeometry(len, 0.08))
+		penOutlineOpacity = 0.5, -- lab50.js:387 (0.5 + 0.3·sin(28t))
+		penOutlinePulse = 0.3,
+		penOutlinePulseHz = 28 / (2 * math.pi),
+		penCubes = 16, -- lab50.js:388 (16 cubes per panel)
+		penCubeSize = 0.035 / 0.28,
+		penCubeSpeed = 2.8 / 0.28,
+		penCubeLifetime = 0.7,
+		penCubeGravity = -4 / 0.28,
+		penFlashSeconds = 0.35, -- lab50.js:388 (the white ring's life)
+		penFlashTransparencyFrom = 1 - 0.9, -- lab50.js:388 (opacity 0.9)
 		-- Batch B (owner 2026-10-17: "the Frog's bounce look from the design"): where Bubble Pop bounces, the Strawberry
 		-- Frog's bounce pass (design: fp.js:239): 6 hearts (Art/Palette UltBounceHeart*), a white ring, sfx.pop.
 		bounceHearts = 6,

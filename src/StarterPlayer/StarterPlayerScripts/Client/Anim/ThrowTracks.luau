@@ -289,6 +289,14 @@ local STYLE_OF: { [string]: string } = {
 	pizza_pangolin = "skip", -- PizzaPangolin
 	lava_cake_hippo = "shove", -- LavaCakeHippo
 	mallow_behemoth = "lob", -- MallowBehemoth
+	-- Prism Box (2026-11-10, THROW_STYLE2)
+	taffy_tadpole = "sling", -- TaffyTadpole
+	jellybean_piglet = "overhand", -- JellybeanPiglet
+	cotton_candy_alpaca = "lob", -- CottonCandyAlpaca
+	lollipop_lemur = "sidearm", -- LollipopLemur
+	gumball_goat = "bounce", -- GumballGoat
+	gummy_pufferfish = "glide", -- GummyPufferfish
+	candyglass_qilin = "glide", -- CandyglassQilin
 }
 
 local STYLE_NAMES: { string } = {}

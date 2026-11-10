@@ -57,9 +57,9 @@ return function(t: Context)
 		expect.truthy(type(key) == "string" and AssetTable.image(key :: string) ~= nil)
 	end
 
-	t.test("KillStyle: eleven sets, Palette colours, pictures with ids, a sound sheet each", function()
+	t.test("KillStyle: thirteen sets, Palette colours, pictures with ids, a sound sheet each", function()
 		expect.equal(KillStyle.IDS[1], KillStyle.STANDARD)
-		expect.equal(#KillStyle.IDS, 11) -- + Series 01's Cosmo's Supernova, the Frosty and Lava Boxes' 2 each
+		expect.equal(#KillStyle.IDS, 13) -- + Series 01's Cosmo's Supernova, the 3 zone boxes' 2 each
 		for _, id in KillStyle.IDS do
 			local style = KillStyle.get(id)
 			expect.truthy(style ~= nil)

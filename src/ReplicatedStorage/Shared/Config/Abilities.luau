@@ -8,7 +8,8 @@
 --   lane    Dragon Rush: a sphere of `radius` swept from O to E at `speed`, at laneHeightAboveFloor, flying on through
 --           the player it hits; tested at standing height (jumping never avoids it).
 --   volley  `count` projectiles of `radius` fanned over `fanDeg` around the aim, `staggerSeconds` apart, straight at
---           `speed` (no gravity) at laneHeightAboveFloor, each ending at its first hit, cover or maxLength.
+--           `speed` (no gravity) at laneHeightAboveFloor, each ending at its first hit, cover or maxLength. fanDeg 360
+--           (Puff Burst, Prism Box 2026-11-10) is a full circle: one on the aim, the others evenly round.
 --   roller  a lane of half-width `radius` rolling along the floor at `speed` over maxLength, flying on; a body touching
 --           it is hit unless its feet are higher than clearHeight above the floor (it can be jumped).
 --   rain    a zone of `radius` centred on the opponent at the release; `drops` drops, each with a shadow first, hit a
@@ -91,6 +92,7 @@ export type Ability = {
 	targetRadius: number?,
 	dropSpacing: number?, -- Geyser Line (2026-11-10): the drops in a line this far apart
 	ringAroundCaster: boolean?, -- Campfire Ring (2026-11-10): the drops on a ring around the caster, from the aim
+	triangleDeg: number?, -- Prism Pen (2026-11-10): the pop's area is an equilateral triangle, a corner at this angle
 	-- shockwave
 	fill: boolean?, -- Fondue Flood (2026-11-10): the area behind the front is in too (a flood, not a wall)
 }
@@ -468,6 +470,81 @@ local Abilities = {
 		dropAngleStep = math.pi / 3, -- a sixth of the ring each, clockwise from the aim (design: lab50.js:345, a0 - i/6 TAU)
 		targetRadius = 0.5, -- unused: no flame moves onto a player
 		ringAroundCaster = true,
+	},
+	-- Gummy Pufferfish (Prism Box, 2026-11-10; design: ults2.js "Puff Burst", lab50.js:359-374): it puffs up while 8
+	-- lanes show, then pops 8 gummy spikes out along the ground, 45° apart from the aim, 12 st; touching a spike = out.
+	puff_burst = {
+		kind = "volley",
+		nameKey = "ability.puffBurst.name",
+		descriptionKey = "ability.puffBurst.description",
+		incomingKey = "ability.puffBurst.incoming",
+		readyKey = "ability.puffBurst.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 38, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 38,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 38, -- design: ults2.js (cooldown 38 s)
+		telegraphSeconds = 0.6, -- design: ults2.js ("0.6 s puff-up + 8 lane marks"); its charge 0.5 s is shorter
+		radius = 0.9, -- its own throw radius (Config.validate: a volley's projectile is the squishy's throw size)
+		laneHeightAboveFloor = 1.0, -- along the ground (design: lab50.js:371, spikes at 0.12 m): it can be jumped
+		speed = 4.2 / 0.28, -- design: lab50.js:371 (r grows 4.2 m a second): 15 st/s
+		maxLength = 12, -- design: ults2.js ("12 st along the ground")
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 0.27, -- the puffer throws exactly like Cloud Bunny, so it pays Rain Check's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 0, -- the spikes leave from the puffer itself
+		count = 8, -- design: ults2.js ("8 gummy spikes, 45° apart")
+		fanDeg = 360, -- a full circle: one spike on the aim, the others every 45° (UltRules.volleyDirs)
+		staggerSeconds = 0, -- all at once (design: lab50.js:369)
+	},
+	-- Candyglass Qilin (Prism Box, 2026-11-10; design: ults2.js "Prism Pen", lab50.js:376-388): around the opponent's spot
+	-- 3 candy panels rise on a triangle of 9 st sides (open corners) for 0.8 s, then shatter; inside the triangle = out.
+	prism_pen = {
+		kind = "rain",
+		nameKey = "ability.prismPen.name",
+		descriptionKey = "ability.prismPen.description",
+		incomingKey = "ability.prismPen.incoming",
+		readyKey = "ability.prismPen.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 44, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 44,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 44, -- design: ults2.js (cooldown 44 s)
+		telegraphSeconds = 0.7, -- design: ults2.js (charge 0.7 s): the wind-up
+		radius = 9 / math.sqrt(3), -- design: ults2.js ("triangle of 3 candy panels, 9 st sides"): its corner distance
+		laneHeightAboveFloor = 13, -- as Rain Check (unused by the panels' look; the rain kind needs it)
+		speed = 9 / 0.28, -- as Rain Check (cosmetic)
+		maxLength = 110, -- as Rain Check: the practice target nearest the aim within this many studs
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 2.0, -- the Qilin throws exactly like the Dragon, so it pays Dragon Rush's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 2, -- as Rain Check
+		drops = 1, -- one shatter for the whole triangle
+		-- The outline and the rising panels show 0.8 s before the shatter (design: ults2.js "0.8 s outline while panels
+		-- rise"): firstShadow + shadow + fall = 0.8 s (the rain kind wants each above 0).
+		firstShadowSeconds = 0.01,
+		dropStepSeconds = 0.1, -- one drop: unused
+		shadowSeconds = 0.78,
+		fallSeconds = 0.01,
+		dropHitRadius = 9 / math.sqrt(3), -- the triangle's corner distance (triangleDeg makes the area a triangle)
+		dropRadii = { 0 }, -- the shatter is the triangle's centre
+		dropAngleStep = 0.1, -- one drop: unused
+		targetRadius = 0.01, -- the triangle stays on the opponent's spot at the release (the rain kind wants it above 0)
+		triangleDeg = 197.19, -- design: lab50.js:378 (corners at 0.3 rad + i·120°), turned 180° like every design angle
 	},
 } :: { [string]: Ability }
 

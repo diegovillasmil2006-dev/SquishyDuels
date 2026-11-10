@@ -62,6 +62,14 @@ local SquishyBlueprints: { [string]: Blueprint } = {
 	pizza_pangolin = require(script.pizza_pangolin),
 	lava_cake_hippo = require(script.lava_cake_hippo),
 	mallow_behemoth = require(script.mallow_behemoth),
+	-- Prism Box (2026-11-10)
+	taffy_tadpole = require(script.taffy_tadpole),
+	jellybean_piglet = require(script.jellybean_piglet),
+	cotton_candy_alpaca = require(script.cotton_candy_alpaca),
+	lollipop_lemur = require(script.lollipop_lemur),
+	gumball_goat = require(script.gumball_goat),
+	gummy_pufferfish = require(script.gummy_pufferfish),
+	candyglass_qilin = require(script.candyglass_qilin),
 	gift_box = require(script.gift_box),
 	dragon_head_vfx = require(script.dragon_head_vfx),
 }

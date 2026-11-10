@@ -67,6 +67,16 @@ local EXPECTED_ITEMS: { [string]: { { any } } } = {
 		{ "lava_cake_hippo", 390 },
 		{ "mallow_behemoth", 10 },
 	},
+	-- Plan "50 squishies" step 6 (Prism Box, 2026-11-10): the same weights.
+	prism = {
+		{ "taffy_tadpole", 3000 },
+		{ "jellybean_piglet", 3000 },
+		{ "cotton_candy_alpaca", 1300 },
+		{ "lollipop_lemur", 1300 },
+		{ "gumball_goat", 1000 },
+		{ "gummy_pufferfish", 390 },
+		{ "candyglass_qilin", 10 },
+	},
 	treat = {
 		{ "toast", 1400 },
 		{ "banana", 1400 },
@@ -106,7 +116,12 @@ return function(t: Context)
 		for _, box in Boxes.list() do
 			table.insert(ids, box.id)
 		end
-		expect.deepEqual(ids, { "snack", "sweet", "frosty", "lava", "treat" })
+		expect.deepEqual(ids, { "snack", "sweet", "frosty", "lava", "prism", "treat" })
+		local prism = Boxes.get("prism")
+		expect.equal(prism.cost, 8_000_000_000_000)
+		expect.equal(prism.paid, true)
+		expect.equal(prism.zone, 6)
+		expect.equal(prism.fixedCycle, 1000)
 		local lava = Boxes.get("lava")
 		expect.equal(lava.cost, 600_000_000_000)
 		expect.equal(lava.paid, true)
@@ -353,7 +368,7 @@ return function(t: Context)
 			table.insert(paid, id)
 		end
 		table.sort(paid)
-		expect.deepEqual(paid, { "frosty", "lava", "snack", "sweet" })
+		expect.deepEqual(paid, { "frosty", "lava", "prism", "snack", "sweet" })
 		expect.equal(Boxes.paidById.treat, nil)
 		expect.equal(Boxes.get("nope"), nil)
 		expect.equal(Boxes.get(nil), nil)
@@ -370,7 +385,7 @@ return function(t: Context)
 		end
 		local list = Boxes.list()
 		table.remove(list)
-		expect.equal(#Boxes.list(), 5)
+		expect.equal(#Boxes.list(), 6)
 	end)
 
 	-- Plan "50 squishies": a zone box opens from its zone on (profile.highway.biome), every other box always.
@@ -383,6 +398,8 @@ return function(t: Context)
 		expect.falsy(Boxes.isOpenFor("frosty", 0 / 0))
 		expect.falsy(Boxes.isOpenFor("lava", 4)) -- the Lava Box from Lava Volcano (biome 5)
 		expect.truthy(Boxes.isOpenFor("lava", 5))
+		expect.falsy(Boxes.isOpenFor("prism", 5)) -- the Prism Box from Rainbow Road (biome 6)
+		expect.truthy(Boxes.isOpenFor("prism", 6))
 		expect.truthy(Boxes.isOpenFor("snack", nil))
 		expect.truthy(Boxes.isOpenFor("sweet", 1))
 		expect.falsy(Boxes.isOpenFor("nope", 9))

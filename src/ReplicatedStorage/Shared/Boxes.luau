@@ -167,6 +167,24 @@ local LIST: { BoxDef } = {
 			item("mallow_behemoth", 10),
 		},
 	},
+	-- Plan "50 squishies" step 6 (2026-11-10): opens from Rainbow Road (biome 6) on; 30 / 30 / 13 / 13 / 10 / 3.9 / 0.1 %.
+	{
+		id = "prism",
+		nameKey = "box.prism.name",
+		cost = 8_000_000_000_000,
+		paid = true,
+		zone = 6,
+		fixedCycle = 1000, -- each Common 300 times, each Uncommon 130, the Rare 100, the Epic 39, Candyglass Qilin once
+		items = {
+			item("taffy_tadpole", 3000),
+			item("jellybean_piglet", 3000),
+			item("cotton_candy_alpaca", 1300),
+			item("lollipop_lemur", 1300),
+			item("gumball_goat", 1000),
+			item("gummy_pufferfish", 390),
+			item("candyglass_qilin", 10),
+		},
+	},
 	{
 		id = "treat",
 		nameKey = "box.treat.name",

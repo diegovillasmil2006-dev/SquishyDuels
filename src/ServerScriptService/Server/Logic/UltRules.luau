@@ -100,7 +100,8 @@ function UltRules.volleyDirs(dir: Vector3, count: number, fanDeg: number): { Vec
 	end
 	local dirs: { Vector3 } = {}
 	for index = 0, n - 1 do
-		local angle = math.rad(-fanDeg / 2 + fanDeg * index / (n - 1))
+		-- A full circle (Puff Burst, 2026-11-10): the first on the aim, the others evenly round.
+		local angle = if fanDeg >= 360 then math.rad(360 * index / n) else math.rad(-fanDeg / 2 + fanDeg * index / (n - 1))
 		table.insert(dirs, CFrame.fromAxisAngle(Vector3.yAxis, angle):VectorToWorldSpace(aim))
 	end
 	return dirs
@@ -219,6 +220,44 @@ function UltRules.inFan(center: Vector3, dir: Vector3, halfAngle: number, rootPo
 	end
 	local angle = math.acos(math.clamp(away.Unit:Dot(f), -1, 1))
 	return angle <= halfAngle + math.asin(math.min(1, box.radius / d))
+end
+
+-- Prism Pen (Prism Box, 2026-11-10): the corners of the flat equilateral triangle of corner distance `radius` around
+-- `center`, the first at `degrees` (atan2 of z, x) and the others 120° on.
+function UltRules.triangleCorners(center: Vector3, radius: number, degrees: number): { Vector3 }
+	local corners: { Vector3 } = {}
+	for index = 0, 2 do
+		local angle = math.rad(degrees + 120 * index)
+		corners[index + 1] = Vector3.new(center.X + math.cos(angle) * radius, center.Y, center.Z + math.sin(angle) * radius)
+	end
+	return corners
+end
+
+-- Whether a flat circle of radius `reach` around `point` touches that triangle (inside it, or within reach of an edge).
+function UltRules.circleInTriangle(center: Vector3, radius: number, degrees: number, point: Vector3, reach: number): boolean
+	local corners = UltRules.triangleCorners(center, radius, degrees)
+	local px, pz = point.X, point.Z
+	local inside = true
+	local nearest = math.huge
+	for index = 1, 3 do
+		local a, b = corners[index], corners[index % 3 + 1]
+		local ex, ez = b.X - a.X, b.Z - a.Z
+		local cross = ex * (pz - a.Z) - ez * (px - a.X)
+		local sideOfCentre = ex * (center.Z - a.Z) - ez * (center.X - a.X)
+		if cross * sideOfCentre < 0 then
+			inside = false
+		end
+		local len2 = ex * ex + ez * ez
+		local t = if len2 > EPSILON then math.clamp(((px - a.X) * ex + (pz - a.Z) * ez) / len2, 0, 1) else 0
+		local dx, dz = px - (a.X + ex * t), pz - (a.Z + ez * t)
+		nearest = math.min(nearest, math.sqrt(dx * dx + dz * dz))
+	end
+	return inside or nearest <= reach
+end
+
+-- A body (its flat circle at its feet) in that triangle.
+function UltRules.inTriangle(center: Vector3, radius: number, degrees: number, rootPosition: Vector3, hitbox: Hitbox?): boolean
+	return UltRules.circleInTriangle(center, radius, degrees, rootPosition, hitboxOf(hitbox).radius)
 end
 
 function UltRules.ringReachTime(startAt: number, speed: number, width: number, d: number, hitbox: Hitbox?): number

@@ -311,6 +311,7 @@ export type AreaSpec = {
 	radius: number, -- a victim whose feet are this close to `position` is hit
 	at: number, -- server time
 	floorY: number,
+	triangleDeg: number?, -- Prism Pen (2026-11-10): the area is the triangle of corner distance `radius` (UltRules)
 }
 
 -- Layer Cake Shockwave (2026-11-10): one growing ring (AbilityService "shockwave").
@@ -390,6 +391,7 @@ type Area = {
 	radius: number,
 	endKind: Types.ImpactKind?, -- sent at the center when nobody is hit (nil: silent, a Rain Check drop)
 	normal: Vector3?,
+	triangleDeg: number?, -- Prism Pen (2026-11-10)
 }
 
 -- Layer Cake Shockwave: a ring's own numbers (RingSpec; maxT = maxRadius / speed seconds of growth).
@@ -972,6 +974,14 @@ end
 -- radius of its floor point and that may be damaged then; nil when nobody is (left).
 local function areaVictim(proj: Projectile, area: Area): Candidate?
 	local floorPoint = Vector3.new(area.center.X, proj.floorY or area.center.Y, area.center.Z)
+	-- A body in the area: within its radius, or (Prism Pen) in its triangle.
+	local function reaches(rootPosition: Vector3): boolean
+		local degrees = area.triangleDeg
+		if degrees ~= nil then
+			return UltRules.inTriangle(floorPoint, area.radius, degrees, rootPosition)
+		end
+		return UltRules.feetWithin(rootPosition, floorPoint, area.radius)
+	end
 	local candidate: Candidate = {
 		proj = proj,
 		kind = "player",
@@ -992,7 +1002,7 @@ local function areaVictim(proj: Projectile, area: Area): Candidate?
 			local root = if isEnemy(port, attacker, victim) and not proj.hitOnce[victim] then victim.getRoot() else nil
 			if
 				root
-				and UltRules.feetWithin(root.Position, floorPoint, area.radius)
+				and reaches(root.Position)
 				and canDamage(port, attacker, victim, root.Position, area.at)
 			then
 				candidate.victim = victim
@@ -1013,7 +1023,7 @@ local function areaVictim(proj: Projectile, area: Area): Candidate?
 			victim
 			and root
 			and not proj.hitOnce[victim]
-			and UltRules.feetWithin(root.Position, floorPoint, area.radius)
+			and reaches(root.Position)
 			and canDamage(port, attacker, victim, root.Position, area.at)
 		then
 			candidate.victim = victim
@@ -1029,7 +1039,13 @@ local function areaVictim(proj: Projectile, area: Area): Candidate?
 		for _, target in PracticeService.targets() do
 			if not proj.hitOnce[target.id] and not PracticeService.isTargetDown(target.id, area.at) then
 				local bottom, _, radius = PracticeService.capsuleAt(target, area.at)
-				if (bottom - Vector3.new(0, radius, 0) - floorPoint).Magnitude <= area.radius then
+				local feet = bottom - Vector3.new(0, radius, 0)
+				local degrees = area.triangleDeg
+				if
+					if degrees ~= nil
+						then UltRules.circleInTriangle(floorPoint, area.radius, degrees, feet, radius)
+						else (feet - floorPoint).Magnitude <= area.radius
+				then
 					candidate.kind = "target"
 					candidate.targetId = target.id
 					return candidate
@@ -2173,7 +2189,14 @@ function CombatService.launchArea(spec: AreaSpec): number
 		endKind = "expired",
 		flyOn = false,
 		floorY = spec.floorY,
-		area = { center = spec.position, at = spec.at, radius = spec.radius, endKind = nil, normal = nil },
+		area = {
+			center = spec.position,
+			at = spec.at,
+			radius = spec.radius,
+			endKind = nil,
+			normal = nil,
+			triangleDeg = spec.triangleDeg,
+		},
 		areaHits = 0,
 	}
 	addProjectile(proj)

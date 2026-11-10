@@ -898,6 +898,18 @@ local Strings = {
 			ready = "Campfire Ring ready",
 			description = "Lights 6 campfire flames in a ring around it, one after another. Touching a flame takes a life. Each spot glows before it lights: step inside the ring or back off past it.",
 		},
+		puffBurst = {
+			name = "Puff Burst",
+			incoming = "Puff Burst incoming!",
+			ready = "Puff Burst ready",
+			description = "Puffs up and shoots 8 gummy spikes out along the ground in every direction. Touching a spike takes a life. The 8 lanes are marked while it puffs up: stand in a gap between two lanes or back off past them.",
+		},
+		prismPen = {
+			name = "Prism Pen",
+			incoming = "Prism Pen incoming!",
+			ready = "Prism Pen ready",
+			description = "Raises 3 candy panels in a triangle around the spot it aims at, then shatters them. Being inside the triangle when it shatters takes a life. The panels rise slowly and the corners stay open: walk out through a corner gap.",
+		},
 		layerCakeShockwave = {
 			name = "Layer Cake Shockwave",
 			incoming = "Layer Cake Shockwave incoming!",
@@ -970,6 +982,14 @@ local Strings = {
 		pizzaPangolin = { name = "Pizza Pangolin" },
 		lavaCakeHippo = { name = "Lava Cake Hippo" },
 		mallowBehemoth = { name = "Mallow Behemoth" },
+		-- Prism Box (2026-11-10)
+		taffyTadpole = { name = "Taffy Tadpole" },
+		jellybeanPiglet = { name = "Jellybean Piglet" },
+		cottonCandyAlpaca = { name = "Cotton Candy Alpaca" },
+		lollipopLemur = { name = "Lollipop Lemur" },
+		gumballGoat = { name = "Gumball Goat" },
+		gummyPufferfish = { name = "Gummy Pufferfish" },
+		candyglassQilin = { name = "Candyglass Qilin" },
 		-- Squishies, Shop and Inspect: what a squishy multiplies (progression spec §3, §6; pens3 phase 1: in the pen).
 		-- {n} = its power (Catalog.getPower).
 		power = "x{n} power",
@@ -1001,6 +1021,8 @@ local Strings = {
 		wyvern_sugar_storm = "Wyvern's Sugar Storm", -- design: sd/ults2.js:70
 		hippo_meltdown = "Hippo's Meltdown", -- design: KILLSETS2.LavaCakeHippo
 		behemoth_bonfire = "Behemoth's Bonfire", -- design: KILLSETS2.MallowBehemoth
+		puffer_pop_rocks = "Puffer's Pop Rocks", -- design: KILLSETS2.GummyPufferfish
+		qilin_prism_parade = "Qilin's Prism Parade", -- design: KILLSETS2.CandyglassQilin
 	},
 
 	-- Inspect (§10.7, §10.8, §10.9, §10.6).
@@ -1153,6 +1175,14 @@ local Strings = {
 			pizza_pangolin = "Rolling pizza skip",
 			lava_cake_hippo = "Two-hand cake shove",
 			mallow_behemoth = "Heavy two-hand heave",
+			-- Prism Box (the design's THROW_STYLE2 labels)
+			taffy_tadpole = "Taffy-stretch sling",
+			jellybean_piglet = "Jellybean fastball",
+			cotton_candy_alpaca = "Fluffy lob",
+			lollipop_lemur = "Lollipop sidearm",
+			gumball_goat = "Gumball bounce pass",
+			gummy_pufferfish = "Two-hand puffer launch",
+			candyglass_qilin = "Two-hand cloud glide",
 		},
 	},
 
@@ -1168,6 +1198,7 @@ local Strings = {
 		sweet = { name = "Sweet Box" },
 		frosty = { name = "Frosty Box" }, -- plan "50 squishies" step 4 (the plan's name)
 		lava = { name = "Lava Box" }, -- plan "50 squishies" step 5
+		prism = { name = "Prism Box" }, -- plan "50 squishies" step 6
 		treat = { name = "Royal Box" },
 		-- Readings (Part 7; DESIGN implies these texts but never words them): the Boxes screen title; the Treat Box
 		-- row's note in place of Open (day = Config.Economy.Daily.freeBoxDay, worded like box.restrictedNote; Strings_Test

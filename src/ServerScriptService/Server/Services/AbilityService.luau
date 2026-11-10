@@ -132,6 +132,7 @@ export type AbilityDef = {
 	shadowSeconds: number?,
 	fallSeconds: number?,
 	dropHitRadius: number?,
+	triangleDeg: number?, -- Prism Pen (2026-11-10)
 	dropRadii: { number }?,
 	dropAngleStep: number?,
 	targetRadius: number?,
@@ -764,6 +765,7 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 					position = drop.position,
 					radius = ability.dropHitRadius or 0,
 					at = drop.landAt,
+					triangleDeg = ability.triangleDeg, -- Prism Pen (2026-11-10)
 					-- FFA/TDM v1 (review fix): an open map's drops lie at the centre's height (the aimed enemy's ground).
 					floorY = if port and port.ffa then drop.position.Y else caster.floorY,
 				})

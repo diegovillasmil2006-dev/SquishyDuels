@@ -271,6 +271,8 @@ local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } 
 			{ key = "sfx.ultCharge.parfait_wyvern", runner = "plain" },
 			{ key = "sfx.ultCharge.lava_cake_hippo", runner = "plain" }, -- Lava Box (2026-11-10)
 			{ key = "sfx.ultCharge.mallow_behemoth", runner = "plain" },
+			{ key = "sfx.ultCharge.gummy_pufferfish", runner = "plain" }, -- Prism Box (2026-11-10)
+			{ key = "sfx.ultCharge.candyglass_qilin", runner = "plain" },
 			{ key = "sfx.ultRelease", runner = "plain" },
 			{ key = "sfx.ultRainDrop", runner = "plain" },
 			{ key = "sfx.ultCloudHover", runner = "plain" },

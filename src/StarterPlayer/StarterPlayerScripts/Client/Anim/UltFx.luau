@@ -208,6 +208,12 @@ local COLUMN_NAME = "SD_UltGeyser"
 local CAMPFIRE_ID = "campfire_ring" -- Mallow Behemoth's (Config.Abilities): a rain on a ring drawn as flames
 local FLAME_NAME = "SD_UltFlame"
 local FAN_NAME = "SD_UltFondue"
+local PUFF_ID = "puff_burst" -- Gummy Pufferfish's (Config.Abilities): a volley of gummy spikes in a full circle
+local SPIKE_NAME = "SD_UltSpike"
+local SPIKE_COLORS = { Palette.UltSpikePink, Palette.UltSpikeOrange, Palette.UltSpikeYellow, Palette.UltSpikeMint } -- design: sd/lab50.js:362
+local PEN_ID = "prism_pen" -- Candyglass Qilin's (Config.Abilities): a one-drop rain whose area is a triangle
+local PANEL_NAME = "SD_UltPrismPanel"
+local PEN_COLORS = { Palette.UltPrismMint, Palette.UltPrismLilac, Palette.UltPrismPeach } -- design: sd/lab50.js:378
 local FLAME_COLORS = { Palette.UltFlame, Palette.UltFlameHot, Palette.UltFlameCore } -- design: sd/lab50.js:355
 local DRIP_COLORS = { Palette.UltFanTelegraph, Palette.UltFondueGlow, Palette.UltFondue } -- design: sd/lab50.js:335
 local SPOT_NAME = "SD_UltCakeSpot"
@@ -515,6 +521,39 @@ local function attachTrail(flight: Flight, root: BasePart, squishyId: string)
 	})
 end
 
+-- Puff Burst (2026-11-10; design: sd/lab50.js:364): one gummy spike, a capsule along its flight (its look Z axis).
+local function spikeModel(color: Color3): Model
+	local model = Instance.new("Model")
+	model.Name = SPIKE_NAME
+	local part = Instance.new("Part")
+	part.Name = SPIKE_NAME
+	part.Size = Vector3.new(FX.spikeWidthStuds, FX.spikeWidthStuds, FX.spikeLengthStuds)
+	part.Color = color
+	part.Material = Enum.Material.SmoothPlastic
+	part.Anchored = true
+	part.CanCollide = false
+	part.CanQuery = false
+	part.CanTouch = false
+	part.CastShadow = false
+	local mesh = Instance.new("SpecialMesh")
+	mesh.MeshType = Enum.MeshType.Sphere
+	mesh.Parent = part
+	part.Parent = model
+	model.PrimaryPart = part
+	return model
+end
+
+-- Puff Burst's lanes: the flat directions of a full-circle volley (UltRules.volleyDirs: the first on the aim).
+local function circleDirs(dir: Vector3, count: number): { Vector3 }
+	local flat = Vector3.new(dir.X, 0, dir.Z)
+	local aim = if flat.Magnitude > 1e-6 then flat.Unit else Vector3.new(0, 0, -1)
+	local dirs: { Vector3 } = {}
+	for index = 0, count - 1 do
+		dirs[index + 1] = CFrame.fromAxisAngle(Vector3.yAxis, math.rad(360 * index / count)):VectorToWorldSpace(aim)
+	end
+	return dirs
+end
+
 local function newFlight(
 	kind: string,
 	casterId: number,
@@ -526,14 +565,17 @@ local function newFlight(
 	speed: number,
 	radius: number,
 	releaseAt: number,
-	floorY: number
+	floorY: number,
+	spike: Color3? -- Puff Burst (2026-11-10): a gummy spike of this colour instead of the toy
 ): Flight
-	local flightScale = flightScaleOf(squishyId, if kind == "roller" then radius / FX.rollerScaleTo else radius)
+	local flightScale = if spike
+		then 1
+		else flightScaleOf(squishyId, if kind == "roller" then radius / FX.rollerScaleTo else radius)
 	local flight: Flight = {
 		projId = projId,
 		kind = kind,
 		casterId = casterId,
-		model = newModel(squishyId, flightScale),
+		model = if spike then spikeModel(spike) else newModel(squishyId, flightScale),
 		shell = nil,
 		trail = nil,
 		emitters = {},
@@ -556,7 +598,7 @@ local function newFlight(
 		flight.halfHeight = model:GetExtentsSize().Y / 2 / math.max(flightScale, 1e-3)
 		model.Parent = fxFolder()
 		local root = model.PrimaryPart
-		if root and kind == "volley" then
+		if root and kind == "volley" and spike == nil then
 			attachTrail(flight, root, squishyId)
 		end
 	end
@@ -1473,6 +1515,163 @@ local function stepShock(shock: Shock, now: number): boolean
 	return now < shock.endsAt
 end
 
+-- Puff Burst (Prism Box, 2026-11-10; design: sd/lab50.js:362-366): the 8 lanes pulse through the wind-up and fade after.
+type SpikeLanes = { parts: { BasePart }, startAt: number, releaseAt: number }
+local spikeLanes: { SpikeLanes } = {}
+
+local function startSpikeLanes(event: Types.UltimateEventPayload, ability: any)
+	local floorY = event.origin.Y - ability.laneHeightAboveFloor
+	local set: SpikeLanes = { parts = {}, startAt = serverNow(), releaseAt = event.telegraphEndsAt }
+	for _, dir in circleDirs(event.dir, ability.count or 8) do
+		local cframe, size = UltFx.lanePlate(event.origin, dir, ability.maxLength, FX.spikeLaneHalfWidth, floorY)
+		table.insert(
+			set.parts,
+			FxPool.default():acquirePart({
+				Name = LANE_NAME,
+				Size = size,
+				CFrame = cframe,
+				Color = Palette.UltSpikeLane,
+				Transparency = 1,
+				Material = Enum.Material.Neon,
+			})
+		)
+	end
+	table.insert(spikeLanes, set)
+end
+
+local function stepSpikeLanes(set: SpikeLanes, now: number): boolean
+	local opacity
+	if now < set.releaseAt then
+		local span = math.max(set.releaseAt - set.startAt, 1e-3)
+		local k = math.clamp((now - set.startAt) / span, 0, 1)
+		local s = if isReduced() then 0 else math.sin(2 * math.pi * FX.spikeLanePulseHz * (now - set.startAt))
+		opacity = math.clamp(FX.spikeLaneOpacity * k + 0.1 * s, 0, 1)
+	else
+		opacity = math.max(0, FX.spikeLaneOpacity - (now - set.releaseAt))
+	end
+	for _, part in set.parts do
+		part.Transparency = 1 - opacity
+	end
+	return now < set.releaseAt + FX.spikeLaneFadeSeconds
+end
+
+-- Prism Pen (Prism Box, 2026-11-10; design: sd/lab50.js:376-388): the triangle around the drop (corners at the ability's
+-- triangleDeg, its dropHitRadius away), a pulsing outline and a rising candy panel on each side, open at the corners;
+-- at the drop's landAt the panels shatter into candy cubes and a white ring flashes out to the corners.
+type Pen = {
+	casterId: number,
+	center: Vector3,
+	radius: number,
+	startAt: number,
+	landAt: number,
+	sides: { { panel: BasePart, outline: BasePart, middle: Vector3, along: Vector3, length: number, color: Color3 } },
+	shattered: boolean,
+}
+local pens: { Pen } = {}
+
+local function startPen(event: Types.UltimateEventPayload, ability: any)
+	local center = event.center
+	local drop = event.drops and event.drops[1]
+	if center == nil or drop == nil then
+		return
+	end
+	local radius = ability.dropHitRadius or ability.radius
+	local degrees = ability.triangleDeg or 0
+	local corners: { Vector3 } = {}
+	for index = 0, 2 do
+		local angle = math.rad(degrees + 120 * index)
+		corners[index + 1] = Vector3.new(center.X + math.cos(angle) * radius, center.Y, center.Z + math.sin(angle) * radius)
+	end
+	local pen: Pen = {
+		casterId = event.casterId,
+		center = center,
+		radius = radius,
+		startAt = event.telegraphEndsAt,
+		landAt = drop.landAt,
+		sides = {},
+		shattered = false,
+	}
+	for index = 1, 3 do
+		local a, b = corners[index], corners[index % 3 + 1]
+		local along = (b - a).Unit
+		local length = math.max((b - a).Magnitude - 2 * FX.penCornerGapStuds, 0.1)
+		local middle = a:Lerp(b, 0.5)
+		local color = PEN_COLORS[index]
+		table.insert(pen.sides, {
+			panel = FxPool.default():acquirePart({
+				Name = PANEL_NAME,
+				Size = Vector3.new(FX.penPanelThickStuds, FX.penPanelHeightStuds, length),
+				CFrame = CFrame.lookAt(middle, middle + along),
+				Color = color,
+				Transparency = 0,
+				Material = Enum.Material.SmoothPlastic,
+			}),
+			outline = FxPool.default():acquirePart({
+				Name = PANEL_NAME,
+				Size = Vector3.new(FX.penOutlineWidthStuds, LANE_THICKNESS, length),
+				CFrame = CFrame.lookAt(middle + Vector3.new(0, FX.laneLift, 0), middle + Vector3.new(0, FX.laneLift, 0) + along),
+				Color = color,
+				Transparency = 1,
+				Material = Enum.Material.Neon,
+			}),
+			middle = middle,
+			along = along,
+			length = length,
+			color = color,
+		})
+	end
+	table.insert(pens, pen)
+end
+
+local function endPen(pen: Pen)
+	for _, side in pen.sides do
+		releasePart(side.panel)
+		releasePart(side.outline)
+	end
+	table.clear(pen.sides)
+end
+
+local function stepPen(pen: Pen, now: number): boolean
+	if now < pen.landAt then
+		local span = math.max(pen.landAt - pen.startAt, 1e-3)
+		local t = math.max(now - pen.startAt, 0)
+		local k = (1 - math.cos(math.pi * math.clamp(t / span, 0, 1))) / 2 -- cos01 (lab50.js:387)
+		local s = if isReduced() then 0 else math.sin(2 * math.pi * FX.penOutlinePulseHz * t)
+		for _, side in pen.sides do
+			local y = -FX.penPanelSinkStuds + FX.penPanelRiseStuds * k
+			local at = side.middle + Vector3.new(0, y, 0)
+			side.panel.CFrame = CFrame.lookAt(at, at + side.along)
+			side.outline.Transparency = 1 - math.clamp(FX.penOutlineOpacity + FX.penOutlinePulse * s, 0, 1)
+		end
+		return true
+	end
+	if not pen.shattered then
+		pen.shattered = true
+		for _, side in pen.sides do
+			burst(
+				side.middle + Vector3.new(0, 0.25 / 0.28, 0),
+				FX.penCubes,
+				{ side.color, Palette.White },
+				FX.penCubeSize,
+				FX.penCubeLifetime,
+				FX.penCubeSpeed,
+				FX.penCubeGravity
+			)
+		end
+		endPen(pen)
+		FxShapes.ring(
+			pen.center,
+			Vector3.yAxis,
+			2 * pen.radius,
+			FX.penFlashSeconds,
+			Palette.White,
+			FX.penFlashTransparencyFrom
+		)
+		play(SOUND_POP, pen.center, pen.casterId)
+	end
+	return false
+end
+
 -- Public -------------------------------------------------------------------------------------------------------------
 
 -- One UltimateEvent of a non-lane ultimate (VfxController has parsed it and found its ability).
@@ -1504,6 +1703,9 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			end
 			startShock(event, ability, squishyId) -- the leap and the landing spot show through the wind-up
 		end
+		if ultimateId == PUFF_ID then
+			startSpikeLanes(event, ability)
+		end
 		return
 	end
 	local cast = casts[casterId]
@@ -1534,7 +1736,7 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 	end
 	if kind == "volley" then
 		local shots: { Types.UltimateShot } = event.shots or {}
-		for _, shot in shots do
+		for index, shot in shots do
 			newFlight(
 				"volley",
 				casterId,
@@ -1546,7 +1748,8 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 				event.speed,
 				event.radius,
 				shot.releaseAt,
-				floorY
+				floorY,
+				if ultimateId == PUFF_ID then SPIKE_COLORS[(index - 1) % #SPIKE_COLORS + 1] else nil
 			)
 			remember(shot.projId, shot.releaseAt + shot.length / math.max(event.speed, 1))
 		end
@@ -1595,7 +1798,11 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			table.insert(lanes, { part = part, untilClock = os.clock() + FX.laneSeconds })
 		end
 	elseif kind == "rain" then
-		startRain(event, ability, squishyId, ultimateId == WELL_ID, ultimateId == GEYSER_ID, ultimateId == CAMPFIRE_ID)
+		if ultimateId == PEN_ID then
+			startPen(event, ability)
+		else
+			startRain(event, ability, squishyId, ultimateId == WELL_ID, ultimateId == GEYSER_ID, ultimateId == CAMPFIRE_ID)
+		end
 		local drops: { Types.UltimateDrop } = event.drops or {}
 		for _, drop in drops do
 			remember(drop.projId, drop.landAt)
@@ -1692,6 +1899,24 @@ function UltFx.step(now: number)
 			endShock(shock)
 		end
 	end
+	for index = #spikeLanes, 1, -1 do
+		local set = spikeLanes[index]
+		local ok, keep = pcall(stepSpikeLanes, set, now)
+		if not ok or not keep then
+			table.remove(spikeLanes, index)
+			for _, part in set.parts do
+				releasePart(part)
+			end
+		end
+	end
+	for index = #pens, 1, -1 do
+		local pen = pens[index]
+		local ok, keep = pcall(stepPen, pen, now)
+		if not ok or not keep then
+			table.remove(pens, index)
+			endPen(pen)
+		end
+	end
 	local clock = os.clock()
 	for index = #lanes, 1, -1 do
 		local lane = lanes[index]
@@ -1732,7 +1957,7 @@ function UltFx.counts(): { [string]: number }
 	for _ in shocks do
 		cakes += 1
 	end
-	return { flights = n, rains = #rains, lanes = #lanes, shocks = cakes }
+	return { flights = n, rains = #rains, lanes = #lanes, shocks = cakes, spikeLanes = #spikeLanes, pens = #pens }
 end
 
 return UltFx

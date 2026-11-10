@@ -42,7 +42,7 @@ return function(t: Context)
 	t.test("slots follow Catalog.list() over the 14 pedestals (D4; Series 01 has none yet)", function()
 		local defs = Catalog.list()
 		expect.equal(#LAYOUT.pedestals, 14)
-		expect.equal(#defs, 34) -- + the Frosty and Lava Boxes' 7 each (none has a pedestal either)
+		expect.equal(#defs, 41) -- + the Frosty, Lava and Prism Boxes' 7 each (none has a pedestal either)
 		for slot, def in defs do
 			if slot > 14 then
 				expect.equal(CollectionFormat.slotOf(def.id), nil)
@@ -64,8 +64,8 @@ return function(t: Context)
 		end
 		expect.equal(CollectionFormat.squishyForSlot(1, reversed), defs[#defs].id)
 		expect.equal(CollectionFormat.slotOf(defs[#defs].id, reversed), 1)
-		expect.equal(CollectionFormat.slotOf(defs[1].id, reversed), nil) -- 34th in that list: past the 14 pedestals
-		expect.equal(CollectionFormat.slotOf(defs[21].id, reversed), 14)
+		expect.equal(CollectionFormat.slotOf(defs[1].id, reversed), nil) -- 41st in that list: past the 14 pedestals
+		expect.equal(CollectionFormat.slotOf(defs[28].id, reversed), 14)
 		-- A short list leaves the other pedestals empty.
 		expect.equal(CollectionFormat.squishyForSlot(3, { defs[1], defs[2] }), nil)
 	end)

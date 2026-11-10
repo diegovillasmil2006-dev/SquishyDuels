@@ -348,6 +348,18 @@ local Palette = {
 	KillHippoCream = Color3.fromHex("#F6E8DC"), -- Hippo's Meltdown shard
 	KillMallowDisc = Color3.fromHex("#FFF1E0"), -- Behemoth's Bonfire disc
 	KillMallowToast = Color3.fromHex("#EDB06A"), -- Behemoth's Bonfire shard
+	-- Prism Box (2026-11-10): Puff Burst and Prism Pen (design: sd/lab50.js:359-388), the two kill sets
+	-- (KILLSETS2.GummyPufferfish / CandyglassQilin).
+	UltSpikeLane = Color3.fromHex("#FF9FC7"), -- lab50.js:363 (the 8 lane marks)
+	UltSpikePink = Color3.fromHex("#FF7AA5"), -- lab50.js:362 (the gummy spikes, 4 colours)
+	UltSpikeOrange = Color3.fromHex("#FFB36B"),
+	UltSpikeYellow = Color3.fromHex("#FFE27A"),
+	UltSpikeMint = Color3.fromHex("#8FE3C2"),
+	UltPrismMint = Color3.fromHex("#BDEFE0"), -- lab50.js:378 (the 3 candy panels)
+	UltPrismLilac = Color3.fromHex("#D8C8FF"),
+	UltPrismPeach = Color3.fromHex("#FFD3B5"),
+	UltPrismFlash = Color3.fromHex("#C7A0FF"), -- lab50.js:387 (the shatter flash)
+	KillQilinGlow = Color3.fromHex("#FFD6F0"), -- Qilin's Prism Parade glow
 	InspectEmberOrange = Color3.fromHex("#FF9A4D"), -- design: fp.js:182 (the Dragon's roar embers)
 	InspectEmberYellow = Color3.fromHex("#FFD25E"), -- design: fp.js:182
 	InspectEmberPink = Color3.fromHex("#FF6F7D"), -- design: fp.js:182
@@ -417,6 +429,10 @@ local Palette = {
 	StickerBoxLavaTop = Color3.fromHex("#FFD9B8"),
 	StickerBoxLavaEnd = Color3.fromHex("#FF8A4D"),
 	BoxTintLava = Color3.fromHex("#FFC9A0"),
+	-- Prism Box card (BOXES3 prism: colour #B48CFF, accents #FF9FC7, #FFEE9E, #8FE3C2)
+	StickerBoxPrismTop = Color3.fromHex("#E6D6FF"),
+	StickerBoxPrismEnd = Color3.fromHex("#B48CFF"),
+	BoxTintPrism = Color3.fromHex("#D9C6FF"),
 	BoxSoftPolka = Color3.fromHex("#8FF3F8"), -- stage:58: the polka gradient's top (to #3FCFE2)
 	BoxSoftRibbon = Color3.fromHex("#FF6F9E"), -- stage:103
 	BoxSoftBlush = Color3.fromHex("#FF8FB8"), -- stage:112
@@ -459,6 +475,13 @@ local Palette = {
 	BoxLavaCream = Color3.fromHex("#FFF1DC"), -- a burst cube colour
 	BoxLavaToast = Color3.fromHex("#E8A25A"), -- a burst cube colour
 	BoxLavaChoco = Color3.fromHex("#C9744A"), -- a burst drop colour
+	-- The Prism Box's Star Jar (BOXES3 prism): its light, beam and burst colours (the meshes keep their own).
+	BoxPrismLight = Color3.fromHex("#E9DCFF"), -- open.flash and open.beam
+	BoxPrismPink = Color3.fromHex("#FF9FC7"), -- a burst star colour
+	BoxPrismYellow = Color3.fromHex("#FFEE9E"), -- a burst star colour
+	BoxPrismMint = Color3.fromHex("#8FE3C2"), -- a burst star colour
+	BoxPrismSky = Color3.fromHex("#8AB8FF"), -- a burst star colour
+	BoxPrismGold = Color3.fromHex("#FFD34D"), -- a burst spark colour
 	-- Buttons and badges (each a top / mid / end or top / end gradient, 180deg).
 	StickerGreenTop = Color3.fromHex("#A6F796"), -- H:245: the primary (green) buttons
 	StickerGreenMid = Color3.fromHex("#4CD45C"), -- H:245 (55%)

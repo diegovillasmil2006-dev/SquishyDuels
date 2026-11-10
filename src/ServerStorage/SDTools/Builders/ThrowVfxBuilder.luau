@@ -804,6 +804,60 @@ local TRAILS: { TrailSpec } = {
 			sparkles("Gold", hex("#FFE7A0"), 8, 0.35),
 		},
 	},
+	-- Prism Box (2026-11-10): Claude Design's CATALOG2 round 4 trails (sd/toys2.js:884-890). Built and copied in alone,
+	-- like the Lava Box's.
+	{
+		id = "taffy_tadpole",
+		theme = "Taffy Tadpole: a pink-to-blue taffy ribbon and little stars",
+		ribbons = { ribbonOf({ hex("#FFD6EA"), hex("#B8D8FF") }, 0.9, 0.36), core({ C.White, hex("#FFD6EA") }) },
+		emitters = { dots("Stars", { hex("#FFB3D1"), hex("#B8D8FF"), hex("#FFE27A") }, 8, 0.16, 20, -0.4) },
+	},
+	{
+		id = "jellybean_piglet",
+		theme = "Jellybean Piglet: a pink ribbon and rainbow jellybeans",
+		ribbons = { ribbonOf({ hex("#FFD6E4"), hex("#FF8FB4") }, 0.9, 0.34), core({ C.White, hex("#FFD6E4") }) },
+		emitters = { dots("Jellybeans", { hex("#FF8FB4"), hex("#FFE27A"), hex("#8FE3C2"), hex("#C7A0FF") }, 8, 0.16, 22, -0.4) },
+	},
+	{
+		id = "cotton_candy_alpaca",
+		theme = "Cotton Candy Alpaca: a wide pink-to-blue fluff ribbon and fluff puffs",
+		ribbons = { ribbonOf({ hex("#FFF0F8"), hex("#B8CFFF") }, 1.1, 0.5), core({ C.White, hex("#FFF0F8") }) },
+		emitters = { dots("Fluff", { hex("#FFB8DA"), hex("#B8CFFF"), C.White }, 8, 0.16, 26, -0.2) },
+	},
+	{
+		id = "lollipop_lemur",
+		theme = "Lollipop Lemur: a pink swirl ribbon and sugar stars",
+		ribbons = { ribbonOf({ hex("#FFD6EE"), hex("#FF8FC8") }, 0.9, 0.36), core({ C.White, hex("#FFD6EE") }) },
+		emitters = { dots("Stars", { hex("#FF8FC8"), C.White, hex("#FFE27A") }, 8, 0.16, 22, -0.4) },
+	},
+	{
+		id = "gumball_goat",
+		theme = "Gumball Goat: a white-to-red ribbon and rainbow gumballs",
+		ribbons = { ribbonOf({ C.White, hex("#F2667A") }, 0.95, 0.38), core({ C.White, hex("#FFE0E5") }) },
+		emitters = { dots("Gumballs", { hex("#FF7AA5"), hex("#FFD36B"), hex("#8FE3C2"), hex("#8AB8FF"), hex("#C7A0FF") }, 10, 0.16, 26, -0.4) },
+	},
+	{
+		id = "gummy_pufferfish",
+		theme = "Gummy Pufferfish: a yellow-to-pink gummy ribbon, gummy bits and white sparkles",
+		ribbons = { ribbonOf({ hex("#FFE27A"), hex("#FF7AA5") }, 1.0, 0.42), core({ C.White, hex("#FFE27A") }) },
+		emitters = {
+			dots("Gummies", { hex("#FF7AA5"), hex("#FFB36B"), hex("#FFE27A"), hex("#8FE3C2") }, 10, 0.16, 28, -0.4),
+			sparkles("Sparkle", C.White, 8, 0.35),
+		},
+	},
+	{
+		id = "candyglass_qilin",
+		theme = "Candyglass Qilin: twin pearl-to-lilac streams, candyglass stars and white sparkles",
+		ribbons = {
+			ribbonOf({ hex("#F2E8FF"), hex("#C7A0FF") }, 0.65, 0.5, 0.45, "PrismL"),
+			ribbonOf({ hex("#C7A0FF"), hex("#F2E8FF") }, 0.65, 0.5, -0.45, "PrismR"),
+			core({ C.White, hex("#F2E8FF") }, 0.32, 0.22),
+		},
+		emitters = {
+			dots("Candyglass", { hex("#BDEFE0"), hex("#D8C8FF"), hex("#FFD3B5"), hex("#FFE27A") }, 12, 0.16, 6, 0.5, { 0.6, 1.0 }),
+			sparkles("Sparkle", C.White, 8, 0.35),
+		},
+	},
 }
 ThrowVfxBuilder.TRAILS = TRAILS
 

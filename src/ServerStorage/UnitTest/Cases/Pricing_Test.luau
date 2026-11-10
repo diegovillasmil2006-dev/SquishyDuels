@@ -80,7 +80,8 @@ return function(t: Context)
 	-- Uncommon, 2 Rares and Cosmo at their siblings' prices.
 	-- Frosty Box (2026-11-10): its 7 at the Frosty ceilings (Commons 66B, Uncommons half theirs 76.9B, Rare 200B, Epic
 	-- 512B, Parfait Wyvern 20T). Lava Box (2026-11-10): Commons 2T, Uncommons 2.3T, Rare 6T, Epic 15.3T, Mallow Behemoth 600T.
-	t.test("the whole collection through the shop costs 653,105,022,546,500 Coins at full price (V3:163)", function()
+	-- Prism Box (2026-11-10): Commons 26.6T, Uncommons 30.7T, Rare 80T, Epic 205T, Candyglass Qilin 8,000T.
+	t.test("the whole collection through the shop costs 9,052,705,022,546,500 Coins at full price (V3:163)", function()
 		local total = 0
 		for _, def in Catalog.list() do
 			total += def.shopPrice or 0
@@ -91,9 +92,14 @@ return function(t: Context)
 			+ 6_000_000_000_000
 			+ 15_300_000_000_000
 			+ 600_000_000_000_000
+		local prism = 2 * 26_600_000_000_000
+			+ 2 * 30_700_000_000_000
+			+ 80_000_000_000_000
+			+ 205_000_000_000_000
+			+ 8_000_000_000_000_000
 		expect.equal(
 			total,
-			6 * 789_000 + 3 * 937_500 + 4 * 3_750_000 + 4 * 1_800_000_000 + 2 * 1_100_000_000_000 + frosty + lava
+			6 * 789_000 + 3 * 937_500 + 4 * 3_750_000 + 4 * 1_800_000_000 + 2 * 1_100_000_000_000 + frosty + lava + prism
 		)
 	end)
 

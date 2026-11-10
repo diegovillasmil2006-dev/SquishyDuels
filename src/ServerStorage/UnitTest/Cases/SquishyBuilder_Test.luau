@@ -38,7 +38,7 @@ local MIN_BOUND, MAX_BOUND = 1, 4
 local FIT_MIN, FIT_MAX, FIT_MAX_LARGE = 1.5, 1.7, 1.8 -- longest side in hand, redesigned squishies (§3.1)
 -- horns, ears, ring; the Frosty Box's Legendary (its glass and sugar wings, 2026-11-10)
 local FIT_LARGE: { [string]: boolean } =
-	{ dragon = true, cloud_bunny = true, cosmo = true, parfait_wyvern = true, mallow_behemoth = true }
+	{ dragon = true, cloud_bunny = true, cosmo = true, parfait_wyvern = true, mallow_behemoth = true, candyglass_qilin = true }
 local EMBED_MIN = 0.5
 local RB_SPHERE_RADIUS = 1.375
 local EPS = 1e-4
@@ -85,6 +85,13 @@ local SQUISHY_IDS = {
 	"pizza_pangolin",
 	"lava_cake_hippo",
 	"mallow_behemoth",
+	"taffy_tadpole",
+	"jellybean_piglet",
+	"cotton_candy_alpaca",
+	"lollipop_lemur",
+	"gumball_goat",
+	"gummy_pufferfish",
+	"candyglass_qilin",
 }
 local FACE_KIT_V1: { [string]: boolean } = {
 	kitty_bread = true,

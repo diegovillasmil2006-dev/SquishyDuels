@@ -79,6 +79,8 @@ local SOUND_KEYS = {
 	"sfx.ultCharge.parfait_wyvern",
 	"sfx.ultCharge.lava_cake_hippo", -- Lava Box (2026-11-10): Fondue Flood's and Campfire Ring's wind-ups
 	"sfx.ultCharge.mallow_behemoth",
+	"sfx.ultCharge.gummy_pufferfish", -- Prism Box (2026-11-10): Puff Burst's and Prism Pen's wind-ups
+	"sfx.ultCharge.candyglass_qilin",
 	"sfx.ultRelease",
 	"sfx.ultRainDrop",
 	"sfx.ultCloudHover",
@@ -304,7 +306,7 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 75) -- + Series 01's sfx.ultCharge.cosmo, the Frosty and Lava Boxes' 2 each
+		expect.equal(#keys, 77) -- + Series 01's sfx.ultCharge.cosmo, the 3 zone boxes' 2 each
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
 	end)
 
@@ -486,6 +488,7 @@ return function(t: Context)
 				"img.box.treat",
 				"img.box.frosty", -- Frosty Box (2026-11-10): Claude Design's Sundae Igloo
 				"img.box.lava", -- Lava Box (2026-11-10): Claude Design's Cocoa Volcano
+				"img.box.prism", -- Prism Box (2026-11-10): Claude Design's Star Jar
 				"img.fx.rays",
 				"img.fx.raysDetail",
 				"img.fx.raysReveal",
@@ -560,6 +563,20 @@ return function(t: Context)
 				"img.squishy.pizza_pangolin.white",
 				"img.squishy.lava_cake_hippo.white",
 				"img.squishy.mallow_behemoth.white",
+				"img.squishy.taffy_tadpole", -- Prism Box (2026-11-10)
+				"img.squishy.jellybean_piglet",
+				"img.squishy.cotton_candy_alpaca",
+				"img.squishy.lollipop_lemur",
+				"img.squishy.gumball_goat",
+				"img.squishy.gummy_pufferfish",
+				"img.squishy.candyglass_qilin",
+				"img.squishy.taffy_tadpole.white",
+				"img.squishy.jellybean_piglet.white",
+				"img.squishy.cotton_candy_alpaca.white",
+				"img.squishy.lollipop_lemur.white",
+				"img.squishy.gumball_goat.white",
+				"img.squishy.gummy_pufferfish.white",
+				"img.squishy.candyglass_qilin.white",
 				"img.nav.squishies.white",
 				"img.nav.boxes.white",
 				"img.nav.shop.white",

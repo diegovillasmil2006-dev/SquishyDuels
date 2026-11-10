@@ -217,7 +217,7 @@ return function(t: Context)
 		expected.autoClick = { step = 0, at = 0 } -- auto-clicker check (2026-10-16): the same
 		expected.weekly = { week = -1, active = {} } -- weekly quests (2026-10-17): the same
 		expected.giftQueue = {} -- pens3 phase 5: the same
-		expected.boxOrder = { snack = 0, sweet = 0, frosty = 0, lava = 0 }
+		expected.boxOrder = { snack = 0, sweet = 0, frosty = 0, lava = 0, prism = 0 }
 		expected.gifts = { frog = false }
 		expected.buyBack = {} -- pens3 phases 7-8: the same
 		expected.bag = { 0, 0, 0, 0, 0, 0, 0 }
@@ -300,7 +300,7 @@ return function(t: Context)
 		})
 		-- Pens3 phase 5: no gift waiting, no fixed-order box opened, the Frog gift still to come.
 		expect.deepEqual(d.giftQueue, {})
-		expect.deepEqual(d.boxOrder, { snack = 0, sweet = 0, frosty = 0, lava = 0 })
+		expect.deepEqual(d.boxOrder, { snack = 0, sweet = 0, frosty = 0, lava = 0, prism = 0 })
 		expect.deepEqual(d.gifts, { frog = false })
 		-- Pens3 phases 7-8: nothing to buy back, an empty bag (one count per coating, Wax .. Galaxy).
 		expect.deepEqual(d.buyBack, {})
@@ -1152,7 +1152,7 @@ return function(t: Context)
 			expect.equal(result.migrated, false)
 			expect.deepEqual(result.problems, {})
 			expect.deepEqual(result.profile.giftQueue, {})
-			expect.deepEqual(result.profile.boxOrder, { snack = 0, sweet = 0, frosty = 0, lava = 0 })
+			expect.deepEqual(result.profile.boxOrder, { snack = 0, sweet = 0, frosty = 0, lava = 0, prism = 0 })
 			expect.deepEqual(result.profile.gifts, { frog = false })
 			-- Saved values stay, through JSON too.
 			local HttpService = game:GetService("HttpService")
@@ -1164,7 +1164,7 @@ return function(t: Context)
 			expect.deepEqual(again.problems, {})
 			expect.deepEqual(again.profile.giftQueue, { "strawberry_frog", "bird" })
 			-- a box added since the save (the Frosty Box, 2026-11-10) starts at 0 with no problem logged
-			expect.deepEqual(again.profile.boxOrder, { snack = 11, sweet = 2_500, frosty = 0, lava = 0 })
+			expect.deepEqual(again.profile.boxOrder, { snack = 11, sweet = 2_500, frosty = 0, lava = 0, prism = 0 })
 			expect.deepEqual(again.profile.gifts, { frog = true })
 		end
 	)
@@ -1207,14 +1207,14 @@ return function(t: Context)
 		local profile = load(FIXTURE_V1).profile :: any
 		profile.boxOrder = { snack = 7.9, sweet = -3, mystery = 4 }
 		local fixed, problems = ProfileSchema.sanitize(profile, { now = NOW })
-		expect.deepEqual(fixed.boxOrder, { snack = 7, sweet = 0, mystery = 4, frosty = 0, lava = 0 })
+		expect.deepEqual(fixed.boxOrder, { snack = 7, sweet = 0, mystery = 4, frosty = 0, lava = 0, prism = 0 })
 		expect.equal(notesAbout(problems, "boxOrder"), 2)
 		profile.boxOrder = { snack = 0 / 0, sweet = "12" }
 		fixed = ProfileSchema.sanitize(profile, { now = NOW })
-		expect.deepEqual(fixed.boxOrder, { snack = 0, sweet = 0, frosty = 0, lava = 0 })
+		expect.deepEqual(fixed.boxOrder, { snack = 0, sweet = 0, frosty = 0, lava = 0, prism = 0 })
 		profile.boxOrder = "garbage"
 		fixed = ProfileSchema.sanitize(profile, { now = NOW })
-		expect.deepEqual(fixed.boxOrder, { snack = 0, sweet = 0, frosty = 0, lava = 0 })
+		expect.deepEqual(fixed.boxOrder, { snack = 0, sweet = 0, frosty = 0, lava = 0, prism = 0 })
 	end)
 
 	t.test("sanitize gifts: fail closed, a broken flag or a broken table counts every gift as given", function()

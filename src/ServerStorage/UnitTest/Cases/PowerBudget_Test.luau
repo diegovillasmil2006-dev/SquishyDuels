@@ -78,6 +78,15 @@ local TABLE: { Row } = {
 	{ id = "cayenne_kiwi", speed = 90, radius = 1.4, cooldown = 1.00, windup = 0.18, Ps = -0.94, Pr = 1.00, Pw = 0, Pc = 0, sum = 0.06, ult = 0, net = 0.06, flight = 0.444, slack = 3.29 },
 	{ id = "pizza_pangolin", speed = 90, radius = 1.4, cooldown = 1.00, windup = 0.18, Ps = -0.94, Pr = 1.00, Pw = 0, Pc = 0, sum = 0.06, ult = 0, net = 0.06, flight = 0.444, slack = 3.29 },
 	{ id = "lava_cake_hippo", speed = 92, radius = 1.3, cooldown = 1.00, windup = 0.19, Ps = -0.55, Pr = 0.75, Pw = -0.40, Pc = 0, sum = -0.20, ult = 0.69, net = 0.49, flight = 0.435, slack = 3.40 },
+	-- Prism Box (2026-11-10): siblings kitty_bread, toast, butter, chocolate, strawberry_frog, cloud_bunny and dragon (Puff
+	-- Burst costs Rain Check's 0.27, Prism Pen Dragon Rush's 2.00).
+	{ id = "taffy_tadpole", speed = 95, radius = 1.0, cooldown = 1.00, windup = 0.18, Ps = 0, Pr = 0, Pw = 0, Pc = 0, sum = 0.00, ult = 0, net = 0.00, flight = 0.421, slack = 3.32 },
+	{ id = "jellybean_piglet", speed = 105, radius = 0.8, cooldown = 1.05, windup = 0.18, Ps = 1.60, Pr = -0.50, Pw = 0, Pc = -0.95, sum = 0.15, ult = 0, net = 0.15, flight = 0.381, slack = 2.88 },
+	{ id = "cotton_candy_alpaca", speed = 95, radius = 0.9, cooldown = 1.05, windup = 0.15, Ps = 0, Pr = -0.25, Pw = 1.20, Pc = -0.95, sum = 0.00, ult = 0, net = 0.00, flight = 0.421, slack = 2.94 },
+	{ id = "lollipop_lemur", speed = 90, radius = 1.4, cooldown = 1.00, windup = 0.18, Ps = -0.94, Pr = 1.00, Pw = 0, Pc = 0, sum = 0.06, ult = 0, net = 0.06, flight = 0.444, slack = 3.29 },
+	{ id = "gumball_goat", speed = 90, radius = 1.4, cooldown = 1.00, windup = 0.18, Ps = -0.94, Pr = 1.00, Pw = 0, Pc = 0, sum = 0.06, ult = 0, net = 0.06, flight = 0.444, slack = 3.29 },
+	{ id = "gummy_pufferfish", speed = 110, radius = 0.9, cooldown = 1.10, windup = 0.18, Ps = 2.30, Pr = -0.25, Pw = 0, Pc = -1.82, sum = 0.23, ult = 0.27, net = 0.50, flight = 0.364, slack = 2.50 },
+	{ id = "candyglass_qilin", speed = 92, radius = 1.0, cooldown = 1.05, windup = 0.19, Ps = -0.55, Pr = 0, Pw = -0.40, Pc = -0.95, sum = -1.90, ult = 2.00, net = 0.10, flight = 0.435, slack = 3.70 },
 	{ id = "mallow_behemoth", speed = 92, radius = 1.0, cooldown = 1.05, windup = 0.19, Ps = -0.55, Pr = 0, Pw = -0.40, Pc = -0.95, sum = -1.90, ult = 2.00, net = 0.10, flight = 0.435, slack = 3.70 },
 	{ id = "parfait_wyvern", speed = 92, radius = 1.0, cooldown = 1.05, windup = 0.19, Ps = -0.55, Pr = 0, Pw = -0.40, Pc = -0.95, sum = -1.90, ult = 2.00, net = 0.10, flight = 0.435, slack = 3.70 },
 }
@@ -94,6 +103,8 @@ local ULTIMATE: { [string]: string } = {
 	parfait_wyvern = "layer_cake_shockwave",
 	lava_cake_hippo = "fondue_flood", -- Lava Box (ults2.js)
 	mallow_behemoth = "campfire_ring",
+	gummy_pufferfish = "puff_burst", -- Prism Box (ults2.js)
+	candyglass_qilin = "prism_pen",
 }
 
 local TOLERANCE = 0.01 -- the table is rounded to 2 decimals

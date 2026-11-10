@@ -107,6 +107,8 @@ return function(t: Context)
 			"slushy_seal",
 			"cinder_bun", -- Lava Box (2026-11-10): each one its rarity's dearest
 			"cocoa_quokka",
+			"jellybean_piglet", -- Prism Box (2026-11-10): each one its rarity's dearest but the Lava ones
+			"taffy_tadpole",
 			"kitty_bread",
 			"butter",
 			"chocolate",
@@ -115,22 +117,27 @@ return function(t: Context)
 			"mint_chip_mouse",
 			"cayenne_kiwi",
 			"smore_skunk",
+			"cotton_candy_alpaca",
+			"lollipop_lemur",
 			"bao_buddy",
 			"mochi_fox",
 			"pando",
 			"strawberry_frog",
 			"sundae_manatee",
 			"pizza_pangolin",
+			"gumball_goat",
 			"bird",
 			"cloud_bunny",
 			"cupcake_axolotl",
 			"donut",
 			"gelato_narwhal",
 			"lava_cake_hippo",
+			"gummy_pufferfish",
 			"cosmo",
 			"dragon",
 			"parfait_wyvern",
 			"mallow_behemoth",
+			"candyglass_qilin",
 		})
 		local byId: { [string]: any } = {}
 		for _, e in list do

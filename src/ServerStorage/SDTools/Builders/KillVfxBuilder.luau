@@ -86,6 +86,8 @@ local SETS = {
 	"wyvern_sugar_storm",
 	"hippo_meltdown",
 	"behemoth_bonfire",
+	"puffer_pop_rocks",
+	"qilin_prism_parade",
 }
 
 local ENGINE = {
@@ -148,6 +150,16 @@ local C = {
 	BehemothFlame = hex("#FFB347"),
 	BehemothEmber = hex("#FF8A3C"),
 	BehemothToast = hex("#EDB06A"),
+	-- Prism Box (2026-11-10; design: KILLSETS2.GummyPufferfish / CandyglassQilin disc, ring, glow and shards)
+	PufferPink = hex("#FF7AA5"),
+	PufferOrange = hex("#FFB36B"),
+	PufferYellow = hex("#FFE27A"),
+	PufferMint = hex("#8FE3C2"),
+	PufferGlow = hex("#FF9FC7"),
+	QilinLilac = hex("#C7A0FF"),
+	QilinMint = hex("#8FE3C2"),
+	QilinPeach = hex("#FFD3B5"),
+	QilinGold = hex("#FFE27A"),
 }
 
 -- Module table
@@ -1346,6 +1358,105 @@ local function killBehemoth(): Part
 	return part
 end
 
+-- Puffer's Pop Rocks (Gummy Pufferfish, Prism Box 2026-11-10; design: KILLSETS2.GummyPufferfish, "The puffer inflates to
+-- bursting, then pops into a shower of fizzing gummy bits"): the design's disc, ring, glow and shards.
+local PUFFER_SHARDS = { C.PufferPink, C.PufferOrange, C.PufferYellow, C.PufferMint }
+
+local function bannerPuffer(): Part
+	local part = carrier("puffer_pop_rocks", "Puffer's Pop Rocks (Gummy Pufferfish): a pink flash, gummy bits, a yellow ring from 5k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.PufferGlow),
+		bannerBits("Gummies", tex("sparkle"), PUFFER_SHARDS, 10, { 5, 9 }, 0.45, { 0.5, 0.8 }, { light = 0.4 }),
+		bannerBits("Glow", tex("twinkle"), C.PufferGlow, 6, { 2, 4 }, 0.35, { 0.6, 0.9 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "PopRing",
+			texture = tex("softRing"),
+			color = C.PufferYellow,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.PufferGlow, 6, 6),
+	}, true)
+	return part
+end
+
+local function killPuffer(): Part
+	local part = carrier("puffer_pop_rocks", "Puffer's Pop Rocks (Gummy Pufferfish): it pops into a shower of fizzing gummy bits")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local column = attachment(part, "Pillar", Vector3.new(0, 4, 0))
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		coreFlash(C.PufferGlow, 6, nil),
+		worldBits("GummyBits", tex("sparkle"), PUFFER_SHARDS, 20, { 14, 24 }, 1.3, { 0.8, 1.1 }, { drag = 2, light = 0.4, delay = 0.1 }),
+		airRing("FizzRing", C.PufferYellow, 3, 17, 0.35, 0.1),
+		coreFlash(C.PufferYellow, 3.5, FINISH),
+		worldBits("FinishGummies", tex("sparkle"), PUFFER_SHARDS, 8, { 8, 14 }, 1.0, { 0.7, 1.0 }, { drag = 2, light = 0.4, delay = FINISH }),
+	}, false)
+	addAll(column, { upStreaks("FizzColumn", { C.PufferYellow, C.PufferGlow }, 8, { 28, 40 }, 0.1) }, false)
+	addAll(floor, {
+		floorRing("PopShock", tex("softRing"), C.PufferOrange, 1, 15, 0.55, 0.1),
+		floorRing("FizzShock", tex("shockRing"), C.PufferYellow, 1, 11, 0.5, 0.15),
+	}, false)
+	return part
+end
+
+-- Qilin's Prism Parade (Candyglass Qilin, Prism Box 2026-11-10; design: KILLSETS2.CandyglassQilin, "The Qilin rears on its
+-- cloud, its candy panels flash in rainbow rings and crystal cubes scatter"): the design's colours.
+local QILIN_SHARDS = { C.QilinLilac, C.QilinMint, C.QilinPeach, C.QilinGold }
+
+local function bannerQilin(): Part
+	local part = carrier("qilin_prism_parade", "Qilin's Prism Parade (Candyglass Qilin): a lilac flash, candy cubes, a mint ring from 5k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.QilinLilac),
+		bannerBits("Cubes", tex("sparkle"), QILIN_SHARDS, 10, { 5, 9 }, 0.45, { 0.5, 0.8 }, { light = 0.5 }),
+		bannerBits("Sparks", tex("twinkle"), C.QilinLilac, 6, { 3, 6 }, 0.35, { 0.4, 0.6 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "PrismRing",
+			texture = tex("softRing"),
+			color = C.QilinMint,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.QilinLilac, 6, 6),
+	}, true)
+	return part
+end
+
+local function killQilin(): Part
+	local part = carrier("qilin_prism_parade", "Qilin's Prism Parade (Candyglass Qilin): rainbow rings flash, crystal cubes scatter")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local column = attachment(part, "Pillar", Vector3.new(0, 4, 0))
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		coreFlash(C.QilinLilac, 6, nil),
+		worldBits("CrystalCubes", tex("sparkle"), QILIN_SHARDS, 20, { 14, 24 }, 1.3, { 0.8, 1.1 }, { drag = 2, light = 0.5, delay = 0.1 }),
+		worldBits("Sparks", tex("twinkle"), C.QilinLilac, 10, { 6, 12 }, 0.9, { 0.6, 0.9 }, { drag = 2, light = 0.5, delay = 0.15 }),
+		airRing("RainbowRing", C.QilinLilac, 3, 17, 0.35, 0.1),
+		coreFlash(C.QilinMint, 3.5, FINISH),
+		worldBits("FinishCubes", tex("sparkle"), QILIN_SHARDS, 8, { 8, 14 }, 1.0, { 0.7, 1.0 }, { drag = 2, light = 0.5, delay = FINISH }),
+	}, false)
+	addAll(column, { upStreaks("CrystalColumn", { C.QilinLilac, C.QilinMint }, 8, { 28, 40 }, 0.1) }, false)
+	addAll(floor, {
+		floorRing("MintShock", tex("softRing"), C.QilinLilac, 1, 15, 0.55, 0.1),
+		floorRing("LilacShock", tex("shockRing"), C.QilinMint, 1, 11, 0.5, 0.15),
+	}, false)
+	return part
+end
+
 -- Public
 
 local BANNERS: { [string]: () -> Part } = {
@@ -1360,6 +1471,8 @@ local BANNERS: { [string]: () -> Part } = {
 	wyvern_sugar_storm = bannerWyvern,
 	hippo_meltdown = bannerHippo,
 	behemoth_bonfire = bannerBehemoth,
+	puffer_pop_rocks = bannerPuffer,
+	qilin_prism_parade = bannerQilin,
 }
 
 local KILLS: { [string]: () -> Part } = {
@@ -1374,6 +1487,8 @@ local KILLS: { [string]: () -> Part } = {
 	wyvern_sugar_storm = killWyvern,
 	hippo_meltdown = killHippo,
 	behemoth_bonfire = killBehemoth,
+	puffer_pop_rocks = killPuffer,
+	qilin_prism_parade = killQilin,
 }
 
 -- The library as a new, UNPARENTED Folder (marked when `Generated`, SDTools' root marker module, is given). `AssetTable`

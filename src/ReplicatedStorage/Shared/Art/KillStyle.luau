@@ -289,6 +289,45 @@ local STYLES: { [string]: Style } = {
 		-- shortcut: no sound sheet of its own yet; it plays Dragon's Blaze's (fire) until one is made.
 		sound = "sfx.kill.behemoth_bonfire",
 	},
+	-- Prism Box (2026-11-10; design: KILLSETS2.GummyPufferfish / CandyglassQilin: disc, ring, glow, shards).
+	puffer_pop_rocks = {
+		id = "puffer_pop_rocks",
+		nameKey = "elimination.puffer_pop_rocks",
+		emblem = "img.kill.emblem.puffer_pop_rocks",
+		emblemWhite = "img.kill.emblem.puffer_pop_rocks.white",
+		shards = { "UltSpikePink", "UltSpikeOrange", "UltSpikeYellow", "UltSpikeMint" },
+		squishyId = "gummy_pufferfish",
+		disc = "UltSpikeOrange",
+		ring = "UltSpikeYellow",
+		glow = "UltSpikeLane",
+		frame = { image = "img.kill.frameSegments", tint = "UltSpikeYellow", size = 1.55, spin = 20 },
+		crownFrame = { image = "img.fx.rays", tint = "UltSpikeOrange", size = 2.2, spin = 14 },
+		ornament = { image = "img.icon.star", size = 0.34 },
+		crown = { image = "img.icon.star", size = 0.4, count = 3, fan = 20 },
+		bannerVfx = "Banner/puffer_pop_rocks",
+		killVfx = "Kill/puffer_pop_rocks",
+		-- shortcut: no sound sheet of its own yet; it plays Bubble Burst's until one is made.
+		sound = "sfx.kill.puffer_pop_rocks",
+	},
+	qilin_prism_parade = {
+		id = "qilin_prism_parade",
+		nameKey = "elimination.qilin_prism_parade",
+		emblem = "img.kill.emblem.qilin_prism_parade",
+		emblemWhite = "img.kill.emblem.qilin_prism_parade.white",
+		shards = { "UltPrismFlash", "UltSpikeMint", "UltPrismPeach", "UltSpikeYellow" },
+		squishyId = "candyglass_qilin",
+		disc = "UltPrismFlash",
+		ring = "UltSpikeMint",
+		glow = "KillQilinGlow",
+		frame = { image = "img.kill.frameOrnate", tint = "UltPrismFlash", size = 1.6, spin = 14 },
+		crownFrame = { image = "img.kill.frameSun", tint = "UltSpikeMint", size = 2.1, spin = 10 },
+		ornament = { image = "img.icon.star", size = 0.34 },
+		crown = { image = "img.icon.star", size = 0.5, count = 3, fan = 22 },
+		bannerVfx = "Banner/qilin_prism_parade",
+		killVfx = "Kill/qilin_prism_parade",
+		-- shortcut: no sound sheet of its own yet; it plays Sprinkle Blast's (candy tinkles) until one is made.
+		sound = "sfx.kill.qilin_prism_parade",
+	},
 }
 
 local IDS: { string } = {
@@ -303,6 +342,8 @@ local IDS: { string } = {
 	"wyvern_sugar_storm",
 	"hippo_meltdown",
 	"behemoth_bonfire",
+	"puffer_pop_rocks",
+	"qilin_prism_parade",
 }
 
 for _, style in STYLES do

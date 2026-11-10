@@ -1032,6 +1032,42 @@ local SLOTS: { AssetSlot } = {
 		"kill banner sheet, Cosmo (Cosmo's Supernova): for now Cloudburst's file 'sfx_kill_cloudburst_v2.ogg'",
 		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
 	),
+	-- Prism Box (2026-11-10). shortcut: borrowed wind-ups until each gets its own: Puff Burst (0.5 s) Bubble Pop's (a
+	-- pop), Prism Pen (0.7 s) Rain Check's (Cosmo's too).
+	soundSlot(
+		"sfx.ultCharge.gummy_pufferfish",
+		"SFX",
+		true,
+		nil,
+		"Puff Burst wind-up (0.5 s); for now Bubble Pop's file, sfx_ultCharge_cupcake_axolotl.wav",
+		uploaded(107592384694914, 1, "sfx.ultCharge.cupcake_axolotl (Axolotl ult charge-up).wav")
+	),
+	soundSlot(
+		"sfx.ultCharge.candyglass_qilin",
+		"SFX",
+		true,
+		nil,
+		"Prism Pen wind-up (0.7 s); for now Rain Check's file, sfx_ultCharge_cloud_bunny.wav",
+		uploaded(114287899394348, 1, "sfx.ultCharge.cloud_bunny (Cloud Bunny ult charge-up).wav")
+	),
+	-- Prism Box (2026-11-10). shortcut: borrowed sheets until each set gets its own: Puffer's Pop Rocks Bubble Burst's
+	-- (pops), Qilin's Prism Parade Sprinkle Blast's (candy tinkles).
+	soundSlot(
+		"sfx.kill.puffer_pop_rocks",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Gummy Pufferfish (Puffer's Pop Rocks): for now Bubble Burst's file 'sfx_kill_bubble_burst_v2.ogg'",
+		killSheet(132916717444884, "sfx_kill_bubble_burst_v2.ogg")
+	),
+	soundSlot(
+		"sfx.kill.qilin_prism_parade",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Candyglass Qilin (Qilin's Prism Parade): for now Sprinkle Blast's file 'sfx_kill_sprinkle_blast_v2.ogg'",
+		killSheet(121984041164424, "sfx_kill_sprinkle_blast_v2.ogg")
+	),
 	-- Lava Box (2026-11-10). shortcut: borrowed wind-ups until each gets its own: Fondue Flood (0.6 s) the Sprinkle
 	-- Roller's (the hippo throws like Donut), Campfire Ring (0.75 s) Bubble Pop's.
 	soundSlot(
@@ -1770,6 +1806,7 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.box.treat", "image", IMAGE_NOTE),
 	otherSlot("img.box.frosty", "image", IMAGE_NOTE), -- Claude Design BOXES zip (2026-11-10): pictures/box_frosty.png
 	otherSlot("img.box.lava", "image", IMAGE_NOTE), -- Claude Design BOXES zip (2026-11-10): pictures/box_lava.png
+	otherSlot("img.box.prism", "image", IMAGE_NOTE), -- Claude Design BOXES zip (2026-11-10): pictures/box_prism.png
 	otherSlot("img.fx.rays", "image", IMAGE_NOTE),
 	otherSlot("img.fx.raysDetail", "image", IMAGE_NOTE),
 	otherSlot("img.fx.raysReveal", "image", IMAGE_NOTE),
@@ -1851,6 +1888,21 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.squishy.pizza_pangolin.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.lava_cake_hippo.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.mallow_behemoth.white", "image", IMAGE_NOTE),
+	-- Prism Box (2026-11-10): empty picture slots like Series 01's.
+	otherSlot("img.squishy.taffy_tadpole", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.jellybean_piglet", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.cotton_candy_alpaca", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.lollipop_lemur", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.gumball_goat", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.gummy_pufferfish", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.candyglass_qilin", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.taffy_tadpole.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.jellybean_piglet.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.cotton_candy_alpaca.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.lollipop_lemur.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.gumball_goat.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.gummy_pufferfish.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.candyglass_qilin.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.squishies.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.boxes.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.shop.white", "image", IMAGE_NOTE),
@@ -1986,6 +2038,11 @@ local SLOTS: { AssetSlot } = {
 	killEmblem("img.kill.emblem.hippo_meltdown.white", 137216376192468, "kill_emblem_hippo_meltdown_white.png", "Hippo's Meltdown: Lava Cake Hippo, low-fidelity: white silhouette", "jayyyyy2806"),
 	killEmblem("img.kill.emblem.behemoth_bonfire", 79724623496860, "kill_emblem_behemoth_bonfire.png", "Behemoth's Bonfire: Mallow Behemoth, low-fidelity", "jayyyyy2806"),
 	killEmblem("img.kill.emblem.behemoth_bonfire.white", 74688272133146, "kill_emblem_behemoth_bonfire_white.png", "Behemoth's Bonfire: Mallow Behemoth, low-fidelity: white silhouette", "jayyyyy2806"),
+	-- Prism Box (2026-11-10): the design's own emblems (sd/ults2.js KILLSETS2), rendered 512 px.
+	killEmblem("img.kill.emblem.puffer_pop_rocks", 98977727932084, "kill_emblem_puffer_pop_rocks.png", "Puffer's Pop Rocks: Gummy Pufferfish, low-fidelity", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.puffer_pop_rocks.white", 93891610997540, "kill_emblem_puffer_pop_rocks_white.png", "Puffer's Pop Rocks: Gummy Pufferfish, low-fidelity: white silhouette", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.qilin_prism_parade", 85256387370158, "kill_emblem_qilin_prism_parade.png", "Qilin's Prism Parade: Candyglass Qilin, low-fidelity", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.qilin_prism_parade.white", 70606084646645, "kill_emblem_qilin_prism_parade_white.png", "Qilin's Prism Parade: Candyglass Qilin, low-fidelity: white silhouette", "jayyyyy2806"),
 	-- Highway v2 (jayyyyy 2026-10-23, Claude Design's "Highway Zones Spec v2": "Floors get two-tone squares from one
 	-- checker Texture (10-stud cells, black at Transparency 0.92)"; owner: "checkered pattern but with lego texture").
 	{
@@ -2200,6 +2257,7 @@ local IMAGE_IDS: { [string]: number } = {
 	["img.box.treat"] = 108858759156594,
 	["img.box.frosty"] = 87001908952247,
 	["img.box.lava"] = 90534182814298,
+	["img.box.prism"] = 109686526244183,
 	["img.fx.rays"] = 127919808884928,
 	["img.fx.raysDetail"] = 129278230460109,
 	["img.fx.raysReveal"] = 104783140251190,

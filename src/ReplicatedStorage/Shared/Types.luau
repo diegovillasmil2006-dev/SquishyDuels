@@ -53,6 +53,8 @@ export type EliminationEffectId =
 	| "wyvern_sugar_storm"
 	| "hippo_meltdown"
 	| "behemoth_bonfire"
+	| "puffer_pop_rocks"
+	| "qilin_prism_parade"
 
 export type SquishyDef = {
 	id: string,

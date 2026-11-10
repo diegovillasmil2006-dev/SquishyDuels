@@ -928,7 +928,7 @@ local function checkAbilities(problems: Problems)
 				isInteger(ability.count) and (ability.count :: number) <= MAX_VOLLEY_COUNT,
 				`{p}.count must be at most {MAX_VOLLEY_COUNT}`
 			)
-			expectBetween(problems, `{p}.fanDeg`, ability.fanDeg, 0, 180)
+			expectBetween(problems, `{p}.fanDeg`, ability.fanDeg, 0, 360) -- 360: Puff Burst's full circle (2026-11-10)
 			expectNonNegative(problems, `{p}.staggerSeconds`, ability.staggerSeconds)
 		elseif kind == "roller" then
 			expectPositive(problems, `{p}.clearHeight`, ability.clearHeight)
@@ -965,6 +965,10 @@ local function checkAbilities(problems: Problems)
 			if ability.ringAroundCaster ~= nil then
 				-- Campfire Ring (2026-11-10)
 				expect(problems, type(ability.ringAroundCaster) == "boolean", `{p}.ringAroundCaster must be a boolean`)
+			end
+			if ability.triangleDeg ~= nil then
+				-- Prism Pen (2026-11-10): a triangle of corner distance dropHitRadius
+				expect(problems, isNumber(ability.triangleDeg), `{p}.triangleDeg must be a number`)
 			end
 		elseif kind == "shockwave" then
 			-- Layer Cake Shockwave (2026-11-10): its rings.

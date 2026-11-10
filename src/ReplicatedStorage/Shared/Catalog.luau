@@ -527,6 +527,108 @@ local DEFS: { SquishyDef } = {
 		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
 		inspect = { yaw = 25, pitch = 12 },
 	},
+	-- Prism Box (2026-11-10, plan "50 squishies" step 6): the Prism ceilings (8T box: cost x 10,000 / weight, 3 digits
+	-- down), the Uncommons half theirs; throws = their siblings'; power and sell x27 (boxMult).
+	{
+		id = "taffy_tadpole",
+		nameKey = "squishy.taffyTadpole.name",
+		rarity = "Common",
+		blueprintId = "taffy_tadpole",
+		boxMult = 27,
+		shopPrice = 26_600_000_000_000,
+		throw = { speed = 95, gravity = 35, radius = 1.0, cooldown = 1.00, windup = 0.18 }, -- = kitty_bread
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#FFB3D1" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.34 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "jellybean_piglet",
+		nameKey = "squishy.jellybeanPiglet.name",
+		rarity = "Common",
+		blueprintId = "jellybean_piglet",
+		boxMult = 27,
+		shopPrice = 26_600_000_000_000,
+		throw = { speed = 105, gravity = 25, radius = 0.8, cooldown = 1.05, windup = 0.18 }, -- = toast
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#FF8FB4" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "cotton_candy_alpaca",
+		nameKey = "squishy.cottonCandyAlpaca.name",
+		rarity = "Uncommon",
+		blueprintId = "cotton_candy_alpaca",
+		boxMult = 27,
+		shopPrice = 30_700_000_000_000,
+		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 }, -- = butter
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#FFB8DA" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.40 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "lollipop_lemur",
+		nameKey = "squishy.lollipopLemur.name",
+		rarity = "Uncommon",
+		blueprintId = "lollipop_lemur",
+		boxMult = 27,
+		shopPrice = 30_700_000_000_000,
+		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = chocolate
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#FF8FC8" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.34 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "gumball_goat",
+		nameKey = "squishy.gumballGoat.name",
+		rarity = "Rare",
+		blueprintId = "gumball_goat",
+		boxMult = 27,
+		shopPrice = 80_000_000_000_000,
+		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = strawberry_frog
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#FFD36B" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "gummy_pufferfish",
+		nameKey = "squishy.gummyPufferfish.name",
+		rarity = "Epic",
+		blueprintId = "gummy_pufferfish",
+		boxMult = 27,
+		shopPrice = 205_000_000_000_000,
+		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 }, -- = cloud_bunny (it floats)
+		ultimateId = "puff_burst", -- the design's own (sd/ults2.js: Puff Burst), paid for out of the power budget (§5.8)
+		eliminationEffectId = "puffer_pop_rocks", -- the design's kill set (sd/ults2.js KILLSETS2.GummyPufferfish, Art/KillStyle)
+		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#FFB36B" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.30 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "candyglass_qilin",
+		nameKey = "squishy.candyglassQilin.name",
+		rarity = "Exclusive", -- the design's Legendary (Strings show Exclusive as "Legendary")
+		blueprintId = "candyglass_qilin",
+		boxMult = 27,
+		shopPrice = 8_000_000_000_000_000,
+		throw = { speed = 92, gravity = 35, radius = 1.0, cooldown = 1.05, windup = 0.19 }, -- = dragon
+		ultimateId = "prism_pen", -- the design's own (sd/ults2.js: Prism Pen), paid for out of the power budget (§5.8)
+		eliminationEffectId = "qilin_prism_parade", -- the design's kill set (sd/ults2.js KILLSETS2.CandyglassQilin, Art/KillStyle)
+		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#C7A0FF" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.40 },
+		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
 }
 
 local BY_ID: { [string]: SquishyDef } = {}
