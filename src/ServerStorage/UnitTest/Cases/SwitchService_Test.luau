@@ -136,6 +136,41 @@ return function(t: Context)
 		SwitchService.useDeps(nil)
 	end)
 
+	-- Found in a test game 2026-11-10: Roblox writes a server warning for every GetValue of a missing key, and the gate
+	-- asks on every request (one warning per squeeze). value(key) is also how CodeService reads the live codes.
+	t.test("a key is read once between refreshes; value() gives any key as stored", function()
+		local reads: { [string]: number } = {}
+		local snapshot, publish = fakeConfigs({})
+		local raw = snapshot.GetValue
+		function snapshot.GetValue(self: any, key: string): any
+			reads[key] = (reads[key] or 0) + 1
+			return raw(self, key)
+		end
+		expect.equal(SwitchService.value("codes"), nil) -- before any load
+		SwitchService.useDeps({
+			getSnapshot = function()
+				return snapshot
+			end,
+			clock = FakeClock.new(100).now,
+		})
+		SwitchService.loadNow()
+		for _ = 1, 5 do
+			expect.equal(SwitchService.allows("SqueezeRequest"), true)
+			expect.equal(SwitchService.value("codes"), nil)
+		end
+		expect.equal(reads.switch_squeeze, 1)
+		expect.equal(reads.codes, 1)
+		publish("switch_squeeze", false) -- a refresh reads again
+		publish("codes", { PARTY = 300 })
+		for _ = 1, 3 do
+			expect.equal(SwitchService.allows("SqueezeRequest"), false)
+			expect.equal(SwitchService.value("codes").PARTY, 300)
+		end
+		expect.equal(reads.switch_squeeze, 3) -- once at the load, once after each of the two publishes; never per request
+		expect.equal(reads.codes, 2)
+		SwitchService.useDeps(nil)
+	end)
+
 	t.test("the closed notice: at most once every notifyEverySeconds per player", function()
 		local _, clock = with({})
 		local a, b = {} :: any, {} :: any

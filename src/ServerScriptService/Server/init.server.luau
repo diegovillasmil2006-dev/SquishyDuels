@@ -87,6 +87,8 @@ local SERVICE_ORDER = {
 	"ShopService",
 	"QuestService",
 	"DailyRewardService",
+	"PerkService", -- 2026-11-10: the group members' pen boost and gift (asks Roblox on join)
+	"CodeService", -- 2026-11-10: the redeem codes (reads the live codes through SwitchService)
 	"TipService",
 	"PreferencesService",
 	"ShowOffService",

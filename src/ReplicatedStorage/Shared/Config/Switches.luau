@@ -36,6 +36,8 @@ local Switches = {
 		rewards = { "QuestClaim", "QuestSwap", "DailyClaim" },
 		-- Squeezing for Coins and Grip.
 		squeeze = { "SqueezeRequest" },
+		-- Item 4: the group bonus's "I joined" check and the redeem codes (the pen boost itself stays on).
+		bonus = { "GroupCheck", "CodeRedeem" },
 	} :: { [string]: { string } },
 }
 

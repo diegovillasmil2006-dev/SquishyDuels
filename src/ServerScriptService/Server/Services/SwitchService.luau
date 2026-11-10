@@ -5,6 +5,7 @@
 --   SwitchService.isOn(feature)        false only while the config key `switch_<feature>` is the boolean false
 --   SwitchService.allows(remoteName)   false while the remote's feature is off (NetService's gate, set in init)
 --   SwitchService.featureOf(remote)    the feature a remote belongs to, or nil
+--   SwitchService.value(key)           any config key as stored, or nil (item 4: the live redeem codes, `codes`)
 --   SwitchService.refused(player)      true when this player may get the "closed" toast now (rate limit)
 --   SwitchService.debugSet(feature, on?)  Studio: ConfigService:SetTestingValue on this server (nil clears it)
 --   SwitchService.debugState()
@@ -70,6 +71,12 @@ end
 
 local deps: Deps = defaultDeps()
 local snapshot: Snapshot? = nil
+-- What each key held when it was first read since the last load or refresh (NONE = no such key). Roblox writes a
+-- warning into the server log for every GetValue of a key that does not exist, and NetService asks about a switch on
+-- every request (a squeeze: up to 18 a second per player), so a key is read once and remembered (seen in a test game
+-- 2026-11-10: one warning per squeeze).
+local NONE = table.freeze({})
+local values: { [string]: any } = {}
 local featureByRemote: { [string]: string } = {}
 local known: { [string]: boolean } = {} -- feature -> its last logged state
 local lastNotice: { [Player]: number } = setmetatable({}, { __mode = "k" }) :: any
@@ -101,6 +108,7 @@ local function load(): boolean
 	end
 	local snap = result :: Snapshot
 	snapshot = snap
+	table.clear(values)
 	snap.UpdateAvailable:Connect(function()
 		local refreshed, err = pcall(function()
 			snap:Refresh()
@@ -108,6 +116,7 @@ local function load(): boolean
 		if not refreshed then
 			log:warn("config refresh failed (the old values stay):", err)
 		end
+		table.clear(values)
 		logChanges()
 	end)
 	logChanges()
@@ -122,19 +131,33 @@ end
 
 -- ON unless the config key holds the boolean false. An unknown feature is ON (nothing can be closed by a typo).
 function SwitchService.isOn(feature: string): boolean
-	local snap = snapshot
-	if snap == nil or Switches.features[feature] == nil then
+	if Switches.features[feature] == nil then
 		return true
 	end
-	local ok, value = pcall(function(): any
-		return snap:GetValue(PREFIX .. feature)
-	end)
-	return not (ok and value == false)
+	return SwitchService.value(PREFIX .. feature) ~= false
 end
 
 function SwitchService.allows(remoteName: string): boolean
 	local feature = featureByRemote[remoteName]
 	return feature == nil or SwitchService.isOn(feature)
+end
+
+-- Any experience config key as stored (nil: no such key, or configs not loaded). The caller checks its type
+-- (CodeService reads the live codes, the JSON key `codes`).
+function SwitchService.value(key: string): any
+	local snap = snapshot
+	if snap == nil then
+		return nil
+	end
+	local held = values[key]
+	if held == nil then
+		local ok, value = pcall(function(): any
+			return snap:GetValue(key)
+		end)
+		held = if ok and value ~= nil then value else NONE
+		values[key] = held
+	end
+	return if held == NONE then nil else held
 end
 
 -- True when `player` may be told now that a feature is closed (at most once every notifyEverySeconds).
@@ -164,6 +187,7 @@ function SwitchService.debugSet(feature: string, on: boolean?): (boolean, string
 		pcall(function()
 			(snapshot :: Snapshot):Refresh()
 		end)
+		table.clear(values)
 		logChanges()
 	end
 	return ok, if ok then nil else tostring(err)
@@ -185,6 +209,7 @@ function SwitchService.useDeps(overrides: { [string]: any }?)
 	end
 	deps = d
 	snapshot = nil
+	table.clear(values)
 	started = false
 	table.clear(lastNotice)
 	for feature in known do

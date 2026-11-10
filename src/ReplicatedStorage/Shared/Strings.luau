@@ -180,6 +180,13 @@ local Strings = {
 		daily = {
 			alreadyClaimed = "Claimed! Come back in {time}.",
 		},
+		-- Big job item 4 (2026-11-10): the redeem codes (CodeService). `invalid` is the one answer for a wrong, a badly
+		-- typed and a closed code, so a guess learns nothing.
+		code = {
+			invalid = "That code doesn't work. Check the spelling!",
+			used = "You already used this code.",
+			wait = "Too many tries. Wait a minute, then try again.",
+		},
 		purchase = {
 			unavailable = "This purchase isn't available right now.",
 		},
@@ -1460,6 +1467,23 @@ local Strings = {
 		statLevel = "Grip Lv",
 		statIncome = "Coins/s", -- qb1 (owner 2026-10-15): the pen's Coins a second
 		friendBoost = "Friends +{percent}%", -- 2026-10-31: the Friend Boost pill (EventController)
+		groupBoost = "Group +{percent}%", -- 2026-11-10: the group members' pill (EventController, PerkService)
+	},
+
+	-- Big job item 4 (2026-11-10): the group bonus and the redeem codes (PerkService's gift toast, BonusController's
+	-- toasts, the two rows on top of the Settings window).
+	bonus = {
+		groupRow = "Group: +{percent}% pen coins",
+		groupJoin = "Join", -- the row's chip until the player is a member, then groupJoined
+		groupJoined = "On",
+		groupGift = "Welcome to DIJAY Studios! +{coins} Coins and +{percent}% pen coins",
+		groupOn = "Group bonus is on: your pen pays +{percent}%!",
+		groupNotYet = "Join the group first. Just joined? Tap again in a moment!",
+		groupPending = "Your request to join is waiting. Tap again when you're in!",
+		-- Once a visit, after a daily reward claim, to a player who is not a member (never in the tutorial).
+		groupTip = "Tip: join our group in Settings for +{percent}% pen coins and a gift!",
+		codeHint = "Type a code", -- the code box while it is empty
+		codeRedeem = "Redeem",
 	},
 
 	-- Batch 3 (review #10): "Top Wins This Week" in the Quests screen (ShowOffService's weekly board, UI/QuestFormat).

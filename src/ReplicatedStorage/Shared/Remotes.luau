@@ -190,6 +190,10 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	QuestClaim = c2s("RemoteFunction", { arg("questId", "questId") }),
 	QuestSwap = c2s("RemoteFunction", { arg("questId", "questId") }),
 	DailyClaim = c2s("RemoteFunction", {}), -- data: Types.DailyClaimResult
+	-- Big job item 4 (2026-11-10): "I joined the group" (PerkService; data: { member, coins }) and a redeem code as
+	-- typed (CodeService; data: { coins }).
+	GroupCheck = c2s("RemoteFunction", {}),
+	CodeRedeem = c2s("RemoteFunction", { arg("code", "string") }),
 	-- Pens3 phase 1 (PenService): buys the caller's own next pen spot (no remote takes a base, plot or player id).
 	-- expectedPrice is compared, never charged. data: Types.PenResult {pen, charged, savePending}.
 	PenBuySpot = c2s("RemoteFunction", { arg("expectedPrice", "coins") }),

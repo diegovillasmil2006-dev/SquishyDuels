@@ -117,6 +117,7 @@ local CONTROLLER_ORDER = {
 	"AbilityBarController", -- Duel HUD part 2 (2026-10-24): the Catch / Ultimate / Dash bar of duels, TDM and FFA
 	"UltReadyTagController",
 	"PerfController", -- 2026-10-31: the small ping + FPS number (LihFolk check)
+	"BonusController", -- 2026-11-10: the group bonus's join and the redeem codes (the Settings rows call it)
 	"EventController", -- 2026-10-31: the timed events (the pill under DUEL, candy rain's drops and coin flights)
 	"SettingsController",
 	"OnboardingController",

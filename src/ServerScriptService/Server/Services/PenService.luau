@@ -6,7 +6,8 @@
 --   is the Coin source of the game; the shipped table is pinned by ValidatePen_Test).
 -- * The tick (start: every Pen.tickSeconds, step(dt) with the time that really passed): for each player in the server
 --   with a READY profile, PenMath.payStep(carry, PenMath.rate(pen) x the Friend Boost, dt) (at most Pen.maxTickSeconds
---   of time at once; the boost is FriendsService.penMult since 2026-10-31, never in away coins)
+--   of time at once; the boost is FriendsService.penMult since 2026-10-31, plus a group member's
+--   PerkService.penBoost since 2026-11-10, never in away coins)
 --   and ONE EconomyService.grantCoins(p, coins, "pen") per player and tick, each player in its own pcall. The pen pays
 --   no Grip. The carry (a part of a Coin) lives in this session only: it starts at 0 on join, time while not ready or
 --   out of the server never pays here (the time away pays once on the next load, below).
@@ -153,6 +154,7 @@ local BaseService = require(Services.BaseService)
 local DataService = require(Services.DataService)
 local EconomyService = require(Services.EconomyService)
 local FriendsService = require(Services.FriendsService)
+local PerkService = require(Services.PerkService)
 local NetService = require(Services.NetService)
 local ShutdownService = require(Services.ShutdownService)
 local StateService = require(Services.StateService)
@@ -320,7 +322,10 @@ local function defaultDeps(): Deps
 		sendFood = function(player: any)
 			StateService.markDirty(player, FIELD_FOOD)
 		end,
-		friendMult = FriendsService.penMult,
+		-- 2026-11-10 (big job item 4): a group member's boost adds to the Friend Boost (PerkService).
+		friendMult = function(player: any): number
+			return FriendsService.penMult(player) + PerkService.penBoost(player)
+		end,
 	}
 end
 

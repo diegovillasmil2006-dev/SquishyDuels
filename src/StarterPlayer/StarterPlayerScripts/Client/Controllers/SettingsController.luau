@@ -55,9 +55,17 @@
 -- Settings_ReplayTutorialButton, Settings_CloseButton.
 -- 2026-10-31 (LihFolk check): Ping & FPS, the Replay row's look with a chip naming PerfController's session mode
 -- (When bad / Always / Off); a tap steps to the next.
+-- Big job item 4 (2026-11-10; the owner: "A bonus for joining my Roblox group (DIJAY Studios), and redeem codes"): two
+-- rows above the design's (what a player opens Settings for, and the code box stays clear of a phone's keyboard), in
+-- the Replay row's look; BonusController does the work. The group row: the friends picture, "Group: +10% pen coins"
+-- and a chip, Join until the server says the player is a member (the Player attribute SD_GroupBoost), then On. The
+-- code row: the gift picture, the box (the design's well, capitals, at most Config.Bonus.Codes.maxTyped characters;
+-- the text stays after a no and clears after a yes) and the Redeem chip; Enter in the box redeems too.
+-- Stable names: Settings_GroupButton, Settings_CodeBox, Settings_CodeButton.
 
 -- Services
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Requires
@@ -82,6 +90,7 @@ local Theme = require(Client.UI.Theme)
 local Toggle = require(Client.UI.Components.Toggle)
 local UiPrefs = require(Client.UI.UiPrefs)
 local WellPill = require(Client.UI.Components.WellPill)
+local BonusController = require(script.Parent.BonusController)
 local FirstPersonController = require(script.Parent.FirstPersonController)
 local NetController = require(script.Parent.NetController)
 local PerfController = require(script.Parent.PerfController)
@@ -133,6 +142,11 @@ local TOGGLE_NAMES: { [string]: string } = {
 }
 local SLIDER_NAMES: { [string]: string } = { sfx = "Settings_SfxSlider", music = "Settings_MusicSlider" }
 local NOTE_TEXTS: { [string]: string } = { sfx = Strings.settings.noSfx, music = Strings.settings.noMusic }
+-- Big job item 4: the bonus rows.
+local ATTR_GROUP_BOOST = "SD_GroupBoost" -- PerkService: above 0 = a group member
+local CODE_MAX = require(Shared.Config.Bonus).Codes.maxTyped
+local CODE_PAD = 16 -- the typed text's inset in the well (its round ends)
+local CODE_HINT_ALPHA = 0.45 -- the hint: the text's white, this see-through
 
 -- Module table
 
@@ -453,6 +467,119 @@ local function perfRowOf(c: Cleanup.Cleanup, parent: Instance, order: number, en
 	return chip
 end
 
+-- Big job item 4: the group bonus row (see the header).
+local function groupRowOf(c: Cleanup.Cleanup, parent: Instance, order: number)
+	local _, content = rowFace("GroupRow", order, parent)
+	iconSlot(content, "img.icon.friends")
+	local chip: Button.Button
+	chip = Button.new({
+		name = "Settings_GroupButton",
+		text = Strings.bonus.groupJoin,
+		size = "chip",
+		accent = "cyan",
+		parent = content,
+		onActivated = function()
+			task.spawn(function()
+				chip:setState("loading")
+				BonusController.join()
+				chip:setState("normal")
+			end)
+		end,
+	})
+	chip.root.AnchorPoint = Vector2.new(1, 0.5)
+	chip.root.Position = UDim2.fromScale(1, 0.5)
+	c:add(chip)
+	rowLabel(
+		content,
+		Strings.format(Strings.bonus.groupRow, { percent = BonusController.groupPercent() }),
+		chip.root.Size.X.Offset + ROW.gap
+	)
+	local function refresh()
+		local member = BonusController.isMember()
+		chip:setText(if member then Strings.bonus.groupJoined else Strings.bonus.groupJoin)
+		chip:setAccent(if member then "greenChip" else "cyan")
+	end
+	c:add(Players.LocalPlayer:GetAttributeChangedSignal(ATTR_GROUP_BOOST):Connect(refresh))
+	refresh()
+end
+
+-- Big job item 4: the code row (see the header).
+local function codeRowOf(c: Cleanup.Cleanup, parent: Instance, order: number)
+	local _, content = rowFace("CodeRow", order, parent)
+	iconSlot(content, "img.icon.gift")
+	local box: TextBox
+	local chip: Button.Button
+	local function redeem()
+		if chip:getState() ~= "normal" then
+			return
+		end
+		chip:setState("loading")
+		if BonusController.redeem(box.Text, chip.root) then
+			box.Text = ""
+		end
+		chip:setState("normal")
+	end
+	chip = Button.new({
+		name = "Settings_CodeButton",
+		text = Strings.bonus.codeRedeem,
+		size = "chip",
+		accent = "cyan",
+		parent = content,
+		onActivated = function()
+			task.spawn(redeem)
+		end,
+	})
+	chip.root.AnchorPoint = Vector2.new(1, 0.5)
+	chip.root.Position = UDim2.fromScale(1, 0.5)
+	c:add(chip)
+	-- H:391: the design's well, as wide as the row leaves between the picture and the chip.
+	local well: Frame = Create("Frame", {
+		Name = "CodeWell",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, LOOK.icon + ROW.gap, 0.5, 0),
+		Parent = content,
+	})
+	Theme.foam(well, {
+		radius = TOUCH.minTarget,
+		stroke = NOTE_LOOK.border,
+		inner = true,
+		top = Layout.stickerBands(NOTE_LOOK.border, 0, 0, 0).top,
+		colors = { face = Palette.StickerWell },
+	})
+	box = Create("TextBox", {
+		Name = "Settings_CodeBox",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(CODE_PAD, 0),
+		Size = UDim2.new(1, -2 * CODE_PAD, 1, 0),
+		ClearTextOnFocus = false,
+		Text = "",
+		PlaceholderText = Strings.bonus.codeHint,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Parent = well,
+	})
+	Theme.text(box, LABEL_KIND)
+	box.TextWrapped = false
+	box.ClipsDescendants = true
+	box.PlaceholderColor3 = Palette.StickerWell:Lerp(WHITE, 1 - CODE_HINT_ALPHA)
+	local function fit()
+		well.Size = UDim2.new(1, -(LOOK.icon + 2 * ROW.gap + chip.root.Size.X.Offset), 0, TOUCH.minTarget)
+	end
+	c:add(chip.root:GetPropertyChangedSignal("Size"):Connect(fit))
+	fit()
+	c:add(box:GetPropertyChangedSignal("Text"):Connect(function()
+		local text = string.upper(string.sub(box.Text, 1, CODE_MAX))
+		if text ~= box.Text then
+			box.Text = text
+		end
+	end))
+	c:add(box.FocusLost:Connect(function(enterPressed: boolean)
+		if enterPressed then
+			task.spawn(redeem)
+		end
+	end))
+end
+
 local function build(parent: Instance): GuiObject
 	local c = cleanup :: Cleanup.Cleanup
 	local gui = UIController.screenGui(MODAL_GUI)
@@ -581,6 +708,9 @@ local function build(parent: Instance): GuiObject
 		fitBody()
 	end))
 
+	-- Big job item 4: the group bonus and the code box, above the design's rows (orders 0 and 1; those start at 2).
+	groupRowOf(c, body, 0)
+	codeRowOf(c, body, 1)
 	-- UI FINAL R9: the rows in SettingsFormat.ROWS's order (H:979, H:440, PR27, PR28); a volume row's note takes the
 	-- order after it.
 	local current = StateController.settings() :: any

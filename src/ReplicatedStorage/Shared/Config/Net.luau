@@ -66,6 +66,10 @@ local Net = {
 		QuestClaim = { rate = 2, burst = 3 },
 		QuestSwap = { rate = 0.5, burst = 1 },
 		DailyClaim = { rate = 0.5, burst = 1 },
+		-- Item 4 (2026-11-10): the group re-check asks Roblox (PerkService spaces those 10 s apart itself); a code is
+		-- typed by a person (CodeService locks wrong guessers itself). The buckets only stop floods.
+		GroupCheck = { rate = 0.2, burst = 2, oneInFlight = true },
+		CodeRedeem = { rate = 0.5, burst = 2, oneInFlight = true },
 		-- Pens3 phase 1: the pen's spot buy: 1 a second and one at a time.
 		PenBuySpot = { rate = 1, burst = 1, oneInFlight = true },
 		PenBuyShelf = { rate = 1, burst = 1, oneInFlight = true }, -- pens3 phase 11: the shelf's, the same
