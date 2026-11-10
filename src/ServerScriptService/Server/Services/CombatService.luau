@@ -312,6 +312,8 @@ export type AreaSpec = {
 	at: number, -- server time
 	floorY: number,
 	triangleDeg: number?, -- Prism Pen (2026-11-10): the area is the triangle of corner distance `radius` (UltRules)
+	sliceHalf: number?, -- Bread Stamp (2026-11-10): the area is the bread slice of this half-size (UltRules)
+	sliceDeg: number?, -- Bread Stamp: its crown's angle
 }
 
 -- Layer Cake Shockwave (2026-11-10): one growing ring (AbilityService "shockwave").
@@ -392,6 +394,8 @@ type Area = {
 	endKind: Types.ImpactKind?, -- sent at the center when nobody is hit (nil: silent, a Rain Check drop)
 	normal: Vector3?,
 	triangleDeg: number?, -- Prism Pen (2026-11-10)
+	sliceHalf: number?, -- Bread Stamp (2026-11-10)
+	sliceDeg: number?,
 }
 
 -- Layer Cake Shockwave: a ring's own numbers (RingSpec; maxT = maxRadius / speed seconds of growth).
@@ -974,11 +978,15 @@ end
 -- radius of its floor point and that may be damaged then; nil when nobody is (left).
 local function areaVictim(proj: Projectile, area: Area): Candidate?
 	local floorPoint = Vector3.new(area.center.X, proj.floorY or area.center.Y, area.center.Z)
-	-- A body in the area: within its radius, or (Prism Pen) in its triangle.
+	-- A body in the area: within its radius, or (Prism Pen) in its triangle, or (Bread Stamp) in its slice.
 	local function reaches(rootPosition: Vector3): boolean
 		local degrees = area.triangleDeg
 		if degrees ~= nil then
 			return UltRules.inTriangle(floorPoint, area.radius, degrees, rootPosition)
+		end
+		local half = area.sliceHalf
+		if half ~= nil then
+			return UltRules.inSlice(floorPoint, half, area.sliceDeg or 0, rootPosition)
 		end
 		return UltRules.feetWithin(rootPosition, floorPoint, area.radius)
 	end
@@ -1041,9 +1049,11 @@ local function areaVictim(proj: Projectile, area: Area): Candidate?
 				local bottom, _, radius = PracticeService.capsuleAt(target, area.at)
 				local feet = bottom - Vector3.new(0, radius, 0)
 				local degrees = area.triangleDeg
+				local half = area.sliceHalf
 				if
 					if degrees ~= nil
 						then UltRules.circleInTriangle(floorPoint, area.radius, degrees, feet, radius)
+						elseif half ~= nil then UltRules.circleInSlice(floorPoint, half, area.sliceDeg or 0, feet, radius)
 						else (feet - floorPoint).Magnitude <= area.radius
 				then
 					candidate.kind = "target"
@@ -2196,6 +2206,8 @@ function CombatService.launchArea(spec: AreaSpec): number
 			endKind = nil,
 			normal = nil,
 			triangleDeg = spec.triangleDeg,
+			sliceHalf = spec.sliceHalf,
+			sliceDeg = spec.sliceDeg,
 		},
 		areaHits = 0,
 	}

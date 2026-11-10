@@ -297,6 +297,14 @@ local STYLE_OF: { [string]: string } = {
 	gumball_goat = "bounce", -- GumballGoat
 	gummy_pufferfish = "glide", -- GummyPufferfish
 	candyglass_qilin = "glide", -- CandyglassQilin
+	-- Halo Box (2026-11-10, THROW_STYLE2)
+	meringue_chick = "lob", -- MeringueChick
+	cream_puff_kitten = "overhand", -- CreamPuffKitten
+	bumble_bun = "glide", -- BumbleBun
+	waffle_corgi = "sidearm", -- WaffleCorgi
+	custard_cherub = "glide", -- CustardCherub
+	souffle_seraph = "lob", -- SouffleSeraph
+	divine_loaf = "shove", -- DivineLoaf
 }
 
 local STYLE_NAMES: { string } = {}

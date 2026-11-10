@@ -208,8 +208,10 @@ return function(t: Context)
 			expect.equal(plan.steam, hook)
 			-- Series 01 (2026-11-10): Cosmo's design has no squeeze puff of its own (its ring and antenna move instead);
 			-- nor has Parfait Wyvern's (Frosty Box: its sugar wings flutter), nor Mallow Behemoth's (Lava Box: its embers
-			-- are in its inspect, anims2.js:136), nor Candyglass Qilin's (Prism Box: its candy panels clink).
-			local noPuff = { cosmo = true, parfait_wyvern = true, mallow_behemoth = true, candyglass_qilin = true }
+			-- are in its inspect, anims2.js:136), nor Candyglass Qilin's (Prism Box: its candy panels clink), nor Divine Loaf's
+			-- (Halo Box: its crown twinkles in its inspect).
+			local noPuff =
+				{ cosmo = true, parfait_wyvern = true, mallow_behemoth = true, candyglass_qilin = true, divine_loaf = true }
 			if def.rarity == "Exclusive" and hook == nil and not noPuff[def.id] then
 				error(`{def.id}: an Exclusive without its squeezeFx hook`)
 			end

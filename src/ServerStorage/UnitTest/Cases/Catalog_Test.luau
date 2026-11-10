@@ -585,6 +585,98 @@ local EXPECTED: { Expected } = {
 		elimination = "qilin_prism_parade",
 		shopPrice = 8_000_000_000_000_000,
 	},
+	-- Halo Box (2026-11-10): the Halo ceilings (80T box), the Uncommons half theirs; Divine Loaf box only (its ceiling
+	-- is over the coin cap); throws = their siblings'.
+	{
+		id = "meringue_chick",
+		name = "Meringue Chick",
+		rarity = "Common",
+		speed = 95,
+		gravity = 35,
+		radius = 1.0,
+		cooldown = 1.00,
+		windup = 0.18,
+		elimination = "standard",
+		shopPrice = 266_000_000_000_000,
+	},
+	{
+		id = "cream_puff_kitten",
+		name = "Cream Puff Kitten",
+		rarity = "Common",
+		speed = 105,
+		gravity = 25,
+		radius = 0.8,
+		cooldown = 1.05,
+		windup = 0.18,
+		elimination = "standard",
+		shopPrice = 266_000_000_000_000,
+	},
+	{
+		id = "bumble_bun",
+		name = "Bumble Bun",
+		rarity = "Uncommon",
+		speed = 95,
+		gravity = 30,
+		radius = 0.9,
+		cooldown = 1.05,
+		windup = 0.15,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 307_000_000_000_000,
+	},
+	{
+		id = "waffle_corgi",
+		name = "Waffle Corgi",
+		rarity = "Uncommon",
+		speed = 90,
+		gravity = 40,
+		radius = 1.4,
+		cooldown = 1.00,
+		windup = 0.18,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 307_000_000_000_000,
+	},
+	{
+		id = "custard_cherub",
+		name = "Custard Cherub",
+		rarity = "Rare",
+		speed = 90,
+		gravity = 40,
+		radius = 1.4,
+		cooldown = 1.00,
+		windup = 0.18,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 800_000_000_000_000,
+	},
+	{
+		id = "souffle_seraph",
+		name = "Souffle Seraph",
+		rarity = "Epic",
+		speed = 110,
+		gravity = 20,
+		radius = 0.9,
+		cooldown = 1.10,
+		windup = 0.18,
+		trail = "twinRibbon",
+		ultimate = "halo_toss",
+		elimination = "seraph_ascension",
+		shopPrice = 2_050_000_000_000_000,
+	},
+	{
+		id = "divine_loaf",
+		name = "Divine Loaf",
+		rarity = "Exclusive",
+		speed = 92,
+		gravity = 35,
+		radius = 1.0,
+		cooldown = 1.05,
+		windup = 0.19,
+		trail = "twinRibbon",
+		ultimate = "bread_stamp",
+		elimination = "divine_coronation",
+	},
 }
 
 -- Spec 2026-10-09 §3.3: each new squishy plays exactly like this same-rarity sibling.
@@ -626,6 +718,14 @@ local SIBLING: { [string]: string } = {
 	gumball_goat = "strawberry_frog",
 	gummy_pufferfish = "cloud_bunny",
 	candyglass_qilin = "dragon",
+	-- Halo Box (2026-11-10)
+	meringue_chick = "kitty_bread",
+	cream_puff_kitten = "toast",
+	bumble_bun = "butter",
+	waffle_corgi = "chocolate",
+	custard_cherub = "strawberry_frog",
+	souffle_seraph = "cloud_bunny",
+	divine_loaf = "dragon",
 }
 
 -- DESIGN §4.2 presentation table. The "ears/wings rigidity" notes are blueprint part rigidities (§8.2), not hooks.
@@ -1044,6 +1144,76 @@ local PRESENTATION: { [string]: Presentation } = {
 		accent = "#C7A0FF",
 		spin = "wobble",
 	},
+	meringue_chick = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.34,
+		accent = "#F4D9A0",
+		spin = "wobble",
+	},
+	cream_puff_kitten = {
+		grip = Vector3.new(0, -0.40, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.32,
+		accent = "#E9B66E",
+		spin = "wobble",
+	},
+	bumble_bun = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.36,
+		accent = "#F0A830",
+		spin = "wobble",
+	},
+	waffle_corgi = {
+		grip = Vector3.new(0, -0.40, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.36,
+		accent = "#E5A85C",
+		spin = "wobble",
+	},
+	custard_cherub = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.36,
+		accent = "#F2C46A",
+		spin = "wobble",
+	},
+	souffle_seraph = {
+		grip = Vector3.new(0, -0.65, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.34,
+		accent = "#F4D27A",
+		spin = "wobble",
+	},
+	divine_loaf = {
+		grip = Vector3.new(0, -0.55, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.40,
+		accent = "#D8C8FF",
+		spin = "wobble",
+	},
 }
 
 local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Exclusive" } -- Rare: 2026-11-01
@@ -1157,7 +1327,7 @@ return function(t: Context)
 
 	t.test("list returns the 8 squishies of DESIGN §4.2 in table order, then the 6 new ones, Series 01, the Frosty Box", function()
 		local list = Catalog.list()
-		expect.equal(#list, 41)
+		expect.equal(#list, 48)
 		expect.equal(#list, #EXPECTED)
 		expect.equal(ids(list), ids(EXPECTED))
 	end)
@@ -1304,8 +1474,8 @@ return function(t: Context)
 			end
 		end
 		-- + Cosmo (Series 01), Gelato Narwhal, Parfait Wyvern (Frosty), Lava Cake Hippo, Mallow Behemoth (Lava), Gummy
-		-- Pufferfish, Candyglass Qilin (Prism)
-		expect.equal(count, 12)
+		-- Pufferfish, Candyglass Qilin (Prism), Souffle Seraph, Divine Loaf (Halo)
+		expect.equal(count, 14)
 		for _, def in Catalog.byRarity("Epic") do
 			expect.truthy(def.ultimateId ~= nil)
 		end
@@ -1461,6 +1631,8 @@ return function(t: Context)
 		expect.equal(Catalog.getPower("mallow_behemoth"), 2304)
 		expect.equal(Catalog.getPower("taffy_tadpole"), 27) -- the Prism Box: x27
 		expect.equal(Catalog.getPower("candyglass_qilin"), 6912)
+		expect.equal(Catalog.getPower("meringue_chick"), 81) -- the Halo Box: x81
+		expect.equal(Catalog.getPower("divine_loaf"), 20736)
 		expect.equal(Catalog.getPower("unknown"), 0)
 		expect.equal(Catalog.getPower(nil), 0)
 	end)
@@ -1482,7 +1654,7 @@ return function(t: Context)
 		expect.equal(#Catalog.list(), #EXPECTED)
 		local commons = Catalog.byRarity("Common")
 		table.clear(commons)
-		expect.equal(#Catalog.byRarity("Common"), 13) -- 5 + Series 01's Berry Jelly and Peachy, the 3 zone boxes' 2 each
+		expect.equal(#Catalog.byRarity("Common"), 15) -- 5 + Series 01's Berry Jelly and Peachy, the 4 zone boxes' 2 each
 	end)
 
 	-- Rarity (§2.2, §4.3, §6.5) --------------------------------------------------------------------------------------

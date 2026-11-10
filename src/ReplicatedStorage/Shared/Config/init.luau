@@ -130,8 +130,8 @@ local MIN_ABILITY_INTERVAL_SECONDS = 20
 -- Spec phase 5: the ability kinds AbilityService runs (Config.Abilities header), and the kinds whose sphere flies above
 -- the floor (laneHeightAboveFloor > radius).
 local ABILITY_KINDS: { [string]: boolean } =
-	{ lane = true, volley = true, roller = true, rain = true, bubble = true, shockwave = true }
-local FLYING_KINDS: { [string]: boolean } = { lane = true, volley = true, roller = true, bubble = true }
+	{ lane = true, volley = true, roller = true, rain = true, bubble = true, shockwave = true, boomerang = true }
+local FLYING_KINDS: { [string]: boolean } = { lane = true, volley = true, roller = true, bubble = true, boomerang = true }
 local MAX_VOLLEY_COUNT = 8 -- reading: a fan wider than this is a typo
 local ULTIMATE_RARITIES: { [string]: boolean } = { Epic = true, Exclusive = true } -- design: fp.js:576
 local BIND_TO_CLOSE_LIMIT_SECONDS = 30 -- Roblox gives BindToClose 30 s
@@ -935,6 +935,8 @@ local function checkAbilities(problems: Problems)
 		elseif kind == "bubble" then
 			expectPositive(problems, `{p}.popSeconds`, ability.popSeconds)
 			expectPositive(problems, `{p}.splashRadius`, ability.splashRadius)
+		elseif kind == "boomerang" then
+			expectNonNegative(problems, `{p}.bowStuds`, ability.bowStuds) -- Halo Toss (2026-11-10)
 		elseif kind == "rain" then
 			expectCount(problems, `{p}.drops`, ability.drops, 1)
 			eachField(problems, p, ability, {
@@ -969,6 +971,11 @@ local function checkAbilities(problems: Problems)
 			if ability.triangleDeg ~= nil then
 				-- Prism Pen (2026-11-10): a triangle of corner distance dropHitRadius
 				expect(problems, isNumber(ability.triangleDeg), `{p}.triangleDeg must be a number`)
+			end
+			if ability.sliceHalf ~= nil then
+				-- Bread Stamp (2026-11-10): a bread slice of half-size sliceHalf, its crown toward sliceDeg
+				expectPositive(problems, `{p}.sliceHalf`, ability.sliceHalf)
+				expect(problems, isNumber(ability.sliceDeg), `{p}.sliceDeg must be a number`)
 			end
 		elseif kind == "shockwave" then
 			-- Layer Cake Shockwave (2026-11-10): its rings.

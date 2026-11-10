@@ -474,6 +474,37 @@ local Vfx = {
 		penCubeGravity = -4 / 0.28,
 		penFlashSeconds = 0.35, -- lab50.js:388 (the white ring's life)
 		penFlashTransparencyFrom = 1 - 0.9, -- lab50.js:388 (opacity 0.9)
+		-- Halo Toss (Souffle Seraph, Halo Box 2026-11-10; design: sd/lab50.js:391-406): a gold path pulses through the wind-up
+		-- and fades after the throw; the halo (a gold ring) spins out along it and back.
+		haloPathHalfWidth = 0.05 / 0.28, -- lab50.js:394 (dots of radius 0.05 m)
+		haloPathOpacity = 0.45, -- lab50.js:397 (0.45 + 0.3·sin(25t))
+		haloPathPulse = 0.3,
+		haloPathPulseHz = 25 / (2 * math.pi),
+		haloPathFadeFrom = 0.6, -- lab50.js:397 (0.6 - (t - 0.6)·0.5 after the throw)
+		haloPathFadePerSecond = 0.5,
+		haloRadiusStuds = 0.28 / 0.28, -- lab50.js:395 (TorusGeometry(0.28, 0.04))
+		haloTubeStuds = 0.04 / 0.28,
+		haloSegments = 16, -- short cylinders round the ring
+		haloSpinRadPerSecond = 0.4 * 60, -- lab50.js:401 (rotation.z += 0.4 a frame at 60 fps)
+		-- Bread Stamp (Divine Loaf; design: sd/lab50.js:408-422): the slice's shadow darkens while the slab falls through the
+		-- last 45% of it; then the stamp: crumbs, a gold ring out past the slice, a flash; the slab rests, then sinks away.
+		stampShadowOpacity = 0.5, -- lab50.js:415 (0.5·cos01)
+		stampShadowFadePerSecond = 1, -- lab50.js:415 (0.5 - (t - 1))
+		stampCrownStrips = 6, -- the shadow's round crown in strips (no two shadow parts overlap)
+		stampSlabFallFrom = 0.55, -- lab50.js:416 (it falls from t 0.55 to 1.0)
+		stampSlabHeightStuds = 3 / 0.28, -- lab50.js:412 (from 3 m up)
+		stampSlabThickStuds = 0.18 / 0.28, -- lab50.js:412 (depth 0.1 + 2 bevels of 0.04)
+		stampCrumbs = 34, -- lab50.js:417
+		stampCrumbSize = 0.05 / 0.28,
+		stampCrumbSpeed = 4 / 0.28,
+		stampCrumbLifetime = 0.8,
+		stampCrumbGravity = -6 / 0.28,
+		stampRingGrow = 1.6, -- lab50.js:417 (the ring out to h·1.6)
+		stampRingSeconds = 0.4,
+		stampFlashSeconds = 0.35, -- lab50.js:417 (the flash's life)
+		stampHoldSeconds = 0.3, -- lab50.js:419 (it rests until t 1.3)
+		stampSinkSeconds = 0.7, -- lab50.js:419 (then sinks 0.2 m over 0.7 s)
+		stampSinkStuds = 0.2 / 0.28,
 		-- Batch B (owner 2026-10-17: "the Frog's bounce look from the design"): where Bubble Pop bounces, the Strawberry
 		-- Frog's bounce pass (design: fp.js:239): 6 hearts (Art/Palette UltBounceHeart*), a white ring, sfx.pop.
 		bounceHearts = 6,

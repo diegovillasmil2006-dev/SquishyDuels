@@ -88,6 +88,8 @@ local SETS = {
 	"behemoth_bonfire",
 	"puffer_pop_rocks",
 	"qilin_prism_parade",
+	"seraph_ascension",
+	"divine_coronation",
 }
 
 local ENGINE = {
@@ -160,6 +162,13 @@ local C = {
 	QilinMint = hex("#8FE3C2"),
 	QilinPeach = hex("#FFD3B5"),
 	QilinGold = hex("#FFE27A"),
+	-- Halo Box (2026-11-10; design: KILLSETS2.SouffleSeraph / DivineLoaf disc, ring, glow and shards)
+	SeraphCream = hex("#FFF4D6"),
+	HaloGold = hex("#F4D27A"),
+	HaloCream = hex("#FFE7C2"),
+	HaloLilac = hex("#D8C8FF"),
+	LoafPearl = hex("#FFFDF8"),
+	LoafGlow = hex("#FFF1C9"),
 }
 
 -- Module table
@@ -1457,6 +1466,105 @@ local function killQilin(): Part
 	return part
 end
 
+-- Seraph's Ascension (Souffle Seraph, Halo Box 2026-11-10; design: KILLSETS2.SouffleSeraph, "The Seraph rises out of its
+-- ramekin in a column of light while feathers drift down around it"): the design's disc, ring, glow and shards.
+local SERAPH_SHARDS = { C.White, C.HaloGold, C.HaloCream, C.HaloLilac }
+
+local function bannerSeraph(): Part
+	local part = carrier("seraph_ascension", "Seraph's Ascension (Souffle Seraph): a white flash, drifting feathers, a gold ring from 5k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.White),
+		bannerBits("Feathers", tex("feather"), SERAPH_SHARDS, 10, { 5, 9 }, 0.5, { 0.7, 1.0 }, { rotSpeed = { -180, 180 }, drag = 5, accel = Vector3.new(0, -2, 0) }),
+		bannerBits("Glow", tex("twinkle"), C.HaloGold, 6, { 2, 4 }, 0.35, { 0.6, 0.9 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "HaloRing",
+			texture = tex("softRing"),
+			color = C.HaloGold,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.HaloGold, 6, 6),
+	}, true)
+	return part
+end
+
+local function killSeraph(): Part
+	local part = carrier("seraph_ascension", "Seraph's Ascension (Souffle Seraph): a column of light, feathers drifting down")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local column = attachment(part, "Pillar", Vector3.new(0, 4, 0))
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		coreFlash(C.White, 6, nil),
+		worldBits("Feathers", tex("feather"), SERAPH_SHARDS, 18, { 8, 14 }, 1.4, { 1.0, 1.4 }, { drag = 4, rotSpeed = { -180, 180 }, accel = Vector3.new(0, -3, 0), light = 0.3, delay = 0.1 }),
+		airRing("HaloRing", C.HaloGold, 3, 17, 0.35, 0.1),
+		coreFlash(C.HaloGold, 3.5, FINISH),
+		worldBits("FinishFeathers", tex("feather"), SERAPH_SHARDS, 8, { 6, 10 }, 1.0, { 0.8, 1.1 }, { drag = 4, rotSpeed = { -180, 180 }, accel = Vector3.new(0, -3, 0), light = 0.3, delay = FINISH }),
+	}, false)
+	addAll(column, { upStreaks("LightColumn", { C.White, C.HaloGold }, 10, { 30, 44 }, 0.1) }, false)
+	addAll(floor, {
+		floorRing("GoldShock", tex("softRing"), C.HaloGold, 1, 15, 0.55, 0.1),
+		floorRing("CreamShock", tex("shockRing"), C.SeraphCream, 1, 11, 0.5, 0.15),
+	}, false)
+	return part
+end
+
+-- Divine Coronation (Divine Loaf, Halo Box 2026-11-10; design: KILLSETS2.DivineLoaf, "Gold stars crown the royal loaf in a
+-- ring, its wings flare and a pearl-white disc lights up behind it"): the design's colours.
+local LOAF_SHARDS = { C.HaloGold, C.White, C.HaloLilac, C.HaloCream }
+
+local function bannerLoaf(): Part
+	local part = carrier("divine_coronation", "Divine Coronation (Divine Loaf): a pearl flash, gold stars, a gold ring from 5k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.LoafPearl),
+		bannerBits("Stars", tex("twinkle"), LOAF_SHARDS, 10, { 5, 9 }, 0.45, { 0.5, 0.8 }, { light = 0.5 }),
+		bannerBits("Sparks", tex("sparkle"), C.HaloGold, 6, { 3, 6 }, 0.35, { 0.4, 0.6 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "CrownRing",
+			texture = tex("softRing"),
+			color = C.HaloGold,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.LoafGlow, 6, 6),
+	}, true)
+	return part
+end
+
+local function killLoaf(): Part
+	local part = carrier("divine_coronation", "Divine Coronation (Divine Loaf): a ring of gold stars, a pearl disc lights up")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local column = attachment(part, "Pillar", Vector3.new(0, 4, 0))
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		coreFlash(C.LoafPearl, 6, nil),
+		worldBits("GoldStars", tex("twinkle"), LOAF_SHARDS, 20, { 14, 24 }, 1.3, { 0.8, 1.1 }, { drag = 2, light = 0.5, delay = 0.1 }),
+		worldBits("Sparks", tex("sparkle"), C.HaloGold, 10, { 6, 12 }, 0.9, { 0.6, 0.9 }, { drag = 2, light = 0.5, delay = 0.15 }),
+		airRing("CrownRing", C.HaloGold, 3, 17, 0.35, 0.1),
+		coreFlash(C.LoafGlow, 3.5, FINISH),
+		worldBits("FinishStars", tex("twinkle"), LOAF_SHARDS, 8, { 8, 14 }, 1.0, { 0.7, 1.0 }, { drag = 2, light = 0.5, delay = FINISH }),
+	}, false)
+	addAll(column, { upStreaks("GoldColumn", { C.HaloGold, C.LoafGlow }, 8, { 28, 40 }, 0.1) }, false)
+	addAll(floor, {
+		floorRing("PearlShock", tex("softRing"), C.LoafPearl, 1, 15, 0.55, 0.1),
+		floorRing("GoldShock", tex("shockRing"), C.HaloGold, 1, 11, 0.5, 0.15),
+	}, false)
+	return part
+end
+
 -- Public
 
 local BANNERS: { [string]: () -> Part } = {
@@ -1473,6 +1581,8 @@ local BANNERS: { [string]: () -> Part } = {
 	behemoth_bonfire = bannerBehemoth,
 	puffer_pop_rocks = bannerPuffer,
 	qilin_prism_parade = bannerQilin,
+	seraph_ascension = bannerSeraph,
+	divine_coronation = bannerLoaf,
 }
 
 local KILLS: { [string]: () -> Part } = {
@@ -1489,6 +1599,8 @@ local KILLS: { [string]: () -> Part } = {
 	behemoth_bonfire = killBehemoth,
 	puffer_pop_rocks = killPuffer,
 	qilin_prism_parade = killQilin,
+	seraph_ascension = killSeraph,
+	divine_coronation = killLoaf,
 }
 
 -- The library as a new, UNPARENTED Folder (marked when `Generated`, SDTools' root marker module, is given). `AssetTable`

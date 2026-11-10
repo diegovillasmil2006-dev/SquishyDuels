@@ -109,6 +109,8 @@ return function(t: Context)
 			"cocoa_quokka",
 			"jellybean_piglet", -- Prism Box (2026-11-10): each one its rarity's dearest but the Lava ones
 			"taffy_tadpole",
+			"cream_puff_kitten", -- Halo Box (2026-11-10): each one its rarity's dearest
+			"meringue_chick",
 			"kitty_bread",
 			"butter",
 			"chocolate",
@@ -119,6 +121,8 @@ return function(t: Context)
 			"smore_skunk",
 			"cotton_candy_alpaca",
 			"lollipop_lemur",
+			"bumble_bun",
+			"waffle_corgi",
 			"bao_buddy",
 			"mochi_fox",
 			"pando",
@@ -126,6 +130,7 @@ return function(t: Context)
 			"sundae_manatee",
 			"pizza_pangolin",
 			"gumball_goat",
+			"custard_cherub",
 			"bird",
 			"cloud_bunny",
 			"cupcake_axolotl",
@@ -133,11 +138,13 @@ return function(t: Context)
 			"gelato_narwhal",
 			"lava_cake_hippo",
 			"gummy_pufferfish",
+			"souffle_seraph",
 			"cosmo",
 			"dragon",
 			"parfait_wyvern",
 			"mallow_behemoth",
 			"candyglass_qilin",
+			"divine_loaf", -- box only: after the priced ones, like Kitty Bread
 		})
 		local byId: { [string]: any } = {}
 		for _, e in list do

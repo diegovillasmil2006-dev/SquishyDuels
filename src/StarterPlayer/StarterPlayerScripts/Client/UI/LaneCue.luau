@@ -12,7 +12,8 @@
 -- (round ends). Any other kind (the volley, the rain, the bubble) has no lane.
 --
 -- API
---   LaneCue.laneOf(event, kind) -> Lane?   the lane of a telegraph event of a lane kind ("lane", "roller"), else nil
+--   LaneCue.laneOf(event, kind) -> Lane?   the lane of a telegraph event of a lane kind ("lane", "roller",
+--       "boomerang"), else nil
 --   LaneCue.inLane(lane, rootPosition) -> boolean   the HRP inside the lane (horizontal distance <= reach)
 --   LaneCue.shows(lane?, rootPosition?, now) -> boolean   a lane, a body in it, before its telegraphEndsAt
 --   LaneCue.top(barBottom, bannerTop?, bannerBottom?, gap) -> number   the cue's top (base px): `gap` under the duel
@@ -37,7 +38,7 @@ export type Lane = {
 
 -- Constants
 
-local LANE_KINDS: { [string]: boolean } = { lane = true, roller = true }
+local LANE_KINDS: { [string]: boolean } = { lane = true, roller = true, boomerang = true } -- boomerang: Halo Toss (2026-11-10)
 local CAPSULE_RADIUS = Config.Combat.Hitbox.radius
 local MIN_DIR = 1e-6
 local BAR_SLACK = 1 -- base px: a banner whose top is this close above the bar's bottom still counts as under it

@@ -328,6 +328,47 @@ local STYLES: { [string]: Style } = {
 		-- shortcut: no sound sheet of its own yet; it plays Sprinkle Blast's (candy tinkles) until one is made.
 		sound = "sfx.kill.qilin_prism_parade",
 	},
+	-- Halo Box (2026-11-10; design: KILLSETS2.SouffleSeraph / DivineLoaf: disc, ring, glow, shards, motif).
+	seraph_ascension = {
+		id = "seraph_ascension",
+		nameKey = "elimination.seraph_ascension",
+		emblem = "img.kill.emblem.seraph_ascension",
+		emblemWhite = "img.kill.emblem.seraph_ascension.white",
+		shards = { "White", "UltHaloGold", "KillHaloCream", "UltPrismLilac" },
+		squishyId = "souffle_seraph",
+		disc = "KillSeraphDisc",
+		ring = "UltHaloGold",
+		glow = "White",
+		frame = { image = "img.kill.frameOrnate", tint = "UltHaloGold", size = 1.6, spin = 14 },
+		crownFrame = { image = "img.fx.rays", tint = "KillHaloCream", size = 2.2, spin = 10 },
+		-- the design's motif: feathers
+		ornament = { image = "img.kill.feather", tint = "White", outline = true, size = 0.4, turn = -90 },
+		crown = { image = "img.kill.feather", tint = "UltHaloGold", outline = true, size = 0.5, turn = -90, count = 3, fan = 20 },
+		bannerVfx = "Banner/seraph_ascension",
+		killVfx = "Kill/seraph_ascension",
+		-- shortcut: no sound sheet of its own yet; it plays Feather Storm's until one is made.
+		sound = "sfx.kill.seraph_ascension",
+	},
+	divine_coronation = {
+		id = "divine_coronation",
+		nameKey = "elimination.divine_coronation",
+		emblem = "img.kill.emblem.divine_coronation",
+		emblemWhite = "img.kill.emblem.divine_coronation.white",
+		shards = { "UltHaloGold", "White", "UltPrismLilac", "KillHaloCream" },
+		squishyId = "divine_loaf",
+		disc = "UltStampPearl",
+		ring = "UltHaloGold",
+		glow = "UltHaloSpark",
+		frame = { image = "img.kill.frameSun", tint = "UltHaloGold", size = 1.6, spin = 12 },
+		crownFrame = { image = "img.fx.rays", tint = "UltHaloGold", size = 2.3, spin = 8 },
+		-- the design's motif: a crown of gold stars
+		ornament = { image = "img.icon.star", size = 0.34 },
+		crown = { image = "img.icon.star", size = 0.5, count = 5, fan = 18 },
+		bannerVfx = "Banner/divine_coronation",
+		killVfx = "Kill/divine_coronation",
+		-- shortcut: no sound sheet of its own yet; it plays Cloudburst's (Cosmo's Supernova's) until one is made.
+		sound = "sfx.kill.divine_coronation",
+	},
 }
 
 local IDS: { string } = {
@@ -344,6 +385,8 @@ local IDS: { string } = {
 	"behemoth_bonfire",
 	"puffer_pop_rocks",
 	"qilin_prism_parade",
+	"seraph_ascension",
+	"divine_coronation",
 }
 
 for _, style in STYLES do

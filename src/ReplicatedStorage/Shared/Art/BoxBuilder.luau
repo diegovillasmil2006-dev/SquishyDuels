@@ -45,7 +45,7 @@ export type BoxPart = {
 	material: string?,
 }
 export type BoxBlueprint = {
-	kind: "soft" | "sweet" | "royal" | "frosty" | "lava" | "prism",
+	kind: "soft" | "sweet" | "royal" | "frosty" | "lava" | "prism" | "halo",
 	meshModel: string?, -- the ReplicatedStorage.SD_Models model holding the Mesh parts
 	nodes: { [string]: BoxNode },
 	order: { string },
@@ -82,6 +82,7 @@ local MODELS = {
 	frosty = "BoxFrosty",
 	lava = "BoxLava",
 	prism = "BoxPrism",
+	halo = "BoxHalo",
 } :: { [string]: string }
 local MESH_FOLDER = "SD_Models"
 

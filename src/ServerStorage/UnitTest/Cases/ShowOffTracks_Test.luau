@@ -33,7 +33,7 @@ return function(t: Context)
 		end
 		table.sort(ids)
 		expect.deepEqual(ShowOffTracks.ids(), ids)
-		expect.equal(#ids, 41) -- + Series 01, the Frosty, Lava and Prism Boxes (2026-11-10, Claude Design's SHOWOFF2)
+		expect.equal(#ids, 48) -- + Series 01 and the 4 zone boxes (2026-11-10, Claude Design's SHOWOFF2)
 		for _, id in ids do
 			local loop = ShowOffTracks.get(id)
 			expect.truthy(loop.length > 0)

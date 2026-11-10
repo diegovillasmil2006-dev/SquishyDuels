@@ -92,6 +92,13 @@ local SQUISHY_IDS = {
 	"gumball_goat",
 	"gummy_pufferfish",
 	"candyglass_qilin",
+	"meringue_chick",
+	"cream_puff_kitten",
+	"bumble_bun",
+	"waffle_corgi",
+	"custard_cherub",
+	"souffle_seraph",
+	"divine_loaf",
 }
 local FACE_KIT_V1: { [string]: boolean } = {
 	kitty_bread = true,

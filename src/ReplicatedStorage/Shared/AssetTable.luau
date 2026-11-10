@@ -1032,6 +1032,42 @@ local SLOTS: { AssetSlot } = {
 		"kill banner sheet, Cosmo (Cosmo's Supernova): for now Cloudburst's file 'sfx_kill_cloudburst_v2.ogg'",
 		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
 	),
+	-- Halo Box (2026-11-10). shortcut: borrowed wind-ups until each gets its own: Halo Toss (0.6 s) Flock Volley's
+	-- (wings), Bread Stamp (0.8 s) Sprinkle Roller's.
+	soundSlot(
+		"sfx.ultCharge.souffle_seraph",
+		"SFX",
+		true,
+		nil,
+		"Halo Toss wind-up (0.6 s); for now Flock Volley's file, sfx_ultCharge_bird.wav",
+		uploaded(126898491785878, 1, "sfx.ultCharge.bird (Birdie ult charge-up).wav")
+	),
+	soundSlot(
+		"sfx.ultCharge.divine_loaf",
+		"SFX",
+		true,
+		nil,
+		"Bread Stamp wind-up (0.8 s); for now Sprinkle Roller's file, sfx_ultCharge_donut.wav",
+		uploaded(133399262015268, 1, "sfx.ultCharge.donut (Donut ult charge-up).wav")
+	),
+	-- Halo Box (2026-11-10). shortcut: borrowed sheets until each set gets its own: Seraph's Ascension Feather Storm's
+	-- (feathers), Divine Coronation Cosmo's Supernova's (Cloudburst's file, the airiest set).
+	soundSlot(
+		"sfx.kill.seraph_ascension",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Souffle Seraph (Seraph's Ascension): for now Feather Storm's file 'sfx_kill_feather_storm_v2.ogg'",
+		killSheet(101356866911300, "sfx_kill_feather_storm_v2.ogg")
+	),
+	soundSlot(
+		"sfx.kill.divine_coronation",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Divine Loaf (Divine Coronation): for now Cloudburst's file 'sfx_kill_cloudburst_v2.ogg'",
+		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
+	),
 	-- Prism Box (2026-11-10). shortcut: borrowed wind-ups until each gets its own: Puff Burst (0.5 s) Bubble Pop's (a
 	-- pop), Prism Pen (0.7 s) Rain Check's (Cosmo's too).
 	soundSlot(
@@ -1807,6 +1843,7 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.box.frosty", "image", IMAGE_NOTE), -- Claude Design BOXES zip (2026-11-10): pictures/box_frosty.png
 	otherSlot("img.box.lava", "image", IMAGE_NOTE), -- Claude Design BOXES zip (2026-11-10): pictures/box_lava.png
 	otherSlot("img.box.prism", "image", IMAGE_NOTE), -- Claude Design BOXES zip (2026-11-10): pictures/box_prism.png
+	otherSlot("img.box.halo", "image", IMAGE_NOTE), -- Claude Design BOXES zip (2026-11-10): pictures/box_halo.png
 	otherSlot("img.fx.rays", "image", IMAGE_NOTE),
 	otherSlot("img.fx.raysDetail", "image", IMAGE_NOTE),
 	otherSlot("img.fx.raysReveal", "image", IMAGE_NOTE),
@@ -1903,6 +1940,21 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.squishy.gumball_goat.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.gummy_pufferfish.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.candyglass_qilin.white", "image", IMAGE_NOTE),
+	-- Halo Box (2026-11-10): empty picture slots like Series 01's.
+	otherSlot("img.squishy.meringue_chick", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.cream_puff_kitten", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.bumble_bun", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.waffle_corgi", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.custard_cherub", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.souffle_seraph", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.divine_loaf", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.meringue_chick.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.cream_puff_kitten.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.bumble_bun.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.waffle_corgi.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.custard_cherub.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.souffle_seraph.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.divine_loaf.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.squishies.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.boxes.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.shop.white", "image", IMAGE_NOTE),
@@ -2043,6 +2095,10 @@ local SLOTS: { AssetSlot } = {
 	killEmblem("img.kill.emblem.puffer_pop_rocks.white", 93891610997540, "kill_emblem_puffer_pop_rocks_white.png", "Puffer's Pop Rocks: Gummy Pufferfish, low-fidelity: white silhouette", "jayyyyy2806"),
 	killEmblem("img.kill.emblem.qilin_prism_parade", 85256387370158, "kill_emblem_qilin_prism_parade.png", "Qilin's Prism Parade: Candyglass Qilin, low-fidelity", "jayyyyy2806"),
 	killEmblem("img.kill.emblem.qilin_prism_parade.white", 70606084646645, "kill_emblem_qilin_prism_parade_white.png", "Qilin's Prism Parade: Candyglass Qilin, low-fidelity: white silhouette", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.seraph_ascension", 131488558893661, "kill_emblem_seraph_ascension.png", "Seraph's Ascension: Souffle Seraph, low-fidelity", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.seraph_ascension.white", 106915592122937, "kill_emblem_seraph_ascension_white.png", "Seraph's Ascension: Souffle Seraph, low-fidelity: white silhouette", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.divine_coronation", 128334129648643, "kill_emblem_divine_coronation.png", "Divine Coronation: Divine Loaf, low-fidelity", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.divine_coronation.white", 129391908520926, "kill_emblem_divine_coronation_white.png", "Divine Coronation: Divine Loaf, low-fidelity: white silhouette", "jayyyyy2806"),
 	-- Highway v2 (jayyyyy 2026-10-23, Claude Design's "Highway Zones Spec v2": "Floors get two-tone squares from one
 	-- checker Texture (10-stud cells, black at Transparency 0.92)"; owner: "checkered pattern but with lego texture").
 	{
@@ -2258,6 +2314,7 @@ local IMAGE_IDS: { [string]: number } = {
 	["img.box.frosty"] = 87001908952247,
 	["img.box.lava"] = 90534182814298,
 	["img.box.prism"] = 109686526244183,
+	["img.box.halo"] = 129653164654313,
 	["img.fx.rays"] = 127919808884928,
 	["img.fx.raysDetail"] = 129278230460109,
 	["img.fx.raysReveal"] = 104783140251190,

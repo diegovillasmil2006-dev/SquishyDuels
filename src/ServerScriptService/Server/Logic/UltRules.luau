@@ -31,6 +31,11 @@
 --                                                              `speed` studs/s) first touches a capsule d studs away
 --   UltRules.practiceCenter(origin, dir, targets, maxLength) -> Vector3?: the practice target nearest the aim within
 --                                                              the practice cone and maxLength (nil = none)
+--   UltRules.bowDir(dir, bow, length)                        -> Vector3: Halo Toss (2026-11-10): the flat direction to
+--                                                              the far end of a path `length` long whose end lies `bow`
+--                                                              studs to the side of the aim (the design's side)
+--   UltRules.circleInSlice(center, half, degrees, point, reach) -> boolean / UltRules.inSlice(center, half, degrees,
+--                                                              rootPosition, hitbox?): Bread Stamp (2026-11-10)
 --   UltRules.bounceDir(dir, normal, maxNormalY)              -> Vector3?: Bubble Pop bounce (2026-10-16): the flat
 --                                                              direction after bouncing off a surface with `normal`,
 --                                                              mirrored on its horizontal part (the bubble flies at one
@@ -258,6 +263,46 @@ end
 -- A body (its flat circle at its feet) in that triangle.
 function UltRules.inTriangle(center: Vector3, radius: number, degrees: number, rootPosition: Vector3, hitbox: Hitbox?): boolean
 	return UltRules.circleInTriangle(center, radius, degrees, rootPosition, hitboxOf(hitbox).radius)
+end
+
+-- Halo Toss (Halo Box, 2026-11-10; design: lab50.js:393, P(u) = o + dir·sin(πu)·L + side·0.6·sin²(πu)): the flat direction
+-- from the start to the far end of a path `length` long whose end lies `bow` studs to the side, the design's side
+-- (-dir.Z, 0, dir.X). The design's curve stays within a quarter of `bow` of this straight line.
+function UltRules.bowDir(dir: Vector3, bow: number, length: number): Vector3
+	local flat = Vector3.new(dir.X, 0, dir.Z)
+	if flat.Magnitude < EPSILON then
+		return Vector3.new(0, 0, -1)
+	end
+	flat = flat.Unit
+	local far = flat * length + Vector3.new(-flat.Z, 0, flat.X) * bow
+	return if far.Magnitude < EPSILON then flat else far.Unit
+end
+
+-- Bread Stamp (Halo Box, 2026-11-10; design: lab50.js:409-410): a bread slice of half-size `half` around `center`, its
+-- crown toward `degrees` (atan2 of z, x): straight sides from -half to SLICE_SHOULDER·half along that way, then a round
+-- crown (a half-ellipse) up to half + SLICE_CROWN_STUDS. Whether a flat circle of radius `reach` around `point` touches
+-- it (the shape grown by reach: its straight part as a box, its crown as a bigger half-ellipse).
+local SLICE_SHOULDER = 0.55 -- lab50.js:409 (lineTo(h, h·0.55))
+local SLICE_CROWN_STUDS = 0.1 / 0.28 -- lab50.js:409 (the top at h + 0.1 m)
+function UltRules.circleInSlice(center: Vector3, half: number, degrees: number, point: Vector3, reach: number): boolean
+	local angle = math.rad(degrees)
+	local ux, uz = math.cos(angle), math.sin(angle)
+	local dx, dz = point.X - center.X, point.Z - center.Z
+	local along = dx * ux + dz * uz
+	local across = dz * ux - dx * uz
+	local shoulder = SLICE_SHOULDER * half
+	if along <= shoulder then
+		return math.abs(across) <= half + reach and along >= -half - reach
+	end
+	local a = half + reach
+	local b = half - shoulder + SLICE_CROWN_STUDS + reach
+	local x, z = across / a, (along - shoulder) / b
+	return x * x + z * z <= 1
+end
+
+-- A body (its flat circle at its feet) in that slice.
+function UltRules.inSlice(center: Vector3, half: number, degrees: number, rootPosition: Vector3, hitbox: Hitbox?): boolean
+	return UltRules.circleInSlice(center, half, degrees, rootPosition, hitboxOf(hitbox).radius)
 end
 
 function UltRules.ringReachTime(startAt: number, speed: number, width: number, d: number, hitbox: Hitbox?): number

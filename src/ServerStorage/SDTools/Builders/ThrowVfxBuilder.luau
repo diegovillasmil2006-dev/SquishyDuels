@@ -858,6 +858,67 @@ local TRAILS: { TrailSpec } = {
 			sparkles("Sparkle", C.White, 8, 0.35),
 		},
 	},
+	-- Halo Box (2026-11-10): Claude Design's CATALOG2 round 5 trails (sd/toys2.js:892-898). Built and copied in alone,
+	-- like the Prism Box's.
+	{
+		id = "meringue_chick",
+		theme = "Meringue Chick: a cream-to-gold ribbon and meringue petals",
+		ribbons = { ribbonOf({ hex("#FFFDF6"), hex("#F4D9A0") }, 0.85, 0.36), core({ C.White, hex("#FFFDF6") }) },
+		emitters = { dots("Petals", { C.White, hex("#F4D9A0"), hex("#FFE7A0") }, 8, 0.16, 20, -0.4) },
+	},
+	{
+		id = "cream_puff_kitten",
+		theme = "Cream Puff Kitten: a cream-to-golden ribbon and cream puffs",
+		ribbons = { ribbonOf({ hex("#FFF4E2"), hex("#E9B66E") }, 0.95, 0.38), core({ C.White, hex("#FFF4E2") }) },
+		emitters = { dots("Cream", { C.White, hex("#E9B66E"), hex("#FFF1C9") }, 8, 0.16, 22, -0.4) },
+	},
+	{
+		id = "bumble_bun",
+		theme = "Bumble Bun: a honey ribbon and honey drops",
+		ribbons = { ribbonOf({ hex("#FFE9A8"), hex("#E8A23A") }, 0.9, 0.38), core({ C.White, hex("#FFE9A8") }) },
+		emitters = { dots("Honey", { hex("#F0A830"), hex("#FFE9A8"), C.White }, 8, 0.16, 22, -0.4) },
+	},
+	{
+		id = "waffle_corgi",
+		theme = "Waffle Corgi: a waffle ribbon and waffle crumbs",
+		ribbons = { ribbonOf({ hex("#FAE3B4"), hex("#E5A85C") }, 0.9, 0.36), core({ C.White, hex("#FAE3B4") }) },
+		emitters = { dots("Waffle", { hex("#E5A85C"), hex("#FFF1A8"), C.White }, 8, 0.16, 22, -0.4) },
+	},
+	{
+		id = "custard_cherub",
+		theme = "Custard Cherub: a custard-to-gold ribbon, petals and warm sparkles",
+		ribbons = { ribbonOf({ hex("#FFF8E0"), hex("#F4D27A") }, 1.0, 0.44), core({ C.White, hex("#FFF8E0") }) },
+		emitters = {
+			dots("Petals", { C.White, hex("#F4D27A"), hex("#FFF1C4") }, 10, 0.16, 24, -0.4),
+			sparkles("Sparkle", hex("#FFF1C9"), 8, 0.35),
+		},
+	},
+	{
+		id = "souffle_seraph",
+		theme = "Souffle Seraph: twin cream-to-gold streams, feather petals and white sparkles",
+		ribbons = {
+			ribbonOf({ hex("#FFF4D6"), hex("#F4D27A") }, 0.65, 0.48, 0.45, "HaloL"),
+			ribbonOf({ hex("#F4D27A"), hex("#FFF4D6") }, 0.65, 0.48, -0.45, "HaloR"),
+			core({ C.White, hex("#FFF4D6") }, 0.32, 0.22),
+		},
+		emitters = {
+			dots("Feathers", { C.White, hex("#F4D27A"), hex("#FFE7A8") }, 12, 0.16, 6, 0.5, { 0.6, 1.0 }),
+			sparkles("Sparkle", C.White, 8, 0.35),
+		},
+	},
+	{
+		id = "divine_loaf",
+		theme = "Divine Loaf: twin pearl-to-gold streams, gold and lilac stars and warm sparkles",
+		ribbons = {
+			ribbonOf({ hex("#FFFDF8"), hex("#F4D27A") }, 0.7, 0.52, 0.5, "RoyalL"),
+			ribbonOf({ hex("#F4D27A"), hex("#FFFDF8") }, 0.7, 0.52, -0.5, "RoyalR"),
+			core({ C.White, hex("#FFFDF8") }, 0.34, 0.24),
+		},
+		emitters = {
+			dots("Stars", { hex("#F4D27A"), C.White, hex("#D8C8FF") }, 14, 0.16, 6, 0.5, { 0.6, 1.0 }),
+			sparkles("Sparkle", hex("#FFF1C9"), 10, 0.35),
+		},
+	},
 }
 ThrowVfxBuilder.TRAILS = TRAILS
 

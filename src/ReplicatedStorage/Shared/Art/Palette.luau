@@ -360,6 +360,15 @@ local Palette = {
 	UltPrismPeach = Color3.fromHex("#FFD3B5"),
 	UltPrismFlash = Color3.fromHex("#C7A0FF"), -- lab50.js:387 (the shatter flash)
 	KillQilinGlow = Color3.fromHex("#FFD6F0"), -- Qilin's Prism Parade glow
+	-- Halo Box (2026-11-10): Halo Toss and Bread Stamp (design: sd/lab50.js:391-422), the two kill sets
+	-- (KILLSETS2.SouffleSeraph / DivineLoaf).
+	UltHaloGold = Color3.fromHex("#F4D27A"), -- lab50.js:394-395 (the path dots and the thrown halo)
+	UltHaloSpark = Color3.fromHex("#FFF1C9"), -- lab50.js:402 (the halo's sparks)
+	UltStampShadow = Color3.fromHex("#3F3756"), -- lab50.js:411 (the slice's shadow)
+	UltStampBread = Color3.fromHex("#F2C886"), -- lab50.js:412 (the falling slab)
+	UltStampPearl = Color3.fromHex("#FFFDF8"), -- lab50.js:416 (a crumb colour)
+	KillSeraphDisc = Color3.fromHex("#FFF4D6"), -- Seraph's Ascension disc
+	KillHaloCream = Color3.fromHex("#FFE7C2"), -- a Halo kill-set shard
 	InspectEmberOrange = Color3.fromHex("#FF9A4D"), -- design: fp.js:182 (the Dragon's roar embers)
 	InspectEmberYellow = Color3.fromHex("#FFD25E"), -- design: fp.js:182
 	InspectEmberPink = Color3.fromHex("#FF6F7D"), -- design: fp.js:182
@@ -433,6 +442,10 @@ local Palette = {
 	StickerBoxPrismTop = Color3.fromHex("#E6D6FF"),
 	StickerBoxPrismEnd = Color3.fromHex("#B48CFF"),
 	BoxTintPrism = Color3.fromHex("#D9C6FF"),
+	-- Halo Box card (BOXES3 halo: colour #EBC35E, accents #FFE3A0, #F4C64E, #FFF4C9)
+	StickerBoxHaloTop = Color3.fromHex("#FFF1C9"),
+	StickerBoxHaloEnd = Color3.fromHex("#EBC35E"),
+	BoxTintHalo = Color3.fromHex("#FFE9A8"),
 	BoxSoftPolka = Color3.fromHex("#8FF3F8"), -- stage:58: the polka gradient's top (to #3FCFE2)
 	BoxSoftRibbon = Color3.fromHex("#FF6F9E"), -- stage:103
 	BoxSoftBlush = Color3.fromHex("#FF8FB8"), -- stage:112
@@ -482,6 +495,11 @@ local Palette = {
 	BoxPrismMint = Color3.fromHex("#8FE3C2"), -- a burst star colour
 	BoxPrismSky = Color3.fromHex("#8AB8FF"), -- a burst star colour
 	BoxPrismGold = Color3.fromHex("#FFD34D"), -- a burst spark colour
+	-- The Halo Box's Heavenly Bun Shrine (BOXES3 halo): its light, beam and burst colours (the meshes keep their own).
+	BoxHaloLight = Color3.fromHex("#FFF1C9"), -- open.flash and open.beam
+	BoxHaloCream = Color3.fromHex("#FFF8EA"), -- a burst petal colour
+	BoxHaloGold = Color3.fromHex("#F4D27A"), -- a burst spark colour
+	BoxHaloCoin = Color3.fromHex("#EBC35E"), -- a burst coin colour
 	-- Buttons and badges (each a top / mid / end or top / end gradient, 180deg).
 	StickerGreenTop = Color3.fromHex("#A6F796"), -- H:245: the primary (green) buttons
 	StickerGreenMid = Color3.fromHex("#4CD45C"), -- H:245 (55%)

@@ -83,9 +83,9 @@ return function(t: Context)
 
 	-- view -----------------------------------------------------------------------------------------------------------
 
-	t.test("view: every field of all 41 squishies comes from Catalog, Config, Boxes and Strings", function()
+	t.test("view: every field of all 48 squishies comes from Catalog, Config, Boxes and Strings", function()
 		local defs = Catalog.list()
-		expect.equal(#defs, 41) -- + Series 01, the Frosty, Lava and Prism Boxes
+		expect.equal(#defs, 48) -- + Series 01 and the 4 zone boxes
 		for _, def in defs do
 			local view = InspectFormat.view(def.id, UNOWNED)
 			assert(view ~= nil, "no view for " .. def.id)

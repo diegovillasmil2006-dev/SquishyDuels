@@ -70,6 +70,14 @@ local SquishyBlueprints: { [string]: Blueprint } = {
 	gumball_goat = require(script.gumball_goat),
 	gummy_pufferfish = require(script.gummy_pufferfish),
 	candyglass_qilin = require(script.candyglass_qilin),
+	-- Halo Box (2026-11-10)
+	meringue_chick = require(script.meringue_chick),
+	cream_puff_kitten = require(script.cream_puff_kitten),
+	bumble_bun = require(script.bumble_bun),
+	waffle_corgi = require(script.waffle_corgi),
+	custard_cherub = require(script.custard_cherub),
+	souffle_seraph = require(script.souffle_seraph),
+	divine_loaf = require(script.divine_loaf),
 	gift_box = require(script.gift_box),
 	dragon_head_vfx = require(script.dragon_head_vfx),
 }

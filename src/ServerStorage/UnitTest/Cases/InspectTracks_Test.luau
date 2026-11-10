@@ -361,7 +361,7 @@ return function(t: Context)
 		end
 		table.sort(catalogIds)
 		expect.deepEqual(Tracks.ids(), catalogIds)
-		expect.equal(#Tracks.ids(), 41) -- + Series 01, the Frosty, Lava and Prism Boxes (2026-11-10, Claude Design's INS2)
+		expect.equal(#Tracks.ids(), 48) -- + Series 01 and the 4 zone boxes (2026-11-10, Claude Design's INS2)
 		for id, design in DESIGN do
 			local track = Tracks.get(id)
 			if track == nil then

@@ -91,18 +91,29 @@ return function(t: Context)
 		expect.equal(#list, #Catalog.list())
 		expect.equal(list[1].id, "toast")
 		expect.equal(list[1].equipped, true)
-		-- Exclusive by name, unowned: Candyglass Qilin (Prism Box), Cosmo (Series 01), Dragon, Mallow Behemoth (Lava Box),
-		-- Parfait Wyvern (Frosty Box)
+		-- Exclusive by name, unowned: Candyglass Qilin (Prism Box), Cosmo (Series 01), Divine Loaf (Halo Box), Dragon,
+		-- Mallow Behemoth (Lava Box), Parfait Wyvern (Frosty Box)
 		expect.equal(list[2].id, "candyglass_qilin")
 		expect.equal(list[3].id, "cosmo")
-		expect.equal(list[4].id, "dragon")
-		expect.equal(list[4].owned, false)
-		expect.equal(list[5].id, "mallow_behemoth")
-		expect.equal(list[6].id, "parfait_wyvern")
-		-- Epic by name: Birdie, Cloud Bunny, Cupcake Axolotl, Donut, Gelato Narwhal, Gummy Pufferfish, Lava Cake Hippo
+		expect.equal(list[4].id, "divine_loaf")
+		expect.equal(list[5].id, "dragon")
+		expect.equal(list[5].owned, false)
+		expect.equal(list[6].id, "mallow_behemoth")
+		expect.equal(list[7].id, "parfait_wyvern")
+		-- Epic by name: Birdie, Cloud Bunny, Cupcake Axolotl, Donut, Gelato Narwhal, Gummy Pufferfish, Lava Cake Hippo,
+		-- Souffle Seraph
 		expect.deepEqual(
-			ids({ list[7], list[8], list[9], list[10], list[11], list[12], list[13] }),
-			{ "bird", "cloud_bunny", "cupcake_axolotl", "donut", "gelato_narwhal", "gummy_pufferfish", "lava_cake_hippo" }
+			ids({ list[8], list[9], list[10], list[11], list[12], list[13], list[14], list[15] }),
+			{
+				"bird",
+				"cloud_bunny",
+				"cupcake_axolotl",
+				"donut",
+				"gelato_narwhal",
+				"gummy_pufferfish",
+				"lava_cake_hippo",
+				"souffle_seraph",
+			}
 		)
 		-- Commons last, by name (... Pancake Pup, Peachy, Slushy Seal, Taffy Tadpole; Toast is equipped, so first)
 		local tail = ids({ list[#list - 3], list[#list - 2], list[#list - 1], list[#list] })
@@ -141,12 +152,12 @@ return function(t: Context)
 		-- UI FINAL R5 (H:927): the tab counts are the catalogue totals, owned or not.
 		expect.deepEqual(
 			InventoryFormat.tabCounts(list),
-			-- Rare since 2026-11-01, Series 01, the Frosty, Lava and Prism Boxes
-			{ All = 41, Common = 13, Uncommon = 9, Rare = 7, Epic = 7, Exclusive = 5 }
+			-- Rare since 2026-11-01, Series 01 and the 4 zone boxes
+			{ All = 48, Common = 15, Uncommon = 11, Rare = 8, Epic = 8, Exclusive = 6 }
 		)
 		local n, total = InventoryFormat.collected(list)
 		expect.equal(n, 2)
-		expect.equal(total, 41)
+		expect.equal(total, 48)
 	end)
 
 	t.test("chips and empty state: texts from Strings", function()

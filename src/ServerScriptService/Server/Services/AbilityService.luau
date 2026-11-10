@@ -133,6 +133,9 @@ export type AbilityDef = {
 	fallSeconds: number?,
 	dropHitRadius: number?,
 	triangleDeg: number?, -- Prism Pen (2026-11-10)
+	sliceHalf: number?, -- Bread Stamp (2026-11-10)
+	sliceDeg: number?,
+	bowStuds: number?, -- Halo Toss (2026-11-10)
 	dropRadii: { number }?,
 	dropAngleStep: number?,
 	targetRadius: number?,
@@ -183,6 +186,7 @@ type Prepared = {
 	stoppedByGeometry: boolean,
 	shots: { Shot }?,
 	bounce: CombatService.UltBounce?, -- Bubble Pop bounce (2026-10-16)
+	dir: Vector3?, -- Halo Toss (2026-11-10): the path's own direction when it is not the aim
 }
 type Behaviour = {
 	prepare: (caster: Caster, ctx: CastContext, rootPosition: Vector3, dir: Vector3) -> (string?, Prepared?),
@@ -538,7 +542,7 @@ local function launchAlong(caster: Caster, event: Types.UltimateEventPayload): n
 		releaseAt = event.telegraphEndsAt,
 		stoppedByGeometry = caster.stoppedByGeometry,
 		floorY = caster.floorY,
-		flyOn = ability.kind == "roller",
+		flyOn = ability.kind == "roller" or ability.kind == "boomerang", -- Halo Toss flies on too (2026-11-10)
 		clearHeight = ability.clearHeight,
 		splashRadius = ability.splashRadius,
 		bounce = caster.bounce, -- Bubble Pop bounce (2026-10-16; nil for the roller)
@@ -744,6 +748,37 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 			return out
 		end,
 	},
+	-- Halo Toss (Halo Box, 2026-11-10; design: lab50.js:391-406): one halo out along the aim leaned bowStuds to the side
+	-- (UltRules.bowDir), up to maxLength or cover, then back the same way to its start: the way back is the Bubble Pop
+	-- bounce leg (nothing new to sweep, it came that way).
+	boomerang = {
+		prepare = function(caster: Caster, ctx: CastContext, rootPosition: Vector3, dir: Vector3): (string?, Prepared?)
+			local ability = caster.ability
+			local out = UltRules.bowDir(dir, ability.bowStuds or 0, ability.maxLength)
+			local origin = AbilityService.laneOrigin(rootPosition, ctx.floorY, out, ability)
+			local reason, length = sweepPath(ctx, origin, out, ability.radius, ability.maxLength, true)
+			if reason then
+				return reason, nil
+			end
+			return nil,
+				{
+					origin = origin,
+					length = length,
+					stoppedByGeometry = false,
+					dir = out,
+					bounce = { origin = origin + out * length, dir = -out, length = length, stoppedByGeometry = false },
+				}
+		end,
+		launch = function(caster: Caster, event: Types.UltimateEventPayload): Types.UltimateEventPayload
+			local out = released(event)
+			out.projId = launchAlong(caster, event)
+			local bounce = caster.bounce
+			if bounce then
+				out.bounce = { origin = bounce.origin, dir = bounce.dir, length = bounce.length }
+			end
+			return out
+		end,
+	},
 	-- Rain Check: no room needed; the zone and its drops are placed at the release (design: ults.js:5).
 	rain = {
 		prepare = function(caster: Caster, ctx: CastContext, rootPosition: Vector3, dir: Vector3): (string?, Prepared?)
@@ -766,6 +801,8 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 					radius = ability.dropHitRadius or 0,
 					at = drop.landAt,
 					triangleDeg = ability.triangleDeg, -- Prism Pen (2026-11-10)
+					sliceHalf = ability.sliceHalf, -- Bread Stamp (2026-11-10)
+					sliceDeg = ability.sliceDeg,
 					-- FFA/TDM v1 (review fix): an open map's drops lie at the centre's height (the aimed enemy's ground).
 					floorY = if port and port.ffa then drop.position.Y else caster.floorY,
 				})
@@ -1220,7 +1257,7 @@ function AbilityService.requestUltimate(
 		ultimateId = caster.ultimateId,
 		projId = nil,
 		origin = prepared.origin,
-		dir = dir,
+		dir = prepared.dir or dir,
 		length = prepared.length,
 		radius = ability.radius,
 		telegraphEndsAt = telegraphEndsAt,

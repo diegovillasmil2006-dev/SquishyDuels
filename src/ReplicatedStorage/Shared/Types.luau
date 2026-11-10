@@ -55,6 +55,8 @@ export type EliminationEffectId =
 	| "behemoth_bonfire"
 	| "puffer_pop_rocks"
 	| "qilin_prism_parade"
+	| "seraph_ascension"
+	| "divine_coronation"
 
 export type SquishyDef = {
 	id: string,

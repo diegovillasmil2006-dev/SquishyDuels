@@ -1979,7 +1979,8 @@ local function rememberOwnUlt(event: UltimateEvent, ability: any)
 	if isNumber(projId) then
 		ownProjectiles[projId :: number] = {
 			untilAt = event.telegraphEndsAt + math.max(event.length, 0) / speed + OWN_PROJECTILE_SECONDS,
-			lane = ability.kind == "lane" or ability.kind == "roller", -- they fly on through the player they hit
+			-- they fly on through the player they hit (boomerang: Halo Toss, 2026-11-10)
+			lane = ability.kind == "lane" or ability.kind == "roller" or ability.kind == "boomerang",
 		}
 	end
 	local shots: { Types.UltimateShot } = event.shots or {}

@@ -22,6 +22,9 @@
 --           feet are within splashRadius of the pop (on the floor) is hit. Bubble Pop bounce (2026-10-16): the first
 --           `bounces` covers it meets bounce it off (mirrored on the cover's side, same speed) instead of popping it;
 --           its whole path, bounce included, is still maxLength (= speed × popSeconds).
+--   boomerang  Halo Toss (Halo Box 2026-11-10): one projectile of `radius` at `speed` and laneHeightAboveFloor, out
+--           along the aim leaned so its far end is bowStuds to the side (UltRules.bowDir) up to maxLength or cover, then
+--           back the same way to its start (the Bubble Pop bounce leg), flying on through the players it hits.
 -- Every kind fills the shared fields its way: `radius` (the hit radius: lane sphere, projectile, half lane width, zone),
 -- `speed` (travel), maxLength (the longest path; rain: the farthest practice target the zone may centre on),
 -- laneHeightAboveFloor (the flight height; rain: the height the drops fall from) and originForwardStuds.
@@ -40,7 +43,7 @@
 -- or lost lives), starts ULT_START_SECONDS short of full, empties at each use, and minIntervalSeconds = the cooldown.
 local ULT_START_SECONDS = 8
 
-export type AbilityKind = "lane" | "volley" | "roller" | "rain" | "bubble" | "shockwave"
+export type AbilityKind = "lane" | "volley" | "roller" | "rain" | "bubble" | "shockwave" | "boomerang"
 
 export type Ability = {
 	kind: AbilityKind,
@@ -80,6 +83,8 @@ export type Ability = {
 	splashRadius: number?,
 	bounces: number?, -- Bubble Pop bounce (2026-10-16): covers bounced off before one pops it (0 or 1)
 	bounceMaxNormalY: number?, -- review fix (2026-10-16): only a surface with |unit normal.Y| below this bounces it
+	-- boomerang
+	bowStuds: number?, -- Halo Toss (2026-11-10): the path's far end lies this far to the side of the aim
 	-- rain
 	drops: number?,
 	firstShadowSeconds: number?,
@@ -93,6 +98,8 @@ export type Ability = {
 	dropSpacing: number?, -- Geyser Line (2026-11-10): the drops in a line this far apart
 	ringAroundCaster: boolean?, -- Campfire Ring (2026-11-10): the drops on a ring around the caster, from the aim
 	triangleDeg: number?, -- Prism Pen (2026-11-10): the pop's area is an equilateral triangle, a corner at this angle
+	sliceHalf: number?, -- Bread Stamp (2026-11-10): the stamp's area is a bread slice of this half-size (UltRules)
+	sliceDeg: number?, -- Bread Stamp: the slice's crown toward this angle
 	-- shockwave
 	fill: boolean?, -- Fondue Flood (2026-11-10): the area behind the front is in too (a flood, not a wall)
 }
@@ -545,6 +552,80 @@ local Abilities = {
 		dropAngleStep = 0.1, -- one drop: unused
 		targetRadius = 0.01, -- the triangle stays on the opponent's spot at the release (the rain kind wants it above 0)
 		triangleDeg = 197.19, -- design: lab50.js:378 (corners at 0.3 rad + i·120°), turned 180° like every design angle
+	},
+	-- Souffle Seraph (Halo Box, 2026-11-10; design: ults2.js "Halo Toss", lab50.js:391-406): a gold path shows for
+	-- 0.6 s, then its halo flies 14 st out along it and back the same way at 18 st/s; touching the halo = out.
+	halo_toss = {
+		kind = "boomerang",
+		nameKey = "ability.haloToss.name",
+		descriptionKey = "ability.haloToss.description",
+		incomingKey = "ability.haloToss.incoming",
+		readyKey = "ability.haloToss.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 39, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 39,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 39, -- design: ults2.js (cooldown 39 s)
+		telegraphSeconds = 0.6, -- design: ults2.js ("0.6 s gold arc on the ground"); its charge 0.5 s is shorter
+		radius = 1, -- design: ults2.js ("touch the halo = out (2 st wide)")
+		laneHeightAboveFloor = 0.35 / 0.28, -- design: lab50.js:393 (the halo flies 0.35 m up): 1.25 st
+		speed = 18, -- design: ults2.js ("18 st/s")
+		maxLength = 14, -- design: ults2.js ("14 st out and back")
+		bowStuds = 0.6 / 0.28, -- design: lab50.js:393 (0.6 m to the side at the far end): the path leans to its end
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 0.27, -- the Seraph throws exactly like Cloud Bunny, so it pays Rain Check's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 0.3 / 0.28, -- design: lab50.js:393 (the path starts 0.3 m ahead)
+	},
+	-- Divine Loaf (Halo Box, 2026-11-10; design: ults2.js "Bread Stamp", lab50.js:408-422): on the opponent's spot a bread
+	-- slice's shadow (8 x 8 st) grows dark for 1.0 s while the slab falls, then it stamps; inside the shadow = out.
+	bread_stamp = {
+		kind = "rain",
+		nameKey = "ability.breadStamp.name",
+		descriptionKey = "ability.breadStamp.description",
+		incomingKey = "ability.breadStamp.incoming",
+		readyKey = "ability.breadStamp.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 45, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 45,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 45, -- design: ults2.js (cooldown 45 s)
+		telegraphSeconds = 0.8, -- design: ults2.js (charge 0.8 s): the wind-up
+		radius = 4 * math.sqrt(2), -- design: ults2.js ("8 x 8 st slice-shaped stamp"): its corner distance
+		laneHeightAboveFloor = 3 / 0.28, -- design: lab50.js:412 (the slab falls from 3 m): 10.7 st
+		speed = 9 / 0.28, -- as Rain Check (cosmetic)
+		maxLength = 110, -- as Rain Check: the practice target nearest the aim within this many studs
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 2.0, -- the Loaf throws exactly like the Dragon, so it pays Dragon Rush's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 2, -- as Rain Check
+		drops = 1, -- one stamp
+		-- The shadow grows dark 1.0 s before the stamp (design: ults2.js "1.0 s shadow that grows dark"): firstShadow +
+		-- shadow + fall = 1.0 s (the rain kind wants each above 0).
+		firstShadowSeconds = 0.01,
+		dropStepSeconds = 0.1, -- one drop: unused
+		shadowSeconds = 0.98,
+		fallSeconds = 0.01,
+		dropHitRadius = 4 * math.sqrt(2), -- the slice's corner distance (sliceHalf makes the area a bread slice)
+		dropRadii = { 0 }, -- the stamp is the slice's centre
+		dropAngleStep = 0.1, -- one drop: unused
+		targetRadius = 0.01, -- the slice stays on the opponent's spot at the release (the rain kind wants it above 0)
+		sliceHalf = 4, -- design: lab50.js:409 (h = 8 st / 2)
+		sliceDeg = 90, -- design: lab50.js:410 (the crown toward the scene's -z), turned 180° like every design angle
 	},
 } :: { [string]: Ability }
 

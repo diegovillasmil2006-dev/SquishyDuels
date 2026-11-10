@@ -95,7 +95,7 @@ export type Bounce = { at: number, origin: Vector3, dir: Vector3 }
 
 type Flight = {
 	projId: number,
-	kind: string, -- "volley" | "roller" | "bubble"
+	kind: string, -- "volley" | "roller" | "bubble" | "boomerang"
 	casterId: number,
 	model: Model?,
 	shell: BasePart?,
@@ -214,6 +214,12 @@ local SPIKE_COLORS = { Palette.UltSpikePink, Palette.UltSpikeOrange, Palette.Ult
 local PEN_ID = "prism_pen" -- Candyglass Qilin's (Config.Abilities): a one-drop rain whose area is a triangle
 local PANEL_NAME = "SD_UltPrismPanel"
 local PEN_COLORS = { Palette.UltPrismMint, Palette.UltPrismLilac, Palette.UltPrismPeach } -- design: sd/lab50.js:378
+local HALO_ID = "halo_toss" -- Souffle Seraph's (Config.Abilities): a boomerang halo
+local HALO_NAME = "SD_UltHalo"
+local STAMP_ID = "bread_stamp" -- Divine Loaf's (Config.Abilities): a one-drop rain whose area is a bread slice
+local STAMP_NAME = "SD_UltStamp"
+local SLICE_SHOULDER = 0.55 -- UltRules.circleInSlice (lab50.js:409)
+local SLICE_CROWN_STUDS = 0.1 / 0.28
 local FLAME_COLORS = { Palette.UltFlame, Palette.UltFlameHot, Palette.UltFlameCore } -- design: sd/lab50.js:355
 local DRIP_COLORS = { Palette.UltFanTelegraph, Palette.UltFondueGlow, Palette.UltFondue } -- design: sd/lab50.js:335
 local SPOT_NAME = "SD_UltCakeSpot"
@@ -554,6 +560,45 @@ local function circleDirs(dir: Vector3, count: number): { Vector3 }
 	return dirs
 end
 
+-- Halo Toss (2026-11-10; design: sd/lab50.js:395): the thrown halo, a flat gold ring of short cylinders round its middle
+-- (the invisible PrimaryPart), haloRadiusStuds across its tube's centre.
+local function haloModel(): Model
+	local model = Instance.new("Model")
+	model.Name = HALO_NAME
+	local function plain(part: BasePart)
+		part.Name = HALO_NAME
+		part.Anchored = true
+		part.CanCollide = false
+		part.CanQuery = false
+		part.CanTouch = false
+		part.CastShadow = false
+		part.Parent = model
+	end
+	local middle = Instance.new("Part")
+	middle.Size = Vector3.one * 0.2
+	middle.Transparency = 1
+	plain(middle)
+	model.PrimaryPart = middle
+	local n = FX.haloSegments
+	local radius = FX.haloRadiusStuds
+	local length = 2 * math.pi * radius / n * 1.08 -- a little longer, so the pieces meet
+	for index = 0, n - 1 do
+		local angle = 2 * math.pi * index / n
+		local piece = Instance.new("Part")
+		piece.Shape = Enum.PartType.Cylinder
+		piece.Size = Vector3.new(length, 2 * FX.haloTubeStuds, 2 * FX.haloTubeStuds)
+		piece.CFrame = CFrame.fromMatrix(
+			Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius),
+			Vector3.new(-math.sin(angle), 0, math.cos(angle)),
+			Vector3.yAxis
+		)
+		piece.Color = Palette.UltHaloGold
+		piece.Material = Enum.Material.SmoothPlastic
+		plain(piece)
+	end
+	return model
+end
+
 local function newFlight(
 	kind: string,
 	casterId: number,
@@ -566,16 +611,17 @@ local function newFlight(
 	radius: number,
 	releaseAt: number,
 	floorY: number,
-	spike: Color3? -- Puff Burst (2026-11-10): a gummy spike of this colour instead of the toy
+	spike: Color3?, -- Puff Burst (2026-11-10): a gummy spike of this colour instead of the toy
+	halo: boolean? -- Halo Toss (2026-11-10): the gold halo instead of the toy
 ): Flight
-	local flightScale = if spike
+	local flightScale = if spike or halo
 		then 1
 		else flightScaleOf(squishyId, if kind == "roller" then radius / FX.rollerScaleTo else radius)
 	local flight: Flight = {
 		projId = projId,
 		kind = kind,
 		casterId = casterId,
-		model = if spike then spikeModel(spike) else newModel(squishyId, flightScale),
+		model = if spike then spikeModel(spike) elseif halo then haloModel() else newModel(squishyId, flightScale),
 		shell = nil,
 		trail = nil,
 		emitters = {},
@@ -598,7 +644,7 @@ local function newFlight(
 		flight.halfHeight = model:GetExtentsSize().Y / 2 / math.max(flightScale, 1e-3)
 		model.Parent = fxFolder()
 		local root = model.PrimaryPart
-		if root and kind == "volley" and spike == nil then
+		if root and (kind == "volley" or kind == "boomerang") and spike == nil then
 			attachTrail(flight, root, squishyId)
 		end
 	end
@@ -711,6 +757,11 @@ local function stepFlight(flight: Flight, now: number): boolean
 			end
 			emitter.Enabled = t <= duration
 		end
+	elseif flight.kind == "boomerang" then
+		-- Halo Toss (2026-11-10): out along the path and back (its bounce leg), level, spinning flat.
+		position = UltFx.arcPoint(flight.origin, flight.dir, flight.speed, along, duration, 0, flight.bounce)
+		local spin = if reduced then 0 else FX.haloSpinRadPerSecond * t
+		frame = CFrame.new(position) * CFrame.Angles(0, spin, 0)
 	else -- bubble
 		local bounce = flight.bounce
 		position = UltFx.arcPoint(flight.origin, flight.dir, flight.speed, along, duration, FX.bubbleArcStuds, bounce)
@@ -1672,6 +1723,184 @@ local function stepPen(pen: Pen, now: number): boolean
 	return false
 end
 
+-- Halo Toss (Halo Box, 2026-11-10; design: sd/lab50.js:394-397): the gold path along the halo's way pulses through the
+-- wind-up and fades after the throw.
+type HaloPath = { part: BasePart, startAt: number, releaseAt: number }
+local haloPaths: { HaloPath } = {}
+
+local function startHaloPath(event: Types.UltimateEventPayload, ability: any)
+	local floorY = event.origin.Y - ability.laneHeightAboveFloor
+	local cframe, size = UltFx.lanePlate(event.origin, event.dir, event.length, FX.haloPathHalfWidth, floorY)
+	table.insert(haloPaths, {
+		part = FxPool.default():acquirePart({
+			Name = LANE_NAME,
+			Size = size,
+			CFrame = cframe,
+			Color = Palette.UltHaloGold,
+			Transparency = 1,
+			Material = Enum.Material.Neon,
+		}),
+		startAt = serverNow(),
+		releaseAt = event.telegraphEndsAt,
+	})
+end
+
+local function stepHaloPath(path: HaloPath, now: number): boolean
+	local opacity
+	if now < path.releaseAt then
+		local s = if isReduced() then 0 else math.sin(2 * math.pi * FX.haloPathPulseHz * (now - path.startAt))
+		opacity = math.clamp(FX.haloPathOpacity + FX.haloPathPulse * s, 0, 1)
+	else
+		opacity = math.max(0, FX.haloPathFadeFrom - (now - path.releaseAt) * FX.haloPathFadePerSecond)
+	end
+	path.part.Transparency = 1 - opacity
+	return opacity > 0
+end
+
+-- Bread Stamp (Halo Box, 2026-11-10; design: sd/lab50.js:408-422): on the drop, the bread slice (UltRules.circleInSlice:
+-- straight sides to the shoulder, a round crown toward the ability's sliceDeg) as a dark shadow that darkens until the
+-- drop's landAt while the slab falls through its last 45%; then the stamp (crumbs, a gold ring, a flash), the slab rests
+-- and sinks away.
+type Stamp = {
+	casterId: number,
+	center: Vector3,
+	base: CFrame, -- on the floor, looking toward the crown
+	half: number,
+	startAt: number,
+	landAt: number,
+	shadow: { BasePart },
+	slab: { { part: BasePart, offset: CFrame } },
+	stamped: boolean,
+}
+local stamps: { Stamp } = {}
+
+local function startStamp(event: Types.UltimateEventPayload, ability: any)
+	local center = event.center
+	local drop = event.drops and event.drops[1]
+	if center == nil or drop == nil then
+		return
+	end
+	local half = ability.sliceHalf or 4
+	local angle = math.rad(ability.sliceDeg or 0)
+	local base = CFrame.lookAt(center, center + Vector3.new(math.cos(angle), 0, math.sin(angle)))
+	local shoulder = SLICE_SHOULDER * half
+	local crown = half - shoulder + SLICE_CROWN_STUDS
+	local stamp: Stamp = {
+		casterId = event.casterId,
+		center = center,
+		base = base,
+		half = half,
+		startAt = event.telegraphEndsAt,
+		landAt = drop.landAt,
+		shadow = {},
+		slab = {},
+		stamped = false,
+	}
+	local pool = FxPool.default()
+	local function shadowPart(width: number, from: number, to: number)
+		-- along the slice from `from` to `to` studs (the look is -Z), `width` across
+		table.insert(
+			stamp.shadow,
+			pool:acquirePart({
+				Name = STAMP_NAME,
+				Size = Vector3.new(width, LANE_THICKNESS, to - from),
+				CFrame = base * CFrame.new(0, FX.laneLift, -(from + to) / 2),
+				Color = Palette.UltStampShadow,
+				Transparency = 1,
+				Material = Enum.Material.SmoothPlastic,
+			})
+		)
+	end
+	shadowPart(2 * half, -half, shoulder)
+	local strips = FX.stampCrownStrips
+	for index = 0, strips - 1 do
+		local a, b = crown * index / strips, crown * (index + 1) / strips
+		local mid = (a + b) / 2 / crown
+		shadowPart(2 * half * math.sqrt(math.max(0, 1 - mid * mid)), shoulder + a, shoulder + b)
+	end
+	local thick = FX.stampSlabThickStuds
+	local box = pool:acquirePart({
+		Name = STAMP_NAME,
+		Size = Vector3.new(2 * half, thick, half + shoulder),
+		CFrame = CFrame.new(0, -1000, 0),
+		Color = Palette.UltStampBread,
+		Transparency = 1,
+		Material = Enum.Material.SmoothPlastic,
+	})
+	table.insert(stamp.slab, { part = box, offset = CFrame.new(0, 0, (half - shoulder) / 2) })
+	local top = pool:acquirePart({
+		Name = STAMP_NAME,
+		Shape = Enum.PartType.Cylinder,
+		Size = Vector3.new(thick, 2 * half, 2 * crown), -- stood up below: across, then along
+		CFrame = CFrame.new(0, -1000, 0),
+		Color = Palette.UltStampBread,
+		Transparency = 1,
+		Material = Enum.Material.SmoothPlastic,
+	})
+	table.insert(stamp.slab, { part = top, offset = CFrame.new(0, 0, -shoulder) * CFrame.Angles(0, 0, math.rad(90)) })
+	table.insert(stamps, stamp)
+end
+
+local function endStamp(stamp: Stamp)
+	for _, part in stamp.shadow do
+		releasePart(part)
+	end
+	for _, piece in stamp.slab do
+		releasePart(piece.part)
+	end
+	table.clear(stamp.shadow)
+	table.clear(stamp.slab)
+end
+
+local function stepStamp(stamp: Stamp, now: number): boolean
+	local span = math.max(stamp.landAt - stamp.startAt, 1e-3)
+	local opacity
+	if now < stamp.landAt then
+		local k = (1 - math.cos(math.pi * math.clamp((now - stamp.startAt) / span, 0, 1))) / 2 -- cos01 (lab50.js:415)
+		opacity = FX.stampShadowOpacity * k
+	else
+		opacity = math.max(0, FX.stampShadowOpacity - (now - stamp.landAt) * FX.stampShadowFadePerSecond)
+	end
+	for _, part in stamp.shadow do
+		part.Transparency = 1 - opacity
+	end
+	local fallAt = stamp.startAt + FX.stampSlabFallFrom * span
+	local height: number? = nil
+	local fade = 0
+	if now >= stamp.landAt then
+		local k = math.clamp((now - stamp.landAt - FX.stampHoldSeconds) / FX.stampSinkSeconds, 0, 1)
+		height = -FX.stampSinkStuds * k * k
+		fade = k
+	elseif now >= fallAt then
+		local u = (now - fallAt) / math.max(stamp.landAt - fallAt, 1e-3)
+		height = FX.stampSlabHeightStuds * (1 - u * u)
+	end
+	for _, piece in stamp.slab do
+		if height then
+			piece.part.CFrame = stamp.base * CFrame.new(0, height + FX.stampSlabThickStuds / 2, 0) * piece.offset
+			piece.part.Transparency = fade
+		else
+			piece.part.Transparency = 1
+		end
+	end
+	if not stamp.stamped and now >= stamp.landAt then
+		stamp.stamped = true
+		burst(
+			stamp.center + Vector3.new(0, 0.2 / 0.28, 0),
+			FX.stampCrumbs,
+			{ Palette.UltStampBread, Palette.UltStampPearl, Palette.UltHaloGold },
+			FX.stampCrumbSize,
+			FX.stampCrumbLifetime,
+			FX.stampCrumbSpeed,
+			FX.stampCrumbGravity
+		)
+		FxShapes.ring(stamp.center, Vector3.yAxis, 2 * stamp.half * FX.stampRingGrow, FX.stampRingSeconds, Palette.UltHaloGold, 0.1)
+		FxShapes.ring(stamp.center, Vector3.yAxis, 2 * stamp.half, FX.stampFlashSeconds, Palette.UltHaloSpark, 0)
+		play(SOUND_DROP, stamp.center, stamp.casterId)
+	end
+	return now < stamp.landAt + FX.stampHoldSeconds + FX.stampSinkSeconds
+end
+
 -- Public -------------------------------------------------------------------------------------------------------------
 
 -- One UltimateEvent of a non-lane ultimate (VfxController has parsed it and found its ability).
@@ -1706,6 +1935,9 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 		if ultimateId == PUFF_ID then
 			startSpikeLanes(event, ability)
 		end
+		if ultimateId == HALO_ID then
+			startHaloPath(event, ability)
+		end
 		return
 	end
 	local cast = casts[casterId]
@@ -1730,7 +1962,7 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			squishyId = squishyId,
 			ultimateId = ultimateId,
 			knockbackMultiplier = ability.knockbackMultiplier,
-			flyOn = kind == "roller" or kind == "shockwave", -- the cake rings grow on past a hit too
+			flyOn = kind == "roller" or kind == "shockwave" or kind == "boomerang", -- cake rings and the halo go on too
 			untilAt = untilAt + FORGET_AFTER_SECONDS,
 		}
 	end
@@ -1753,7 +1985,7 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			)
 			remember(shot.projId, shot.releaseAt + shot.length / math.max(event.speed, 1))
 		end
-	elseif kind == "roller" or kind == "bubble" then
+	elseif kind == "roller" or kind == "bubble" or kind == "boomerang" then
 		local projId = event.projId
 		if projId == nil then
 			return
@@ -1769,12 +2001,14 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			event.speed,
 			event.radius,
 			event.telegraphEndsAt,
-			floorY
+			floorY,
+			nil,
+			kind == "boomerang"
 		)
 		-- Bubble Pop bounce (2026-10-16): the server's bounce leg, read only when it has the right shape.
 		local b: any = event.bounce
 		if
-			kind == "bubble"
+			(kind == "bubble" or kind == "boomerang") -- Halo Toss (2026-11-10): its way back
 			and type(b) == "table"
 			and typeof(b.origin) == "Vector3"
 			and typeof(b.dir) == "Vector3"
@@ -1800,6 +2034,8 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 	elseif kind == "rain" then
 		if ultimateId == PEN_ID then
 			startPen(event, ability)
+		elseif ultimateId == STAMP_ID then
+			startStamp(event, ability)
 		else
 			startRain(event, ability, squishyId, ultimateId == WELL_ID, ultimateId == GEYSER_ID, ultimateId == CAMPFIRE_ID)
 		end
@@ -1836,7 +2072,7 @@ function UltFx.impact(impact: Types.ThrowImpactPayload)
 	if flight == nil then
 		return
 	end
-	if flight.kind == "roller" and (impact.kind == "player" or impact.kind == "target") then
+	if (flight.kind == "roller" or flight.kind == "boomerang") and (impact.kind == "player" or impact.kind == "target") then
 		return
 	end
 	flight.endAt = serverNow()
@@ -1917,6 +2153,22 @@ function UltFx.step(now: number)
 			endPen(pen)
 		end
 	end
+	for index = #haloPaths, 1, -1 do
+		local path = haloPaths[index]
+		local ok, keep = pcall(stepHaloPath, path, now)
+		if not ok or not keep then
+			table.remove(haloPaths, index)
+			releasePart(path.part)
+		end
+	end
+	for index = #stamps, 1, -1 do
+		local stamp = stamps[index]
+		local ok, keep = pcall(stepStamp, stamp, now)
+		if not ok or not keep then
+			table.remove(stamps, index)
+			endStamp(stamp)
+		end
+	end
 	local clock = os.clock()
 	for index = #lanes, 1, -1 do
 		local lane = lanes[index]
@@ -1957,7 +2209,16 @@ function UltFx.counts(): { [string]: number }
 	for _ in shocks do
 		cakes += 1
 	end
-	return { flights = n, rains = #rains, lanes = #lanes, shocks = cakes, spikeLanes = #spikeLanes, pens = #pens }
+	return {
+		flights = n,
+		rains = #rains,
+		lanes = #lanes,
+		shocks = cakes,
+		spikeLanes = #spikeLanes,
+		pens = #pens,
+		haloPaths = #haloPaths,
+		stamps = #stamps,
+	}
 end
 
 return UltFx

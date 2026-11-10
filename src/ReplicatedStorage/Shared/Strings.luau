@@ -898,6 +898,18 @@ local Strings = {
 			ready = "Campfire Ring ready",
 			description = "Lights 6 campfire flames in a ring around it, one after another. Touching a flame takes a life. Each spot glows before it lights: step inside the ring or back off past it.",
 		},
+		haloToss = {
+			name = "Halo Toss",
+			incoming = "Halo Toss incoming!",
+			ready = "Halo Toss ready",
+			description = "Throws its halo 14 studs out along a curve and back, like a boomerang. Touching the halo takes a life. The gold path is drawn on the ground first and the halo comes back the same way: step off the line and stay off it.",
+		},
+		breadStamp = {
+			name = "Bread Stamp",
+			incoming = "Bread Stamp incoming!",
+			ready = "Bread Stamp ready",
+			description = "Stamps a giant bread slice, 8 by 8 studs, on the spot it aims at. Being inside its shadow when it lands takes a life. The shadow grows dark for a full second: walk out past its straight edges.",
+		},
 		puffBurst = {
 			name = "Puff Burst",
 			incoming = "Puff Burst incoming!",
@@ -990,6 +1002,14 @@ local Strings = {
 		gumballGoat = { name = "Gumball Goat" },
 		gummyPufferfish = { name = "Gummy Pufferfish" },
 		candyglassQilin = { name = "Candyglass Qilin" },
+		-- Halo Box (2026-11-10)
+		meringueChick = { name = "Meringue Chick" },
+		creamPuffKitten = { name = "Cream Puff Kitten" },
+		bumbleBun = { name = "Bumble Bun" },
+		waffleCorgi = { name = "Waffle Corgi" },
+		custardCherub = { name = "Custard Cherub" },
+		souffleSeraph = { name = "Souffle Seraph" },
+		divineLoaf = { name = "Divine Loaf" },
 		-- Squishies, Shop and Inspect: what a squishy multiplies (progression spec §3, §6; pens3 phase 1: in the pen).
 		-- {n} = its power (Catalog.getPower).
 		power = "x{n} power",
@@ -1023,6 +1043,8 @@ local Strings = {
 		behemoth_bonfire = "Behemoth's Bonfire", -- design: KILLSETS2.MallowBehemoth
 		puffer_pop_rocks = "Puffer's Pop Rocks", -- design: KILLSETS2.GummyPufferfish
 		qilin_prism_parade = "Qilin's Prism Parade", -- design: KILLSETS2.CandyglassQilin
+		seraph_ascension = "Seraph's Ascension", -- design: KILLSETS2.SouffleSeraph
+		divine_coronation = "Divine Coronation", -- design: KILLSETS2.DivineLoaf
 	},
 
 	-- Inspect (§10.7, §10.8, §10.9, §10.6).
@@ -1183,6 +1205,14 @@ local Strings = {
 			gumball_goat = "Gumball bounce pass",
 			gummy_pufferfish = "Two-hand puffer launch",
 			candyglass_qilin = "Two-hand cloud glide",
+			-- Halo Box (the design's THROW_STYLE2 labels)
+			meringue_chick = "Puffy meringue lob",
+			cream_puff_kitten = "Cream puff fastball",
+			bumble_bun = "Buzzing glide",
+			waffle_corgi = "Waffle frisbee",
+			custard_cherub = "Two-hand cherub launch",
+			souffle_seraph = "Ramekin lob",
+			divine_loaf = "Royal two-hand push",
 		},
 	},
 
@@ -1199,6 +1229,7 @@ local Strings = {
 		frosty = { name = "Frosty Box" }, -- plan "50 squishies" step 4 (the plan's name)
 		lava = { name = "Lava Box" }, -- plan "50 squishies" step 5
 		prism = { name = "Prism Box" }, -- plan "50 squishies" step 6
+		halo = { name = "Halo Box" }, -- plan "50 squishies" step 7
 		treat = { name = "Royal Box" },
 		-- Readings (Part 7; DESIGN implies these texts but never words them): the Boxes screen title; the Treat Box
 		-- row's note in place of Open (day = Config.Economy.Daily.freeBoxDay, worded like box.restrictedNote; Strings_Test

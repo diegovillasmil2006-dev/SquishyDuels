@@ -186,4 +186,27 @@ return function(t: Context)
 		expect.equal(UltRules.practiceCenter(origin, aim, { Vector3.new(0, 0, -37) }, 110), nil) -- behind
 		expect.equal(UltRules.practiceCenter(origin, aim, { Vector3.new(-200, 0, -37) }, 110), nil) -- too far
 	end)
+
+	-- Halo Box (2026-11-10): Halo Toss's path leans so its far end is `bow` studs to the side; Bread Stamp's bread slice.
+	t.test("bowDir: the halo's path ends bow studs to the design's side of the aim", function()
+		local dir = UltRules.bowDir(Vector3.new(0, 0, -1), 2, 14)
+		expect.near(dir.Magnitude, 1, 1e-9)
+		expect.near(dir.Y, 0, 1e-9)
+		-- the far end: 14 along the aim, 2 along its side (-dir.Z, 0, dir.X) = (1, 0, 0)
+		near(dir * math.sqrt(14 * 14 + 2 * 2), Vector3.new(2, 0, -14))
+		near(UltRules.bowDir(Vector3.new(1, 0.5, 0), 0, 14), Vector3.new(1, 0, 0)) -- no bow: the flat aim
+	end)
+
+	t.test("circleInSlice: an 8 x 8 bread slice, straight sides and a round crown toward its angle", function()
+		local c = Vector3.new(10, 0, 10)
+		-- the crown toward +Z (90°): straight sides up to 0.55 x 4 = 2.2 along, the crown up to 4 + 0.36
+		expect.truthy(UltRules.circleInSlice(c, 4, 90, c, 0)) -- the middle
+		expect.truthy(UltRules.circleInSlice(c, 4, 90, c + Vector3.new(3.9, 0, -3.9), 0)) -- a bottom corner
+		expect.falsy(UltRules.circleInSlice(c, 4, 90, c + Vector3.new(4.1, 0, 0), 0)) -- past a straight side
+		expect.truthy(UltRules.circleInSlice(c, 4, 90, c + Vector3.new(4.1, 0, 0), 0.2)) -- a body reaching in
+		expect.falsy(UltRules.circleInSlice(c, 4, 90, c + Vector3.new(0, 0, -4.1), 0)) -- below the bottom edge
+		expect.truthy(UltRules.circleInSlice(c, 4, 90, c + Vector3.new(0, 0, 4.3), 0)) -- under the crown's top
+		expect.falsy(UltRules.circleInSlice(c, 4, 90, c + Vector3.new(0, 0, 4.5), 0))
+		expect.falsy(UltRules.circleInSlice(c, 4, 90, c + Vector3.new(3.9, 0, 3.9), 0)) -- round: no top corners
+	end)
 end

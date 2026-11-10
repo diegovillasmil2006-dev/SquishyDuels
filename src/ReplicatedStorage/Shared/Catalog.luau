@@ -629,6 +629,108 @@ local DEFS: { SquishyDef } = {
 		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
 		inspect = { yaw = 25, pitch = 12 },
 	},
+	-- Halo Box (2026-11-10, plan "50 squishies" step 7): the Halo ceilings (80T box: cost x 10,000 / weight, 3 digits
+	-- down), the Uncommons half theirs; throws = their siblings'; power and sell x81 (boxMult).
+	{
+		id = "meringue_chick",
+		nameKey = "squishy.meringueChick.name",
+		rarity = "Common",
+		blueprintId = "meringue_chick",
+		boxMult = 81,
+		shopPrice = 266_000_000_000_000,
+		throw = { speed = 95, gravity = 35, radius = 1.0, cooldown = 1.00, windup = 0.18 }, -- = kitty_bread
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#F4D9A0" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.34 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "cream_puff_kitten",
+		nameKey = "squishy.creamPuffKitten.name",
+		rarity = "Common",
+		blueprintId = "cream_puff_kitten",
+		boxMult = 81,
+		shopPrice = 266_000_000_000_000,
+		throw = { speed = 105, gravity = 25, radius = 0.8, cooldown = 1.05, windup = 0.18 }, -- = toast
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#E9B66E" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
+		hold = { grip = Vector3.new(0, -0.40, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "bumble_bun",
+		nameKey = "squishy.bumbleBun.name",
+		rarity = "Uncommon",
+		blueprintId = "bumble_bun",
+		boxMult = 81,
+		shopPrice = 307_000_000_000_000,
+		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 }, -- = butter
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#F0A830" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "waffle_corgi",
+		nameKey = "squishy.waffleCorgi.name",
+		rarity = "Uncommon",
+		blueprintId = "waffle_corgi",
+		boxMult = 81,
+		shopPrice = 307_000_000_000_000,
+		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = chocolate
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#E5A85C" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
+		hold = { grip = Vector3.new(0, -0.40, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "custard_cherub",
+		nameKey = "squishy.custardCherub.name",
+		rarity = "Rare",
+		blueprintId = "custard_cherub",
+		boxMult = 81,
+		shopPrice = 800_000_000_000_000,
+		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = strawberry_frog
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#F2C46A" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "souffle_seraph",
+		nameKey = "squishy.souffleSeraph.name",
+		rarity = "Epic",
+		blueprintId = "souffle_seraph",
+		boxMult = 81,
+		shopPrice = 2_050_000_000_000_000,
+		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 }, -- = cloud_bunny (it floats)
+		ultimateId = "halo_toss", -- the design's own (sd/ults2.js: Halo Toss), paid for out of the power budget (§5.8)
+		eliminationEffectId = "seraph_ascension", -- the design's kill set (sd/ults2.js KILLSETS2.SouffleSeraph, Art/KillStyle)
+		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#F4D27A" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.34 },
+		hold = { grip = Vector3.new(0, -0.65, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "divine_loaf",
+		nameKey = "squishy.divineLoaf.name",
+		rarity = "Exclusive", -- the design's Legendary (Strings show Exclusive as "Legendary")
+		blueprintId = "divine_loaf",
+		boxMult = 81,
+		-- no shopPrice: its ceiling (80Qa) is over the coin cap (9Qa), so it only comes from the Halo Box
+		throw = { speed = 92, gravity = 35, radius = 1.0, cooldown = 1.05, windup = 0.19 }, -- = dragon
+		ultimateId = "bread_stamp", -- the design's own (sd/ults2.js: Bread Stamp), paid for out of the power budget (§5.8)
+		eliminationEffectId = "divine_coronation", -- the design's kill set (sd/ults2.js KILLSETS2.DivineLoaf, Art/KillStyle)
+		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#D8C8FF" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.40 },
+		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
 }
 
 local BY_ID: { [string]: SquishyDef } = {}

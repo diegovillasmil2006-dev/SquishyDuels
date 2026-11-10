@@ -249,6 +249,13 @@ return function(t: Context)
 				gumball_goat = true,
 				gummy_pufferfish = true,
 				candyglass_qilin = true,
+				meringue_chick = true,
+				cream_puff_kitten = true,
+				bumble_bun = true,
+				waffle_corgi = true,
+				custard_cherub = true,
+				souffle_seraph = true,
+				divine_loaf = true,
 			}
 			for _, def in Catalog.list() do
 				if untitled[def.id] then

@@ -81,6 +81,8 @@ local SOUND_KEYS = {
 	"sfx.ultCharge.mallow_behemoth",
 	"sfx.ultCharge.gummy_pufferfish", -- Prism Box (2026-11-10): Puff Burst's and Prism Pen's wind-ups
 	"sfx.ultCharge.candyglass_qilin",
+	"sfx.ultCharge.souffle_seraph", -- Halo Box (2026-11-10): Halo Toss's and Bread Stamp's wind-ups
+	"sfx.ultCharge.divine_loaf",
 	"sfx.ultRelease",
 	"sfx.ultRainDrop",
 	"sfx.ultCloudHover",
@@ -306,7 +308,7 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 77) -- + Series 01's sfx.ultCharge.cosmo, the 3 zone boxes' 2 each
+		expect.equal(#keys, 79) -- + Series 01's sfx.ultCharge.cosmo, the 4 zone boxes' 2 each
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
 	end)
 
@@ -489,6 +491,7 @@ return function(t: Context)
 				"img.box.frosty", -- Frosty Box (2026-11-10): Claude Design's Sundae Igloo
 				"img.box.lava", -- Lava Box (2026-11-10): Claude Design's Cocoa Volcano
 				"img.box.prism", -- Prism Box (2026-11-10): Claude Design's Star Jar
+				"img.box.halo", -- Halo Box (2026-11-10): Claude Design's Heavenly Bun Shrine
 				"img.fx.rays",
 				"img.fx.raysDetail",
 				"img.fx.raysReveal",
@@ -577,6 +580,20 @@ return function(t: Context)
 				"img.squishy.gumball_goat.white",
 				"img.squishy.gummy_pufferfish.white",
 				"img.squishy.candyglass_qilin.white",
+				"img.squishy.meringue_chick", -- Halo Box (2026-11-10)
+				"img.squishy.cream_puff_kitten",
+				"img.squishy.bumble_bun",
+				"img.squishy.waffle_corgi",
+				"img.squishy.custard_cherub",
+				"img.squishy.souffle_seraph",
+				"img.squishy.divine_loaf",
+				"img.squishy.meringue_chick.white",
+				"img.squishy.cream_puff_kitten.white",
+				"img.squishy.bumble_bun.white",
+				"img.squishy.waffle_corgi.white",
+				"img.squishy.custard_cherub.white",
+				"img.squishy.souffle_seraph.white",
+				"img.squishy.divine_loaf.white",
 				"img.nav.squishies.white",
 				"img.nav.boxes.white",
 				"img.nav.shop.white",

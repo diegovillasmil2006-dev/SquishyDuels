@@ -185,6 +185,24 @@ local LIST: { BoxDef } = {
 			item("candyglass_qilin", 10),
 		},
 	},
+	-- Plan "50 squishies" step 7 (2026-11-10): opens from Divine Heaven (biome 7) on; 30 / 30 / 13 / 13 / 10 / 3.9 / 0.1 %.
+	{
+		id = "halo",
+		nameKey = "box.halo.name",
+		cost = 80_000_000_000_000,
+		paid = true,
+		zone = 7,
+		fixedCycle = 1000, -- each Common 300 times, each Uncommon 130, the Rare 100, the Epic 39, Divine Loaf once
+		items = {
+			item("meringue_chick", 3000),
+			item("cream_puff_kitten", 3000),
+			item("bumble_bun", 1300),
+			item("waffle_corgi", 1300),
+			item("custard_cherub", 1000),
+			item("souffle_seraph", 390),
+			item("divine_loaf", 10),
+		},
+	},
 	{
 		id = "treat",
 		nameKey = "box.treat.name",

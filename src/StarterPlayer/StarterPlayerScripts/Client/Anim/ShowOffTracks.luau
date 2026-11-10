@@ -956,6 +956,216 @@ local LOOPS: { [string]: Loop } = {
 			},
 		},
 	},
+	-- Halo Box (2026-11-10): Claude Design's SHOWOFF2 (sd/anims2.js), the same way as Series 01's (each ease on
+	-- the key that ends its segment).
+	-- MeringueChick: Peep Hop. Two peeping hops, then a curious head tilt.
+	meringue_chick = {
+		length = 1.8,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.25, 0.3, "Quad Out" },
+					{ 0.5, 0, "Quad In" },
+					{ 0.75, 0.3, "Quad Out" },
+					{ 1, 0, "Quad In" },
+					{ 1.8, 0, "-" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1, 0, "-" },
+					{ 1.2, 10, "Sine InOut" },
+					{ 1.5, -6, "Sine InOut" },
+					{ 1.8, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- CreamPuffKitten: Puff Purr. Purring sway side to side, then a little hop.
+	cream_puff_kitten = {
+		length = 2.6,
+		tracks = {
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.6, 6, "Sine InOut" },
+					{ 1.2, -6, "Sine InOut" },
+					{ 1.8, 0, "Sine InOut" },
+					{ 2.6, 0, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.8, 0, "-" },
+					{ 2.1, 0.25, "Quad Out" },
+					{ 2.4, 0, "Quad In" },
+					{ 2.6, 0, "-" },
+				},
+			},
+		},
+	},
+	-- BumbleBun: Bee Hover. Hovers and buzzes in a slow circle.
+	bumble_bun = {
+		length = 2.4,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.6, 0.7, "Sine InOut" },
+					{ 1.2, 0.5, "Sine InOut" },
+					{ 1.8, 0.7, "Sine InOut" },
+					{ 2.4, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 2.4, 360, "-" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.3, 5, "Sine InOut" },
+					{ 0.6, -5, "Sine InOut" },
+					{ 0.9, 5, "Sine InOut" },
+					{ 1.2, -5, "Sine InOut" },
+					{ 1.5, 5, "Sine InOut" },
+					{ 1.8, -5, "Sine InOut" },
+					{ 2.4, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- WaffleCorgi: Corgi Zoom. Zoomie spin with a hop, then a butt wiggle.
+	waffle_corgi = {
+		length = 2,
+		tracks = {
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.6, 360, "Quad InOut" },
+					{ 2, 360, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.3, 0.3, "Quad Out" },
+					{ 0.6, 0, "Quad In" },
+					{ 2, 0, "-" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.8, 0, "-" },
+					{ 0.95, 8, "Sine InOut" },
+					{ 1.1, -8, "Sine InOut" },
+					{ 1.25, 8, "Sine InOut" },
+					{ 1.4, 0, "Sine InOut" },
+					{ 2, 0, "-" },
+				},
+			},
+		},
+	},
+	-- CustardCherub: Cherub Float. Floats up on little wings and rocks gently like a lullaby.
+	custard_cherub = {
+		length = 4,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1, 0.9, "Sine InOut" },
+					{ 2, 0.7, "Sine InOut" },
+					{ 3, 0.9, "Sine InOut" },
+					{ 4, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1, -6, "Sine InOut" },
+					{ 2, 6, "Sine InOut" },
+					{ 3, -6, "Sine InOut" },
+					{ 4, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- SouffleSeraph: Ascend. Rises slowly on six wings and turns once in the light.
+	souffle_seraph = {
+		length = 3.5,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.5, 1, "Sine InOut" },
+					{ 2.5, 1, "Sine InOut" },
+					{ 3.5, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.5, 0, "-" },
+					{ 2.5, 180, "Sine InOut" },
+					{ 3.5, 360, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- DivineLoaf: Royal Wave. A stately bow, then it rises and turns slowly to show the crown.
+	divine_loaf = {
+		length = 4,
+		tracks = {
+			{
+				prop = "rotX",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.6, 10, "Sine InOut" },
+					{ 1.2, 0, "Sine InOut" },
+					{ 4, 0, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.2, 0, "-" },
+					{ 2, 0.6, "Sine InOut" },
+					{ 3.4, 0.6, "Sine InOut" },
+					{ 4, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 2, 0, "-" },
+					{ 3.4, 360, "Sine InOut" },
+					{ 4, 360, "-" },
+				},
+			},
+		},
+	},
 }
 
 -- qb1: the posY / rot stand-ins of the scale-only loops (same length and key times as K, the same eases).
