@@ -177,7 +177,8 @@ local MAX_VARIANTS = 5 -- reading: §14.2 asks for at most 3; a little slack, ne
 local MAX_HISTORY = 200
 local MAX_EXACT_ID = 2 ^ 53
 
--- The 7 sections in the §18.7 order (5 + 7 + 6 + 5 + 4 + 6 + 4 = 37 keys), then spec phase 5's moves (10 keys, 12
+-- The 7 sections in the §18.7 order (5 + 7 + 6 + 5 + 4 + 6 + 4 = 37 keys; the 7th has 6 since big job item 6,
+-- 2026-11-10: the highway's and a match's music), then spec phase 5's moves (10 keys, 12
 -- with the 2026-10-15 overhaul's dash whoosh and double jump), the Inspect showcases' one-shots (16 keys, final
 -- polish 2026-10-11) and feature 1's charge throw and catch (5 keys, 2026-10-11), each key with its "Try it" runner
 -- (the moves, the showcases and the catch play as they will in the game: "plain"; the charge tone is a loop the game
@@ -251,6 +252,8 @@ local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } 
 		keys = {
 			{ key = "music.lobby", runner = "loop" },
 			{ key = "music.duel", runner = "loop" },
+			{ key = "music.highway", runner = "loop" }, -- big job item 6 (2026-11-10)
+			{ key = "music.match", runner = "loop" },
 			{ key = "amb.lobby", runner = "loop" },
 			{ key = "amb.arena", runner = "loop" },
 		},
@@ -342,6 +345,8 @@ local SECONDS_PER_MINUTE = 60
 local LOOP_ROLES: { [string]: string } = {
 	["music.lobby"] = "the lobby music",
 	["music.duel"] = "the duel music",
+	["music.highway"] = "the highway music",
+	["music.match"] = "the match music",
 	["amb.lobby"] = "the lobby room sound",
 	["amb.arena"] = "the arena room sound",
 }

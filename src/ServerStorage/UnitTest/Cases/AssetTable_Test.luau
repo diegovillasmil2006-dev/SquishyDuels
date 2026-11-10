@@ -64,6 +64,8 @@ local SOUND_KEYS = {
 	"duel.draw",
 	"music.lobby",
 	"music.duel",
+	"music.highway", -- big job item 6 (2026-11-10): the throw deck's and a match's own music
+	"music.match",
 	"amb.lobby",
 	"amb.arena",
 	"sfx.dash",
@@ -133,8 +135,17 @@ local WAX_KEYS = {
 	"sfx.wax.rewax",
 }
 
--- §18.6 keys marked "(optional)": the three new slots, the Dragon roar and the duel music.
-local OPTIONAL_KEYS = { "sfx.jellyWobble", "sfx.pop", "ui.gripUnlock", "sfx.dragonRoar", "music.duel" }
+-- §18.6 keys marked "(optional)": the three new slots, the Dragon roar and the duel music; big job item 6
+-- (2026-11-10): the highway's and a match's music (the lobby's is the one music a place must have).
+local OPTIONAL_KEYS = {
+	"sfx.jellyWobble",
+	"sfx.pop",
+	"ui.gripUnlock",
+	"sfx.dragonRoar",
+	"music.duel",
+	"music.highway",
+	"music.match",
+}
 
 local CONTENT_PREFIX = "rbxassetid://"
 local DATE_PATTERN = "^%d%d%d%d%-%d%d%-%d%d$"
@@ -308,8 +319,37 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 79) -- + Series 01's sfx.ultCharge.cosmo, the 4 zone boxes' 2 each
+		expect.equal(#keys, 81) -- + Series 01's sfx.ultCharge.cosmo, the 4 zone boxes' 2 each, item 6's 2 music keys
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
+	end)
+
+	-- Big job item 6 (2026-11-10; the owner: "choose it from Roblox's free licensed library"): the 4 music slots each
+	-- hold a pick from Roblox's licensed APM Music library, with where it came from on every id; the lobby has two
+	-- (they play in turn, Config.Audio.musicGapSeconds), no id is used twice.
+	t.test("the 4 music slots: Roblox's licensed APM picks, the store page on every id, two for the lobby", function()
+		local used: { [number]: boolean } = {}
+		local found = 0
+		for _, slot in soundSlots() do
+			if slot.group == "Music" then
+				found += 1
+				local entries = { slot }
+				for _, variant in slot.variants or {} do
+					table.insert(entries, variant)
+				end
+				for index, entry in entries do
+					local label = `{slot.key} #{index}`
+					expectApproved(expect, label, entry)
+					expect.falsy(used[entry.id])
+					used[entry.id] = true
+					expect.truthy(string.find(entry.license, "licensed APM Music library", 1, true) ~= nil)
+					expect.truthy(string.find(entry.source, `create.roblox.com/store/asset/{entry.id})`, 1, true) ~= nil)
+					expect.truthy(entry.volume <= 1) -- a level under the group's, never a boost
+				end
+				expect.equal(#AssetTable.soundChoices(slot.key), #entries)
+				expect.equal(#entries, if slot.key == "music.lobby" then 2 else 1)
+			end
+		end
+		expect.equal(found, 4)
 	end)
 
 	-- Match HUD M6 / M7 (2026-10-17): the M3 pack's 3 sounds the match screens play, once each, PENDING until the owner's

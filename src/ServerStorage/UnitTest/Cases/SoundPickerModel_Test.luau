@@ -63,7 +63,7 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the order holds the 79 AssetTable sound keys in 10 sections of 5, 7, 6, 5, 4, 6, 4, 21, 16 and 5",
+		"the order holds the 81 AssetTable sound keys in 10 sections of 5, 7, 6, 5, 4, 6, 6, 21, 16 and 5",
 		function()
 			local soundKeys: { [string]: boolean } = {}
 			local count = 0
@@ -82,8 +82,8 @@ return function(t: Context)
 					count += 1
 				end
 			end
-			expect.equal(count, 79) -- + Series 01's sfx.ultCharge.cosmo, the 4 zone boxes' 2 each
-			expect.equal(#Model.ORDER, 79)
+			expect.equal(count, 81) -- + Series 01's sfx.ultCharge.cosmo, the 4 zone boxes' 2 each, item 6's 2 music keys
+			expect.equal(#Model.ORDER, 81)
 			local seen: { [string]: boolean } = {}
 			local perSection = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 			for _, key in Model.ORDER do
@@ -95,21 +95,24 @@ return function(t: Context)
 				perSection[section] += 1
 			end
 			-- 8: + the 2026-10-15 overhaul's two, + Cosmo's charge, + the Frosty Box's two
-			expect.deepEqual(perSection, { 5, 7, 6, 5, 4, 6, 4, 21, 16, 5 })
+			-- 7: + big job item 6's two (the highway's and a match's music, 2026-11-10)
+			expect.deepEqual(perSection, { 5, 7, 6, 5, 4, 6, 6, 21, 16, 5 })
 			expect.equal(Model.SECTION_COUNT, 10)
 			expect.equal(Model.sectionName(1), "Squeezing")
 			expect.equal(Model.sectionName(7), "Music and room sound")
 			expect.equal(Model.ORDER[1], "sfx.squish")
-			expect.equal(Model.ORDER[37], "amb.arena")
+			expect.equal(Model.ORDER[36], "music.highway")
+			expect.equal(Model.ORDER[37], "music.match")
+			expect.equal(Model.ORDER[39], "amb.arena")
 			expect.equal(Model.sectionName(8), "Dash and Epic ultimates") -- spec phase 5
-			expect.equal(Model.ORDER[58], "sfx.ultBubblePop") -- + Cosmo's and the 4 zone boxes' charges
+			expect.equal(Model.ORDER[60], "sfx.ultBubblePop") -- + Cosmo's and the 4 zone boxes' charges
 			expect.equal(Model.sectionName(9), "Inspect showcases") -- final polish 2026-10-11
-			expect.equal(Model.ORDER[59], "sfx.inspect.flick")
-			expect.equal(Model.ORDER[74], "sfx.inspect.blub")
+			expect.equal(Model.ORDER[61], "sfx.inspect.flick")
+			expect.equal(Model.ORDER[76], "sfx.inspect.blub")
 			expect.equal(select(2, Model.infoOf("sfx.inspect.ring")), "plain")
 			expect.equal(Model.sectionName(10), "Charge throw and catch") -- feature 1, 2026-10-11
-			expect.equal(Model.ORDER[75], "sfx.chargeLoop")
-			expect.equal(Model.ORDER[79], "sfx.crushBurst")
+			expect.equal(Model.ORDER[77], "sfx.chargeLoop")
+			expect.equal(Model.ORDER[81], "sfx.crushBurst")
 			expect.equal(select(2, Model.infoOf("sfx.catch")), "plain")
 		end
 	)
@@ -380,6 +383,8 @@ return function(t: Context)
 		expect.equal(Model.clockText(0 / 0), "0:00")
 		expect.equal(Model.lengthText(0), "")
 		expect.equal(Model.loopRole("music.lobby"), "the lobby music")
+		expect.equal(Model.loopRole("music.highway"), "the highway music") -- big job item 6 (2026-11-10)
+		expect.equal(Model.loopRole("music.match"), "the match music")
 		expect.equal(Model.loopRole("amb.arena"), "the arena room sound")
 		expect.equal(Model.loopRole("sfx.squish"), nil)
 		for _, key in Model.ORDER do

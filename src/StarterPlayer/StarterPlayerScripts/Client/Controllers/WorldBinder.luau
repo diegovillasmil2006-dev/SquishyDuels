@@ -14,8 +14,9 @@
 --   the prompt's SD_TextKey. Triggered by the local player -> handler(stand, prompt) in its own thread. Prompts only
 --   open UI; every purchase or claim still goes through the server (§2.8).
 -- * Audio zones: every Config.Audio.zoneCheckSeconds (0.25 s, §7.7) the local character's HumanoidRootPart is tested
---   against the lobby zones of WorldLayout.AudioZones plus every streamed-in `SD_AudioZone` volume (arena clones
---   carry theirs); the highest priority wins. currentZone() and the ZoneChanged signal expose it (SoundController
+--   against the layout's zones (layoutZones: the lobby's WorldLayout.AudioZones and the throw deck's
+--   WorldLayout.Highway.audioZone) plus every streamed-in `SD_AudioZone` volume (arena clones carry theirs); the
+--   highest priority wins. currentZone() and the ZoneChanged signal expose it (SoundController
 --   comes later). Music job (2026-10-16): while there is no character (dead, respawning) the zone stays as it was
 --   (zoneFor), so a respawn never restarts the music.
 -- Build plan Phase 6 removed the Jelly gates (SD_GripGate), the giant pads' pod signs (SD_GripSign) and lock decor
@@ -291,18 +292,7 @@ local function zoneFromPart(part: BasePart): ZoneCandidate?
 end
 
 local function zoneCandidates(): { ZoneCandidate }
-	local list: { ZoneCandidate } = {}
-	for _, zone in WorldLayout.AudioZones do
-		table.insert(list, {
-			zoneId = zone.zoneId,
-			priority = zone.priority,
-			musicKey = zone.musicKey,
-			ambienceKey = zone.ambienceKey,
-			musicMul = zone.musicMul,
-			cframe = CFrame.new(zone.position),
-			size = zone.size,
-		})
-	end
+	local list = WorldBinder.layoutZones()
 	for part in zoneParts do
 		local candidate = zoneFromPart(part)
 		if candidate then
@@ -361,6 +351,28 @@ end
 -- The local character's current audio zone (nil outside every zone or before the first check).
 function WorldBinder.currentZone(): ZoneInfo?
 	return currentZone
+end
+
+-- Pure: the zones the layout itself lists (no instances needed): the lobby's (WorldLayout.AudioZones) and, since big
+-- job item 6 (2026-11-10), the throw deck's (WorldLayout.Highway.audioZone: its own music).
+function WorldBinder.layoutZones(): { ZoneCandidate }
+	local list: { ZoneCandidate } = {}
+	local function add(zone: WorldLayout.AudioZone)
+		table.insert(list, {
+			zoneId = zone.zoneId,
+			priority = zone.priority,
+			musicKey = zone.musicKey,
+			ambienceKey = zone.ambienceKey,
+			musicMul = zone.musicMul,
+			cframe = CFrame.new(zone.position),
+			size = zone.size,
+		})
+	end
+	for _, zone in WorldLayout.AudioZones do
+		add(zone)
+	end
+	add(WorldLayout.Highway.audioZone)
+	return list
 end
 
 -- Pure: the highest-priority zone whose box contains `position` (ties: the first listed), or nil.

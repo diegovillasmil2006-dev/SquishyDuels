@@ -91,6 +91,40 @@ return function(t: Context)
 		expect.equal(mat and mat.zoneId, "squeeze")
 	end)
 
+	-- Big job item 6 (2026-11-10): the throw deck has its own music; the lobby's zones are as they were.
+	t.test("layoutZones: the lobby's zones and the throw deck's, with the highway music on the deck", function()
+		local zones = WorldBinder.layoutZones()
+		expect.equal(#zones, #WorldLayout.AudioZones + 1)
+		local H = WorldLayout.Highway
+		-- Anywhere a thrower can stand: the throw area's corners (root height) and the deck's far corners inside the
+		-- invisible walls (HighwayBarrier, 2026-11-10: lane-local x ±33, z 25..70).
+		local area = H.throwArea
+		local half = area.size / 2
+		local points = {
+			area.position,
+			area.position + Vector3.new(half.X, -half.Y, half.Z),
+			area.position + Vector3.new(-half.X, half.Y, -half.Z),
+			Vector3.new(33, 5.5, 25),
+			Vector3.new(-33, 5.5, 70),
+		}
+		for _, point in points do
+			local deck = WorldBinder.zoneFor(zones, H.origin * point, nil)
+			expect.equal(deck and deck.zoneId, "highway")
+			expect.equal(deck and deck.musicKey, "music.highway")
+			expect.equal(deck and deck.musicMul, 1)
+		end
+		-- The lobby is as it was: its edge toward the deck, the squeeze floor, the practice arena.
+		local edge = WorldBinder.pickZone(zones, Vector3.new(0, 3, -209))
+		expect.equal(edge and edge.zoneId, "lobby")
+		local mat = WorldBinder.pickZone(zones, Vector3.new(-29.7, 3, 4.8))
+		expect.equal(mat and mat.zoneId, "squeeze")
+		local range = WorldBinder.pickZone(zones, Vector3.new(1400, 5, 24))
+		expect.equal(range and range.zoneId, "practice")
+		-- Down the lane (a thrown squishy's side) and far away: no zone.
+		expect.equal(WorldBinder.pickZone(zones, H.origin * Vector3.new(0, 5, -200)), nil)
+		expect.equal(WorldBinder.pickZone(zones, Vector3.new(6000, 3, 0)), nil)
+	end)
+
 	t.test("the Jelly gate, pod sign and lock decor helpers are gone (build plan Phase 6)", function()
 		for _, name in { "gateShouldBlock", "padNear", "lockVisible", "podSignText", "setGripSource" } do
 			expect.equal((WorldBinder :: any)[name], nil)

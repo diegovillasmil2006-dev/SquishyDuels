@@ -54,6 +54,10 @@
 --   of Config.Audio.battleMusic.phases, the music is battleMusic.key (music.duel) instead of the zone's (musicFor; the
 --   match maps have no audio zone); DuelChanged, MatchChanged and every zone change re-apply it, and setMusic keeps a
 --   key that is already playing, so the same music never restarts or doubles.
+--   Big job item 6 (2026-11-10, the owner's music from Roblox's licensed library): a Team or Free for All match
+--   plays battleMusic.match (music.match), a 1v1 duel battleMusic.key; the throw deck is an audio zone of its own
+--   (WorldLayout.Highway.audioZone, music.highway); a key in Config.Audio.musicGapSeconds (the lobby, the highway)
+--   plays as a list with a silence between tracks (playlistAfter), every other key loops (the battles).
 -- * Ducking (§11.9, §18.6): duck(reason, mult?) -> release; the default multipliers are Config.Audio.Ducking[reason]
 --   (boxReveal 0.5, countdown 0.6, result 0.6, inspect 0.8, knockout 0.5, telegraph 0.8). duckFor(reason, seconds?)
 --   releases itself after `seconds` (default Ducking[reason .. "Seconds"], e.g. knockoutSeconds 0.6). Countdown and
@@ -633,6 +637,9 @@ local function attempt(key: string, opts: PlayOptions): (Voice?, PlayResult)
 	return voice, if voice then "played" else "noId"
 end
 
+-- Big job item 6: the playlist rule of a music voice (defined under crossfadeTo, which starts it).
+local playlistAfter: (voice: Voice, key: string, gap: number) -> ()
+
 -- Crossfades a looped slot (music or ambience). Returns the new voice (nil = silence).
 local function crossfadeTo(current: Voice?, key: string?): Voice?
 	local seconds = AUDIO.crossfadeSeconds
@@ -667,10 +674,44 @@ local function crossfadeTo(current: Voice?, key: string?): Voice?
 			crossfading = false
 		end)
 		tween:Play()
+		local gap = (AUDIO.musicGapSeconds :: { [string]: number })[key]
+		if gap ~= nil then
+			playlistAfter(voice, key, gap)
+		end
 	else
 		crossfading = false
 	end
 	return voice
+end
+
+-- Big job item 6 (2026-11-10; Config.Audio.musicGapSeconds; LihFolk vault "Music and Adaptive Audio": a list with
+-- silences, not one short loop for half an hour): a listed music key's voice plays its track through once, fades out
+-- over crossfadeSeconds, stays silent for `gap` seconds, then the key's next choice starts (choiceFor never picks the
+-- same one twice in a row when the slot has variants). The voice itself stays a looped one (a one-shot that loads
+-- slowly would be dropped as stuck after VOICE_LOAD_SECONDS); this only stops it before its first loop. Another music
+-- key, or a newer voice of this one, ends the wait.
+local playlistSerial = 0
+function playlistAfter(voice: Voice, key: string, gap: number)
+	playlistSerial += 1
+	local serial = playlistSerial
+	task.spawn(function()
+		local sound = voice.sound
+		if not sound.IsLoaded then
+			sound.Loaded:Wait()
+		end
+		local fade = AUDIO.crossfadeSeconds
+		local left = sound.TimeLength / math.max(sound.PlaybackSpeed, 0.01) - sound.TimePosition - fade
+		task.wait(math.max(left, 0))
+		if serial ~= playlistSerial or musicVoice ~= voice or voice.stopping then
+			return
+		end
+		stopVoice(voice, fade * MS)
+		task.wait(fade + gap)
+		if serial ~= playlistSerial or musicKey ~= key or musicVoice ~= nil then
+			return
+		end
+		musicVoice = crossfadeTo(nil, key)
+	end)
 end
 
 -- Restarts the music or ambience crossfade when `key` is the one playing (an audition was set or cleared).
@@ -929,7 +970,7 @@ function SoundController.musicFor(
 	zoneKey: string?,
 	duel: { phase: any }?,
 	match: { phase: any }?,
-	battle: { key: string, phases: { [string]: boolean } }?
+	battle: { key: string, match: string?, phases: { [string]: boolean } }?
 ): string?
 	local rules: any = if battle ~= nil then battle else AUDIO.battleMusic
 	if type(rules) ~= "table" or type(rules.key) ~= "string" or type(rules.phases) ~= "table" then
@@ -937,11 +978,12 @@ function SoundController.musicFor(
 	end
 	local duelPhase = if duel ~= nil then duel.phase else nil
 	local matchPhase = if match ~= nil then match.phase else nil
-	if
-		(type(duelPhase) == "string" and rules.phases[duelPhase] == true)
-		or (type(matchPhase) == "string" and rules.phases[matchPhase] == true)
-	then
+	if type(duelPhase) == "string" and rules.phases[duelPhase] == true then
 		return rules.key
+	end
+	if type(matchPhase) == "string" and rules.phases[matchPhase] == true then
+		-- Big job item 6 (2026-11-10): a match's own music when the rules name one, else the duel's (as before).
+		return if type(rules.match) == "string" then rules.match else rules.key
 	end
 	return zoneKey
 end

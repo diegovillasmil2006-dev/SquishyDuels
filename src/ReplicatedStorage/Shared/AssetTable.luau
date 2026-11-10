@@ -168,6 +168,25 @@ local function pseSlot(main: SoundVariant, variants: { SoundVariant }): Approved
 	}
 end
 
+-- Music (big job item 6, 2026-11-10; the owner: "choose it from Roblox's free licensed library"): free Creator Store
+-- music from Roblox's licensed APM Music library (uploader APMOfficial), all from APM's album "CHIPTUNE", so the game
+-- has one sound: video-game tunes. Each loads in this place (IsLoaded and TimeLength > 0 in a Studio test game that
+-- day). The volumes level the tracks against each other (Sound.PlaybackLoudness measured over 40 s of each; the lobby
+-- a little under the highway and the battles). A slot is built with pseSlot (the first id, then its variants).
+local MUSIC_DATE = "2026-11-10"
+local APM_LICENSE =
+	"Free Creator Store audio from Roblox's licensed APM Music library (album 'CHIPTUNE'; uploader APMOfficial)"
+
+local function apm(id: number, volume: number, name: string): SoundVariant
+	return {
+		id = id,
+		volume = volume,
+		source = `Creator Store audio '{name}' by APMOfficial (create.roblox.com/store/asset/{id})`,
+		license = APM_LICENSE,
+		verifiedAt = MUSIC_DATE,
+	}
+end
+
 -- Kill banners (2026-10-16, VillasmilGaming: Valorant-style kill banners; v2 2026-10-17: punchier sheets, emblems). The
 -- sound sheets are original synthesis (tools/audio/killsynth.py: no samples, no third-party audio), uploaded to the DIJAY
 -- Studios group through Open Cloud; each sheet holds a kill set's 6 escalating kill sounds, one per
@@ -996,14 +1015,47 @@ local SLOTS: { AssetSlot } = {
 	),
 
 	-- Music and ambience (§14.2)
+	-- Big job item 6 (2026-11-10): the picks (see `apm` above). The lobby plays its two versions in turn with a pause
+	-- between (Config.Audio.musicGapSeconds); the highway is the zone WorldLayout.Highway.audioZone; a Team or Free for
+	-- All match plays music.match, a 1v1 duel music.duel (Config.Audio.battleMusic).
 	soundSlot(
 		"music.lobby",
 		"Music",
 		false,
 		nil,
-		"loop; ≥ 60 s; prefer licensed-partner music; search: toy+shop+music, music+box+loop, happy+ukulele+loop"
+		"loop; ≥ 60 s; prefer licensed-partner music; search: toy+shop+music, music+box+loop, happy+ukulele+loop",
+		pseSlot(apm(1837768517, 0.33, "Bossa Me (a)"), { apm(1837768745, 0.4, "Bossa Me (b)") })
 	),
-	optional(soundSlot("music.duel", "Music", false, nil, "optional; loop; ≥ 60 s; search: playful+tension+loop")),
+	optional(
+		soundSlot(
+			"music.duel",
+			"Music",
+			false,
+			nil,
+			"optional; loop; ≥ 60 s; search: playful+tension+loop",
+			pseSlot(apm(1837768494, 0.4, "Battle Hero (a)"), {})
+		)
+	),
+	optional(
+		soundSlot(
+			"music.highway",
+			"Music",
+			false,
+			nil,
+			"optional; loop; ≥ 60 s; the throw deck; search: chiptune+race, time+attack",
+			pseSlot(apm(1837768486, 0.61, "Time Attack (a)"), {})
+		)
+	),
+	optional(
+		soundSlot(
+			"music.match",
+			"Music",
+			false,
+			nil,
+			"optional; loop; ≥ 60 s; Team and Free for All matches; search: chiptune+battle, boss+battle",
+			pseSlot(apm(1837768323, 0.48, "Final Boss (a)"), {})
+		)
+	),
 	-- Kill banners (2026-10-16): one sheet per kill set (Art/KillStyle), 2D for the killer only. Tier n (n K.O.s
 	-- without being knocked out; 6 and up repeat the 6th) plays [(n - 1)·slot, (n - 1)·slot + soundSeconds] of the
 	-- sheet (Config.Audio.killBanner, Sound.PlaybackRegion). 6 x 3 s = 18 s per file.

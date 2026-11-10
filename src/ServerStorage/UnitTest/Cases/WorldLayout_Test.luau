@@ -758,6 +758,25 @@ return function(t: Context)
 			expect.equal(arena.zoneId, "arena")
 			expect.equal(arena.priority, 3)
 			expect.truthy(vectorNear(arena.size, Vector3.new(120, 60, 152)))
+			-- Big job item 6 (2026-11-10): the throw deck's own zone (its own music), not one of the lobby's list: the
+			-- deck inside the invisible walls (HighwayBarrier: lane-local x ±35, z 23..72, 100 tall) with the whole
+			-- throw area in it, and clear of the lobby's zone (the lobby music never plays on the deck).
+			local H = WorldLayout.Highway
+			local highway = H.audioZone
+			expect.equal(highway.zoneId, "highway")
+			expect.equal(byId.highway, nil)
+			expect.equal(highway.priority, 2)
+			expect.equal(highway.musicKey, "music.highway")
+			expect.equal(highway.musicMul, 1)
+			expect.equal(highway.ambienceKey, "amb.lobby")
+			expect.truthy(vectorNear(highway.position, H.origin * Vector3.new(0, 30, 47.5)))
+			expect.truthy(vectorNear(highway.size, Vector3.new(74, 100, 53)))
+			local areaHalf = H.throwArea.size / 2
+			for _, sign in { -1, 1 } do
+				expect.truthy(WorldLayout.contains(highway, H.origin * (H.throwArea.position + areaHalf * sign)))
+			end
+			expect.truthy(highway.position.Z + highway.size.Z / 2 < byId.lobby.position.Z - byId.lobby.size.Z / 2)
+			expect.equal(WorldLayout.audioZoneAt(highway.position), nil)
 		end
 	)
 

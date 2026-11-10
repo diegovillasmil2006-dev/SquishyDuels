@@ -27,6 +27,8 @@
 --     in a battle phase (Positioning through Returning), else the zone's; Preparing, Cancelled and Void keep the zone's.
 --     Review fix (2026-10-16): both keys are Music slots, silent until the owner picks their sounds in the Studio
 --     sound picker (no id is asserted here).
+--   * big job item 6 (2026-11-10): a match plays battleMusic.match (music.match), a duel battleMusic.key; the keys
+--     in Config.Audio.musicGapSeconds (the lobby's and the highway's music) play with a silence between tracks.
 -- Fake ids below are tiny integers built at run time; no real asset id appears here.
 
 type Context = {
@@ -366,18 +368,30 @@ return function(t: Context)
 		-- Odd input: a view without a phase, a broken rule table.
 		expect.equal(SoundController.musicFor("music.lobby", {} :: any, nil, battle), "music.lobby")
 		expect.equal(SoundController.musicFor("music.lobby", { phase = "Active" }, nil, {} :: any), "music.lobby")
+		-- Big job item 6 (2026-11-10): rules that name a match's own music play it in a match; a duel keeps `key`, and
+		-- so does a player who is somehow in both views.
+		local own = { key = "music.duel", match = "music.match", phases = battle.phases }
+		expect.equal(SoundController.musicFor("music.lobby", nil, { phase = "Active" }, own), "music.match")
+		expect.equal(SoundController.musicFor(nil, nil, { phase = "Result" }, own), "music.match")
+		expect.equal(SoundController.musicFor("music.lobby", { phase = "Active" }, nil, own), "music.duel")
+		expect.equal(SoundController.musicFor("music.lobby", { phase = "Active" }, { phase = "Active" }, own), "music.duel")
+		expect.equal(SoundController.musicFor("music.highway", nil, { phase = "Void" }, own), "music.highway")
+		expect.equal(SoundController.musicFor("music.highway", nil, nil, own), "music.highway")
 	end)
 
 	t.test("the battle music rules: a 2D Music slot, every phase a duel and a match play in", function()
 		local battle = AUDIO.battleMusic
 		local slots: { [string]: any } = {}
 		for _, candidate in AssetTable.all() do
-			if candidate.kind == "sound" and (candidate.key == battle.key or candidate.key == "music.lobby") then
+			if candidate.kind == "sound" then
 				slots[candidate.key] = candidate
 			end
 		end
 		-- Review fix (2026-10-16): the slots exist; their ids come from the owner's pick (the sound picker), not here.
-		for _, key in { battle.key, "music.lobby" } do
+		-- Big job item 6 (2026-11-10): a match's own music (`match`), another slot than the duel's.
+		expect.equal(battle.key, "music.duel")
+		expect.equal(battle.match, "music.match")
+		for _, key in { battle.key, battle.match, "music.lobby" } do
 			expect.truthy(slots[key] ~= nil)
 			expect.equal(slots[key].group, "Music")
 			expect.equal(slots[key].spatial, false)
@@ -403,11 +417,39 @@ return function(t: Context)
 		-- The phases a match sends (MatchService WIRE_PHASE: Waiting, Countdown, Active / Overtime, Result, Closed) and a
 		-- duel's from the teleport on all play it.
 		for _, phase in { "Positioning", "Countdown", "Active", "SuddenDeath", "Result", "Returning" } do
-			expect.equal(SoundController.musicFor("music.lobby", nil, { phase = phase }), battle.key)
+			expect.equal(SoundController.musicFor("music.lobby", nil, { phase = phase }), battle.match)
 			expect.equal(SoundController.musicFor("music.lobby", { phase = phase }, nil), battle.key)
 		end
 		-- The match result sting's wait (Diego's 250 ms, M:570).
 		expect.near(AUDIO.matchStingDelaySeconds, 0.25, 1e-9)
+	end)
+
+	-- Big job item 6 (2026-11-10; LihFolk vault "Music and Adaptive Audio": a list with silences between tracks, not one
+	-- short loop for half an hour): the places a player stays long (the lobby, the throw deck) play their music as a
+	-- list with a pause; the battles are short and loop.
+	t.test("the music pauses: the lobby's and the highway's music play with a silence between tracks", function()
+		local gaps = AUDIO.musicGapSeconds
+		expect.equal(gaps["music.lobby"], 30)
+		expect.equal(gaps["music.highway"], 20)
+		local listed = 0
+		for key, seconds in gaps do
+			listed += 1
+			local slot: any = nil
+			for _, candidate in AssetTable.all() do
+				if candidate.kind == "sound" and candidate.key == key then
+					slot = candidate
+				end
+			end
+			expect.truthy(slot ~= nil and slot.group == "Music")
+			-- Longer than the fade, shorter than a minute and a half (a player never thinks the music broke).
+			expect.truthy(seconds > AUDIO.crossfadeSeconds and seconds <= 90)
+		end
+		expect.equal(listed, 2)
+		expect.equal(gaps[AUDIO.battleMusic.key], nil)
+		expect.equal(gaps[AUDIO.battleMusic.match], nil)
+		-- The throw deck's zone plays the highway's music (WorldLayout.Highway.audioZone).
+		local WorldLayout = t.requireShared("World/WorldLayout")
+		expect.equal(WorldLayout.Highway.audioZone.musicKey, "music.highway")
 	end)
 
 	t.test("duckFor: the knockout duck holds, then releases itself; an early release works", function()

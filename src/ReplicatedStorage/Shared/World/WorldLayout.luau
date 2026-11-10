@@ -1552,12 +1552,26 @@ local Arena = {
 -- Lane-local frame: origin * (x, y, z): x to the right looking down the lane, y up from the lane's foot, z = -d (d =
 -- studs from the start line, the launch gate, down the lane; highwayCFrame). v6 measures d from its gate at z -62
 -- (L:1 "z = -62 - d"), so a v6 point (x, y, z) is the lane-local point (x, y, z + 62); its yaws (L "rot") are kept.
+local highwayOrigin = CFrame.new(0, 0, -300)
 local Highway = {
 	-- Reading (PLAN phase 12: the new lobby moves the whole highway by changing this one value): the start line north
 	-- of the island, past the sea's edge (±222, Lobby.baseSlab) and clear of the arena slots (X 320/520,
 	-- Config.Duel.Arena), facing north (-Z) down the lane. The deck behind it reaches z -242 (the watch steps), the
 	-- ground (±200) z -4,300 and the Golden Gates z -8,800.
-	origin = CFrame.new(0, 0, -300),
+	origin = highwayOrigin,
+	-- Big job item 6 (2026-11-10): the throw deck's audio zone, with its own music (music.highway): the walkable deck
+	-- inside the invisible walls of 2026-11-10 (Workspace HighwayBarrier: lane-local x ±35, z 23..72), 100 studs tall.
+	-- Not one of AudioZones (the lobby's own list, counted by TagCounts and SDTools/Verify): WorldBinder adds it to
+	-- its zone candidates.
+	audioZone = audioZone(
+		"highway",
+		highwayOrigin * Vector3.new(0, 30, 47.5),
+		Vector3.new(74, 100, 53),
+		2,
+		"music.highway",
+		1.0,
+		"amb.lobby"
+	),
 	laneWidth = 30, -- K:1693 lane_tile: a 26-stud top between two 2-stud edges (HK:20)
 	tileLength = 50, -- K:1693 lane_tile, K:1719 lane_rail: 50-stud pieces end to end (L:458 ff)
 	markerEvery = 100, -- K:1748 "Distance sign every 100 studs" (L:476-477: d 100, 200, ...)

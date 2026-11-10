@@ -154,6 +154,9 @@ local Audio = {
 	-- back in the lobby, so the lobby music comes back with one crossfade. No design for music exists: proposal.
 	battleMusic = {
 		key = "music.duel",
+		-- Big job item 6 (2026-11-10): a Team or Free for All match has its own music (a 1v1 duel keeps `key`). Not
+		-- named "...Key": Config.validate reads every field whose name ends in "Key" as a Strings path.
+		match = "music.match",
 		phases = {
 			Positioning = true,
 			Countdown = true,
@@ -163,6 +166,14 @@ local Audio = {
 			Returning = true,
 		} :: { [string]: boolean },
 	},
+	-- Big job item 6 (2026-11-10; LihFolk vault "Music and Adaptive Audio": a 2-minute loop heard for half an hour is
+	-- the usual complaint about game music, so play a list with silences between): a music key listed here plays one
+	-- of its tracks to the end, fades out, stays silent this many seconds, then plays the next (never the same one twice
+	-- in a row when the slot has variants). A key that is not listed loops without a pause (the battle music).
+	musicGapSeconds = {
+		["music.lobby"] = 30,
+		["music.highway"] = 20,
+	} :: { [string]: number },
 	-- Music job: a match's result sting (duel.win / duel.lose / duel.draw, as a duel's) plays this long after the
 	-- outcome arrives: Diego's end sound starts 250 ms after the final K.O. ("Squishy Duels Match HUD.dc.html" M:570).
 	matchStingDelaySeconds = 0.25,
