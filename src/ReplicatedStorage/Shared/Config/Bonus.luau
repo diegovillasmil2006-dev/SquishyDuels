@@ -10,6 +10,12 @@
 --          giftSqueezes squeezes' worth of Coins (counted in squeezes like the daily reward, so it fits every stage of
 --          the game; Coin reason "group"). recheckSeconds = the least time between two membership checks a player can
 --          ask for (the Settings row's button).
+--   Plus   big job item 5 (the owner: "Perks for Roblox Premium players"). Roblox Plus replaced Premium on 2026-04-30
+--          (LihFolk vault "Subscriptions and Premium Payouts"; Roblox's Plus page): a subscriber is a player with
+--          Player.HasRobloxSubscription, or one of the members Premium still has (Player.MembershipType, marked
+--          deprecated). The same kind of perk as the group's, and on top of it: the pen pays penBoost more while the
+--          subscription lasts (the "Plus +10%" pill) and one gift per account of giftSqueezes squeezes' worth of Coins
+--          (Coin reason "plus"). Honest, the same on every device, no paywall, nothing that helps in a fight.
 --   Codes  the rules of the redeem codes (the list itself is server only: Server/Logic/Codes). What a player types is
 --          cut to maxTyped characters, put in capitals and keeps only letters and digits; a code is minLength..maxLength
 --          long. maxSqueezes is the most a code can pay (a live code above it is skipped: a typo never floods the
@@ -21,6 +27,10 @@ local Bonus = {
 		penBoost = 0.10,
 		giftSqueezes = 500, -- a daily reward's day 7
 		recheckSeconds = 10,
+	},
+	Plus = {
+		penBoost = 0.10,
+		giftSqueezes = 500,
 	},
 	Codes = {
 		minLength = 3,

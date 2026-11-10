@@ -13,9 +13,11 @@
 --   "Friends +20%" from the local player's SD_FriendBoost (whole percent, FriendsService); only while that is above 0
 --   and the event pill shows. 2026-11-01 (restyle part 2): its picture is the Friends icon drawn in Diego's hud-icons
 --   style (img.icon.friends), no longer the star.
--- * The group pill (Group_Pill, big job item 4, 2026-11-10): the same pill under those, "Group +10%" from the local
---   player's SD_GroupBoost (whole percent, PerkService: a member of the game's owner group), with the star picture;
---   only while that is above 0 and the event pill shows.
+-- * The group pill (Group_Pill, big job item 4, 2026-11-10) and the Plus pill (Plus_Pill, item 5): the same pill in
+--   the same place, "Group +10%" from SD_GroupBoost (PerkService: a member of the game's owner group; the star
+--   picture) and "Plus +10%" from SD_PlusBoost (a Roblox Plus subscriber; the bolt picture). Only ONE boost pill shows
+--   at a time (three under each other reached the character's head at phone size, seen 2026-11-10): a lone boost's own
+--   pill, or Boost_Pill "Boosts +40%" with their sum while two or more are on.
 
 -- Services
 
@@ -52,8 +54,14 @@ local ATTR_LAND = "SD_LandAt"
 local SPIN_DEG_PER_SECOND = 90
 local BOB_STUDS = 0.3
 local BOB_SECONDS = 1.6
-local ATTR_FRIEND_BOOST = "SD_FriendBoost"
-local ATTR_GROUP_BOOST = "SD_GroupBoost"
+-- The pen boosts a player can have: the pill's name, the Player attribute with its whole percent, its picture and its
+-- text (a Strings.social key with {percent}). TOTAL_PILL is the pill of their sum (see the header).
+local BOOSTS: { { name: string, attr: string, icon: string, text: string } } = {
+	{ name = "Friend_Pill", attr = "SD_FriendBoost", icon = "img.icon.friends", text = "friendBoost" },
+	{ name = "Group_Pill", attr = "SD_GroupBoost", icon = "img.icon.star", text = "groupBoost" },
+	{ name = "Plus_Pill", attr = "SD_PlusBoost", icon = "img.icon.bolt", text = "plusBoost" },
+}
+local TOTAL_PILL = { name = "Boost_Pill", icon = "img.icon.bolt" }
 
 -- Module table
 
@@ -62,13 +70,14 @@ local EventController = {}
 -- Private
 
 type Drop = { model: Model, landing: CFrame?, landAt: number }
+type Boost = { pill: WellPill.WellPill, attr: string, text: string, percent: number }
 
 local cleanup: Cleanup.Cleanup? = nil
 local pill: WellPill.WellPill? = nil
-local friendPill: WellPill.WellPill? = nil
-local friendPercent = 0
-local groupPill: WellPill.WellPill? = nil
-local groupPercent = 0
+local boosts: { Boost } = {}
+local boostPills: { WellPill.WellPill } = {} -- every boost pill and the sum's
+local totalPill: WellPill.WellPill? = nil
+local shownBoost: WellPill.WellPill? = nil -- the one boost pill to show (nil: no boost is on)
 local waypoint: Waypoint.Handle? = nil
 local drops: { [Model]: Drop } = {}
 
@@ -81,13 +90,8 @@ local function placePill()
 	local cta = rects.cta
 	local root = current.root
 	root.Visible = HudController.isShown() and cta ~= nil
-	local friends = friendPill
-	if friends then
-		friends.root.Visible = root.Visible and friendPercent > 0
-	end
-	local group = groupPill
-	if group then
-		group.root.Visible = root.Visible and groupPercent > 0
+	for _, boostPill in boostPills do
+		boostPill.root.Visible = root.Visible and boostPill == shownBoost
 	end
 	if not root.Visible or cta == nil then
 		return
@@ -101,33 +105,37 @@ local function placePill()
 		y = math.max(y, bottom + PILL_GAP)
 	end
 	root.Position = UDim2.fromOffset(math.floor(cta.x + cta.w / 2 + 0.5), math.floor(y + 0.5))
-	-- The boost pills under it, one row each: Friends, then Group (a hidden one leaves no gap).
-	local step = Config.UI.Daily.timer.height + PILL_GAP
-	local below = y + step
-	if friends then
-		friends.root.Position = UDim2.fromOffset(math.floor(cta.x + cta.w / 2 + 0.5), math.floor(below + 0.5))
-		if friendPercent > 0 then
-			below += step
-		end
-	end
-	if group then
-		group.root.Position = UDim2.fromOffset(math.floor(cta.x + cta.w / 2 + 0.5), math.floor(below + 0.5))
+	-- The one boost pill right under it.
+	local shown = shownBoost
+	if shown then
+		local below = y + Config.UI.Daily.timer.height + PILL_GAP
+		shown.root.Position = UDim2.fromOffset(math.floor(cta.x + cta.w / 2 + 0.5), math.floor(below + 0.5))
 	end
 end
 
--- SD_FriendBoost or SD_GroupBoost changed (or on start): the boost pills' texts, then their place and visibility.
-local function refreshFriends()
-	local value = Players.LocalPlayer:GetAttribute(ATTR_FRIEND_BOOST)
-	friendPercent = if type(value) == "number" then value else 0
-	local friends = friendPill
-	if friends and friendPercent > 0 then
-		friends:setText(Strings.format(Strings.social.friendBoost, { percent = friendPercent }))
+-- A boost attribute changed (or on start): which boost pill shows and its text (a lone boost's own, or the sum's),
+-- then its place and visibility.
+local function refreshBoosts()
+	local on, sum = 0, 0
+	local lone: Boost? = nil
+	for _, boost in boosts do
+		local value = Players.LocalPlayer:GetAttribute(boost.attr)
+		boost.percent = if type(value) == "number" then value else 0
+		if boost.percent > 0 then
+			on += 1
+			sum += boost.percent
+			lone = boost
+		end
 	end
-	local groupValue = Players.LocalPlayer:GetAttribute(ATTR_GROUP_BOOST)
-	groupPercent = if type(groupValue) == "number" then groupValue else 0
-	local group = groupPill
-	if group and groupPercent > 0 then
-		group:setText(Strings.format(Strings.social.groupBoost, { percent = groupPercent }))
+	local total = totalPill
+	if on == 1 and lone then
+		lone.pill:setText(Strings.format((Strings.social :: any)[lone.text], { percent = lone.percent }))
+		shownBoost = lone.pill
+	elseif on >= 2 and total then
+		total:setText(Strings.format(Strings.social.boostTotal, { percent = sum }))
+		shownBoost = total
+	else
+		shownBoost = nil
 	end
 	placePill()
 end
@@ -212,29 +220,25 @@ function EventController.init()
 	made.root.Visible = false
 	c:add(made)
 	pill = made
-	local friends = WellPill.new({
-		name = "Friend_Pill",
-		look = Config.UI.Daily.timer,
-		icon = "img.icon.friends",
-		parent = UIController.screenGui(HUD_GUI),
-	})
-	friends.root.AnchorPoint = Vector2.new(0.5, 0)
-	friends.root.Visible = false
-	c:add(friends)
-	friendPill = friends
-	local group = WellPill.new({
-		name = "Group_Pill",
-		look = Config.UI.Daily.timer,
-		icon = "img.icon.star",
-		parent = UIController.screenGui(HUD_GUI),
-	})
-	group.root.AnchorPoint = Vector2.new(0.5, 0)
-	group.root.Visible = false
-	c:add(group)
-	groupPill = group
-	c:add(Players.LocalPlayer:GetAttributeChangedSignal(ATTR_FRIEND_BOOST):Connect(refreshFriends))
-	c:add(Players.LocalPlayer:GetAttributeChangedSignal(ATTR_GROUP_BOOST):Connect(refreshFriends))
-	refreshFriends()
+	local function boostPill(name: string, icon: string): WellPill.WellPill
+		local one = WellPill.new({
+			name = name,
+			look = Config.UI.Daily.timer,
+			icon = icon,
+			parent = UIController.screenGui(HUD_GUI),
+		})
+		one.root.AnchorPoint = Vector2.new(0.5, 0)
+		one.root.Visible = false
+		c:add(one)
+		table.insert(boostPills, one)
+		return one
+	end
+	for _, spec in BOOSTS do
+		table.insert(boosts, { pill = boostPill(spec.name, spec.icon), attr = spec.attr, text = spec.text, percent = 0 })
+		c:add(Players.LocalPlayer:GetAttributeChangedSignal(spec.attr):Connect(refreshBoosts))
+	end
+	totalPill = boostPill(TOTAL_PILL.name, TOTAL_PILL.icon)
+	refreshBoosts()
 	c:add(NetController.on("CandyGrab", onGrab))
 	c:add(HudController.LayoutChanged:connect(placePill))
 	c:add(HudController.VisibilityChanged:connect(refresh))
@@ -254,10 +258,9 @@ function EventController.init()
 		end
 		table.clear(drops)
 		pill = nil
-		friendPill = nil
-		friendPercent = 0
-		groupPill = nil
-		groupPercent = 0
+		table.clear(boosts)
+		table.clear(boostPills)
+		totalPill, shownBoost = nil, nil
 	end)
 	task.spawn(function()
 		local folder = Workspace:WaitForChild(FOLDER_NAME, 30)

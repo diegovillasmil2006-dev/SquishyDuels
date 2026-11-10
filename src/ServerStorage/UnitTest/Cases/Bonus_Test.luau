@@ -39,6 +39,10 @@ return function(t: Context)
 		expect.truthy(GROUP.penBoost > 0 and GROUP.penBoost <= 0.25)
 		expect.truthy(isWhole(GROUP.giftSqueezes) and GROUP.giftSqueezes >= 1 and GROUP.giftSqueezes <= RULES.maxSqueezes)
 		expect.truthy(GROUP.recheckSeconds >= 5) -- each one is a web call to Roblox
+		-- Item 5: the Roblox Plus perk is the same modest kind (never a fighting advantage: pen Coins only).
+		local PLUS = Bonus.Plus
+		expect.truthy(PLUS.penBoost > 0 and PLUS.penBoost <= 0.25)
+		expect.truthy(isWhole(PLUS.giftSqueezes) and PLUS.giftSqueezes >= 1 and PLUS.giftSqueezes <= RULES.maxSqueezes)
 		expect.truthy(isWhole(RULES.minLength) and RULES.minLength >= 1)
 		expect.truthy(isWhole(RULES.maxLength) and RULES.maxLength >= RULES.minLength)
 		expect.truthy(isWhole(RULES.maxTyped) and RULES.maxTyped >= RULES.maxLength and RULES.maxTyped <= NET_TEXT_LIMIT)
@@ -47,8 +51,8 @@ return function(t: Context)
 		expect.truthy(RULES.missWindowSeconds > 0 and RULES.lockSeconds > 0)
 	end)
 
-	t.test("'group' and 'code' are Coin reasons, and double coins never doubles them", function()
-		for _, reason in { "group", "code" } do
+	t.test("'group', 'code' and 'plus' are Coin reasons, and double coins never doubles them", function()
+		for _, reason in { "group", "code", "plus" } do
 			expect.truthy(table.find(Config.Economy.CoinReasons, reason) ~= nil)
 			expect.equal(table.find(Events.DoubleCoins.reasons, reason), nil)
 		end
@@ -132,6 +136,9 @@ return function(t: Context)
 			"bonus.codeHint",
 			"bonus.codeRedeem",
 			"social.groupBoost",
+			"bonus.plusGift", -- item 5
+			"social.plusBoost",
+			"social.boostTotal",
 		}
 		for _, key in keys do
 			local text = Strings.resolve(key)

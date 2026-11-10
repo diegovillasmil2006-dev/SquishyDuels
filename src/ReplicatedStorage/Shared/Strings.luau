@@ -1468,6 +1468,8 @@ local Strings = {
 		statIncome = "Coins/s", -- qb1 (owner 2026-10-15): the pen's Coins a second
 		friendBoost = "Friends +{percent}%", -- 2026-10-31: the Friend Boost pill (EventController)
 		groupBoost = "Group +{percent}%", -- 2026-11-10: the group members' pill (EventController, PerkService)
+		plusBoost = "Plus +{percent}%", -- 2026-11-10: the Roblox Plus subscribers' pill (the same two)
+		boostTotal = "Boosts +{percent}%", -- 2026-11-10: one pill for the sum while two or more of the three are on
 	},
 
 	-- Big job item 4 (2026-11-10): the group bonus and the redeem codes (PerkService's gift toast, BonusController's
@@ -1484,6 +1486,8 @@ local Strings = {
 		groupTip = "Tip: join our group in Settings for +{percent}% pen coins and a gift!",
 		codeHint = "Type a code", -- the code box while it is empty
 		codeRedeem = "Redeem",
+		-- Big job item 5: the Roblox Plus (and legacy Premium) subscribers' gift toast (PerkService).
+		plusGift = "Roblox Plus perk! +{coins} Coins and +{percent}% pen coins",
 	},
 
 	-- Batch 3 (review #10): "Top Wins This Week" in the Quests screen (ShowOffService's weekly board, UI/QuestFormat).

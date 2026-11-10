@@ -53,6 +53,7 @@ local Economy = {
 		"grip", -- 2026-10-31: the next Grip level bought with Coins (GripService.buyLevel, Config.Grip.Buy)
 		"group", -- 2026-11-10: the group members' one gift (PerkService, Config/Bonus)
 		"code", -- 2026-11-10: a redeem code's Coins (CodeService, Config/Bonus)
+		"plus", -- 2026-11-10: the Roblox Plus subscribers' one gift (PerkService, Config/Bonus)
 		"pen", -- pens3 phase 1: the pen's pay and its spot buys (PenService)
 		"debug",
 	},
