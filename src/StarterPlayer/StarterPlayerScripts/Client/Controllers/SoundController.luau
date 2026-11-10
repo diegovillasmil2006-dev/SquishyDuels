@@ -182,6 +182,10 @@ local OTHER_COOLDOWN_SUFFIX = "#other" -- other players' sounds keep their own c
 -- end, is dropped (voiceExpired; the backstop to Sound.Ended, which never fires for an asset that fails to load).
 local VOICE_LOAD_SECONDS = 5
 local VOICE_END_SLACK_SECONDS = 0.5
+-- Big job item 6: a playlist track that has not loaded this long after its start is skipped (LihFolk vault "Music
+-- Licensing and Audio Upload Rules for 2026": a song Roblox takes down never errors, it just never loads; the next
+-- track then plays after the pause instead of silence for good). Long: a slow phone needs time for a 2-minute song.
+local MUSIC_LOAD_SECONDS = 45
 -- Keys by cooldown / pitch category (§11.9: squeeze, coin, impact, UI click; §18.6: throw, wobble, pop, hover,
 -- hitConfirm, error).
 local CATEGORY: { [string]: string } = {
@@ -689,19 +693,21 @@ end
 -- over crossfadeSeconds, stays silent for `gap` seconds, then the key's next choice starts (choiceFor never picks the
 -- same one twice in a row when the slot has variants). The voice itself stays a looped one (a one-shot that loads
 -- slowly would be dropped as stuck after VOICE_LOAD_SECONDS); this only stops it before its first loop. Another music
--- key, or a newer voice of this one, ends the wait.
+-- key, or a newer voice of this one, ends the wait. A track that has not loaded after MUSIC_LOAD_SECONDS is skipped the
+-- same way (trackSecondsLeft is 0 for it): the pause, then the next choice.
 local playlistSerial = 0
 function playlistAfter(voice: Voice, key: string, gap: number)
 	playlistSerial += 1
 	local serial = playlistSerial
 	task.spawn(function()
 		local sound = voice.sound
-		if not sound.IsLoaded then
-			sound.Loaded:Wait()
+		local loadBy = clock() + MUSIC_LOAD_SECONDS
+		while not sound.IsLoaded and serial == playlistSerial and clock() < loadBy do
+			task.wait(0.5)
 		end
 		local fade = AUDIO.crossfadeSeconds
-		local left = sound.TimeLength / math.max(sound.PlaybackSpeed, 0.01) - sound.TimePosition - fade
-		task.wait(math.max(left, 0))
+		local length, speed, at = sound.TimeLength, sound.PlaybackSpeed, sound.TimePosition
+		task.wait(SoundController.trackSecondsLeft(sound.IsLoaded, length, speed, at, fade))
 		if serial ~= playlistSerial or musicVoice ~= voice or voice.stopping then
 			return
 		end
@@ -808,6 +814,23 @@ function SoundController.voiceExpired(
 		limit += (timeLength :: number) / rate + VOICE_END_SLACK_SECONDS
 	end
 	return age > limit
+end
+
+-- Big job item 6: seconds until a playlist track's fade-out starts: what is left of it at `speed` (a missing or
+-- non-positive speed counts as 1) minus the `fade`, never below 0; 0 for a track that did not load (it is skipped).
+function SoundController.trackSecondsLeft(
+	isLoaded: boolean,
+	timeLength: number?,
+	speed: number?,
+	position: number?,
+	fade: number
+): number
+	if not isLoaded or not isFiniteNumber(timeLength) or (timeLength :: number) <= 0 then
+		return 0
+	end
+	local rate = if isFiniteNumber(speed) and (speed :: number) > 0 then speed :: number else 1
+	local at = if isFiniteNumber(position) then math.max(position :: number, 0) else 0
+	return math.max(((timeLength :: number) - at) / rate - fade, 0)
 end
 
 -- ± pitch variation fraction: `override` when given (clamped to [0, 0.5]); else the key's category variance

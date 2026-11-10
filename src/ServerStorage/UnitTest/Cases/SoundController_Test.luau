@@ -452,6 +452,19 @@ return function(t: Context)
 		expect.equal(WorldLayout.Highway.audioZone.musicKey, "music.highway")
 	end)
 
+	-- Big job item 6: when a list's track fades out; a song that never loads (Roblox took it down) is skipped at once.
+	t.test("trackSecondsLeft: what is left of a track before its fade; 0 for a track that did not load", function()
+		expect.near(SoundController.trackSecondsLeft(true, 142.4, 1, 0, 1.5), 140.9, 1e-9)
+		expect.near(SoundController.trackSecondsLeft(true, 112.7, 1, 100, 1.5), 11.2, 1e-9)
+		expect.near(SoundController.trackSecondsLeft(true, 100, 2, 0, 1.5), 48.5, 1e-9) -- played twice as fast
+		expect.equal(SoundController.trackSecondsLeft(true, 100, 1, 99.5, 1.5), 0) -- inside the fade already
+		expect.equal(SoundController.trackSecondsLeft(false, 100, 1, 0, 1.5), 0) -- never loaded: skipped
+		expect.equal(SoundController.trackSecondsLeft(true, 0, 1, 0, 1.5), 0)
+		expect.equal(SoundController.trackSecondsLeft(true, nil, 1, 0, 1.5), 0)
+		expect.near(SoundController.trackSecondsLeft(true, 100, 0, nil, 1.5), 98.5, 1e-9) -- odd input: speed 1, from 0
+		expect.near(SoundController.trackSecondsLeft(true, 100, 1, -5, 1.5), 98.5, 1e-9)
+	end)
+
 	t.test("duckFor: the knockout duck holds, then releases itself; an early release works", function()
 		local base = SoundController.debugState().duck
 		local release = SoundController.duckFor("knockout")
