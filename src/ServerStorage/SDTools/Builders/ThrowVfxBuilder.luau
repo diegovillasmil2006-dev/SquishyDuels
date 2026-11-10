@@ -648,6 +648,54 @@ local TRAILS: { TrailSpec } = {
 			sparkles("Glints", C.White, 6, 0.4),
 		},
 	},
+	-- Series 01 (2026-11-10): Claude Design's CATALOG2 trails (sd/toys2.js T(a, b, width, life, shape, colours, rate)).
+	-- The live library may be tuned in VFX Studio, so these 6 were built and copied in alone.
+	{
+		id = "berry_jelly",
+		theme = "Berry jelly: a pink jelly ribbon and jelly drops with seeds",
+		ribbons = { ribbonOf({ hex("#FFC2D4"), hex("#FF7AA5"), hex("#FF5C8E") }, 0.9, 0.34), core({ C.White, hex("#FFC2D4") }) },
+		emitters = { dots("JellyDrops", { hex("#FF5C8E"), hex("#FF7AA5"), hex("#FFE39A") }, 8, 0.16, 20, -0.4) },
+	},
+	{
+		id = "peachy",
+		theme = "Peachy: a peach-to-coral ribbon, drifting peach petals and a leaf or two",
+		ribbons = { ribbonOf({ hex("#FFD977"), hex("#FFA868"), hex("#FF8E7A") }, 0.95, 0.34), core({ C.White, hex("#FFD977") }) },
+		emitters = { dots("Petals", { hex("#FF9F7A"), hex("#FFD977"), hex("#67C46A") }, 7, 0.16, 6, 0.5, { 0.6, 1.0 }) },
+	},
+	{
+		id = "grapey",
+		theme = "Grapey: a grape-purple ribbon and little grape beads",
+		ribbons = { ribbonOf({ hex("#E0AAFF"), hex("#B27AEB"), hex("#A45AE0") }, 0.9, 0.36), core({ C.White, hex("#E0AAFF") }) },
+		emitters = {
+			glowBubbles("Grapes", { hex("#B27AEB"), hex("#8A4FD1") }, 8, 0.4),
+			dots("Leaves", hex("#6CC56A"), 3, 0.14, 10, 0.5),
+		},
+	},
+	{
+		id = "bao_buddy",
+		theme = "Bao buddy: a pearl-white ribbon and rising steam puffs",
+		ribbons = { ribbonOf({ C.White, hex("#F4E8F7"), hex("#E9DCF0") }, 1.15, 0.42), core({ C.White, C.White }) },
+		emitters = { puffs("Steam", { C.White, hex("#FFF1E3") }, 9, 0.6, 1.6, 0.3) },
+	},
+	{
+		id = "pando",
+		theme = "Pando: a warm honey ribbon and drifting bamboo leaves",
+		ribbons = { ribbonOf({ hex("#FFF3C4"), hex("#FFD27A"), hex("#FFB347") }, 0.95, 0.36), core({ C.White, hex("#FFF3C4") }) },
+		emitters = { dots("BambooLeaves", { hex("#7CC77A"), hex("#FFE08A") }, 7, 0.16, 6, 0.5, { 0.6, 1.0 }) },
+	},
+	{
+		id = "cosmo",
+		theme = "Cosmo: twin lilac-to-sky streams, a stardust of bead colours and white star sparkles",
+		ribbons = {
+			ribbonOf({ hex("#C7A0FF"), hex("#A8B4FF"), hex("#8AB8FF") }, 0.6, 0.5, 0.45, "OrbitL"),
+			ribbonOf({ hex("#8AB8FF"), hex("#A8B4FF"), hex("#C7A0FF") }, 0.6, 0.5, -0.45, "OrbitR"),
+			core({ C.White, hex("#C7A0FF") }, 0.32, 0.22),
+		},
+		emitters = {
+			sparkles("Stardust", { hex("#FF9FC7"), hex("#FFD36B"), hex("#8FE3C2"), hex("#8AB8FF"), hex("#C7A0FF") }, 14, 0.5),
+			sparkles("Sparkle", C.White, 8, 0.35),
+		},
+	},
 }
 ThrowVfxBuilder.TRAILS = TRAILS
 

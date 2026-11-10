@@ -362,6 +362,28 @@ local Vfx = {
 		popSize = 0.04 / 0.28,
 		popLifetime = 0.6,
 		popGravity = -3 / 0.28,
+		-- Gravity Well (Cosmo, Series 01; design: sd/lab50.js:273-293, metres / 0.28 = studs). Its zone disc pulses like
+		-- Rain Check's until the pop; Cosmo hovers over the centre spinning (no growth, no drizzle).
+		wellHoverStuds = 1.1 / 0.28, -- lab50.js:276 (hov y 1.1)
+		wellLobSeconds = 0.5, -- lab50.js:280 (Cosmo flies to its spot in 0.5 s)
+		wellSpinRate = 9, -- rad/s, lab50.js:282
+		wellBeadCount = 6, -- lab50.js:274 (one per colour)
+		wellBeadRadius = 0.06 / 0.28, -- lab50.js:277
+		wellBeadHeight = 0.22 / 0.28, -- lab50.js:277, 284
+		wellBeadBobStuds = 0.1 / 0.28, -- lab50.js:284 (0.1·sin(2a))
+		wellBeadSpin = 2, -- rad/s at the start (lab50.js:284, dt·(2 + 7k))
+		wellBeadSpinGain = 7, -- rad/s more by the pop
+		wellBeadPull = 0.92, -- the spiral's radius R·(1 - 0.92k²) (lab50.js:283)
+		wellPopStars = 40, -- lab50.js:289
+		wellPopSpeed = 4.5 / 0.28,
+		wellPopSize = 0.06 / 0.28,
+		wellPopLifetime = 0.9,
+		wellPopGravity = -2 / 0.28,
+		wellRingGoldTo = 2 * 7 * 1.05, -- diameter: the gold ring to 1.05 R in 0.42 s (lab50.js:290)
+		wellRingGoldSeconds = 0.42,
+		wellRingLilacTo = 2 * 7 * 1.35, -- diameter: the lilac ring to 1.35 R in 0.6 s (lab50.js:290)
+		wellRingLilacSeconds = 0.6,
+		wellRingTransparencyFrom = 1 - 0.95,
 		-- Batch B (owner 2026-10-17: "the Frog's bounce look from the design"): where Bubble Pop bounces, the Strawberry
 		-- Frog's bounce pass (design: fp.js:239): 6 hearts (Art/Palette UltBounceHeart*), a white ring, sfx.pop.
 		bounceHearts = 6,

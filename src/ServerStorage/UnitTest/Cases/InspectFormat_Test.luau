@@ -83,9 +83,9 @@ return function(t: Context)
 
 	-- view -----------------------------------------------------------------------------------------------------------
 
-	t.test("view: every field of all 14 squishies comes from Catalog, Config, Boxes and Strings", function()
+	t.test("view: every field of all 20 squishies comes from Catalog, Config, Boxes and Strings", function()
 		local defs = Catalog.list()
-		expect.equal(#defs, 14)
+		expect.equal(#defs, 20) -- + Series 01
 		for _, def in defs do
 			local view = InspectFormat.view(def.id, UNOWNED)
 			assert(view ~= nil, "no view for " .. def.id)
@@ -237,7 +237,7 @@ return function(t: Context)
 			for _, line in bird.howToGet do
 				table.insert(texts, line.text)
 			end
-			expect.deepEqual(texts, { "Sweet Box: 24.99%", "Royal Box: 3.50%", "Shop: 1.80B Coins" })
+			expect.deepEqual(texts, { "Sweet Box: 24.98%", "Royal Box: 3.50%", "Shop: 1.80B Coins" })
 			-- A Common not owned yet shows its Welcome price (D1:202), the price its first one costs.
 			local toast = InspectFormat.view("toast", UNOWNED)
 			assert(toast ~= nil, "no view")

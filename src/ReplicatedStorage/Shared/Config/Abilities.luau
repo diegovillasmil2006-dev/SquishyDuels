@@ -1,8 +1,9 @@
 --!strict
 -- Config.Abilities: ultimates keyed by Catalog `ultimateId` (DESIGN §5.9). Shared, data only. All [P].
--- Five abilities: Dragon Rush (Dragon, Exclusive) and the four Epic ultimates of the design (spec phase 5 §1.4-§1.8;
+-- Six abilities: Dragon Rush (Dragon, Exclusive), the four Epic ultimates of the design (spec phase 5 §1.4-§1.8;
 -- design: ults.js:3-6): Flock Volley (Birdie), Sprinkle Roller (Donut), Rain Check (Cloud Bunny) and Bubble Pop
--- (Cupcake Axolotl). Each has a `kind`, the behaviour AbilityService runs for it:
+-- (Cupcake Axolotl), and Gravity Well (Cosmo, Exclusive; Series 01, a one-drop rain). Each has a `kind`, the behaviour
+-- AbilityService runs for it:
 --   lane    Dragon Rush: a sphere of `radius` swept from O to E at `speed`, at laneHeightAboveFloor, flying on through
 --           the player it hits; tested at standing height (jumping never avoids it).
 --   volley  `count` projectiles of `radius` fanned over `fanDeg` around the aim, `staggerSeconds` apart, straight at
@@ -265,6 +266,50 @@ local Abilities = {
 		-- Review fix (2026-10-16), NOT IN DESIGN [P]: only cover close to upright bounces it (|unit normal.Y| < 0.5,
 		-- steeper than 60°): a floor, a ceiling, a ramp of Diego's maps or a round prop's top pops it as before.
 		bounceMaxNormalY = 0.5,
+	},
+	-- Cosmo (Series 01, 2026-11-10; design: sd/ults2.js:4 "Gravity Well": a 7 st zone at the aim point, a 1.2 s ring
+	-- with the beads spiralling in, inside the ring at the pop = out; charge 0.7 s, cooldown 44 s). Built on the rain
+	-- kind (the zone centres where Rain Check's does: on the opponent, or the aimed target in practice and FFA/TDM) as
+	-- one "drop" as wide as the zone: its warning (UltFx draws the ring and the beads) lasts the design's 1.2 s, then
+	-- anyone within 7 studs of the centre is hit.
+	gravity_well = {
+		kind = "rain",
+		nameKey = "ability.gravityWell.name",
+		descriptionKey = "ability.gravityWell.description",
+		incomingKey = "ability.gravityWell.incoming",
+		readyKey = "ability.gravityWell.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js:4 (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 44, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 44,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 44, -- design: ults2.js:4 (cooldown 44 s)
+		telegraphSeconds = 0.7, -- design: ults2.js:4 (charge 0.7 s): the wind-up
+		radius = 7, -- design: ults2.js:4 (zone 7 st radius)
+		laneHeightAboveFloor = 13, -- as Rain Check (unused by the well's look; the rain kind needs it)
+		speed = 9 / 0.28, -- as Rain Check (cosmetic)
+		maxLength = 110, -- as Rain Check: the practice target nearest the aim within this many studs
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 2.0, -- Cosmo throws exactly like the Dragon, so it pays Dragon Rush's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 2, -- as Rain Check
+		drops = 1, -- one pop for the whole zone
+		-- The ring shows 1.2 s before the pop (design: ults2.js:4): firstShadow + shadow + fall = 1.2 s (the rain kind
+		-- wants each above 0).
+		firstShadowSeconds = 0.01,
+		dropStepSeconds = 0.1, -- one drop: unused
+		shadowSeconds = 1.18,
+		fallSeconds = 0.01,
+		dropHitRadius = 7, -- design: ults2.js:4 ("inside the ring at the pop = out")
+		dropRadii = { 0 }, -- the pop is the zone's centre
+		dropAngleStep = 0.1, -- one drop: unused
+		targetRadius = 7, -- the aimed player in the zone gets the pop at its own spot (the centre already is)
 	},
 } :: { [string]: Ability }
 

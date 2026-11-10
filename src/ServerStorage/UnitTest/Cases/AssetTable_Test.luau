@@ -74,6 +74,7 @@ local SOUND_KEYS = {
 	"sfx.ultCharge.donut",
 	"sfx.ultCharge.cloud_bunny",
 	"sfx.ultCharge.cupcake_axolotl",
+	"sfx.ultCharge.cosmo", -- Series 01 (2026-11-10): Gravity Well's wind-up
 	"sfx.ultRelease",
 	"sfx.ultRainDrop",
 	"sfx.ultCloudHover",
@@ -299,7 +300,7 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 70)
+		expect.equal(#keys, 71) -- + Series 01's sfx.ultCharge.cosmo
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
 	end)
 
@@ -513,6 +514,18 @@ return function(t: Context)
 				"img.squishy.strawberry_frog.white",
 				"img.squishy.cloud_bunny.white",
 				"img.squishy.cupcake_axolotl.white",
+				"img.squishy.berry_jelly", -- Series 01 (2026-11-10)
+				"img.squishy.peachy",
+				"img.squishy.grapey",
+				"img.squishy.bao_buddy",
+				"img.squishy.pando",
+				"img.squishy.cosmo",
+				"img.squishy.berry_jelly.white",
+				"img.squishy.peachy.white",
+				"img.squishy.grapey.white",
+				"img.squishy.bao_buddy.white",
+				"img.squishy.pando.white",
+				"img.squishy.cosmo.white",
 				"img.nav.squishies.white",
 				"img.nav.boxes.white",
 				"img.nav.shop.white",
@@ -912,7 +925,7 @@ return function(t: Context)
 				expectProvenance(slot.key, slot)
 				if string.sub(slot.key, 1, #EMBLEM_PREFIX) == EMBLEM_PREFIX then
 					emblems += 1
-					expect.truthy(string.find(slot.source, "VillasmilGaming upload", 1, true) ~= nil)
+					expect.truthy(string.find(slot.source, " upload (Studio)", 1, true) ~= nil) -- VillasmilGaming's, Cosmo's jayyyyy2806's
 					expect.truthy(string.find(slot.source, ".png'", 1, true) ~= nil)
 				else
 					images += 1

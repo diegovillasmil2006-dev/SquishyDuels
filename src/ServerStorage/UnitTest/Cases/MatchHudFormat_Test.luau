@@ -215,12 +215,18 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"the card's words: a title for every squishy (Birdie is bird), the fallback, the storm / fall words",
+		"the card's words: a title for every designed squishy (Birdie is bird), the fallback, the storm / fall words",
 		function()
 			local fallback = Format.squishyTitle("not_a_squishy")
 			expect.equal(fallback, "Squishy Slinger")
+			-- Series 01 (2026-11-10): the design names no titles for these yet, so they show the fallback.
+			local untitled = { berry_jelly = true, peachy = true, grapey = true, bao_buddy = true, pando = true, cosmo = true }
 			for _, def in Catalog.list() do
-				expect.truthy(Format.squishyTitle(def.id) ~= fallback)
+				if untitled[def.id] then
+					expect.equal(Format.squishyTitle(def.id), fallback)
+				else
+					expect.truthy(Format.squishyTitle(def.id) ~= fallback)
+				end
 			end
 			expect.equal(Format.squishyTitle("bird"), "Fluff Flyer")
 			expect.equal(Format.causeCard("storm").pill, "THE STORM")

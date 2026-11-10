@@ -189,9 +189,32 @@ local STYLES: { [string]: Style } = {
 		killVfx = "Kill/dragon_blaze",
 		sound = "sfx.kill.dragon_blaze",
 	},
+	-- Cosmo's Supernova (Cosmo, Exclusive; Series 01 2026-11-10; design: sd/ults2.js:43-45): the design's emblem and
+	-- colours (disc blue, ring gold, glow lilac, the bead shards); a gold orbit frame, stars round the medallion, a
+	-- crown of stars for the 6k banner.
+	cosmo_supernova = {
+		id = "cosmo_supernova",
+		nameKey = "elimination.cosmo_supernova",
+		emblem = "img.kill.emblem.cosmo_supernova",
+		emblemWhite = "img.kill.emblem.cosmo_supernova.white",
+		shards = { "CosmoBeadPink", "CosmoBeadGold", "CosmoBeadMint", "CosmoBeadBlue", "CosmoBeadLilac" },
+		squishyId = "cosmo",
+		disc = "CosmoBeadBlue",
+		ring = "UltWellGold",
+		glow = "CosmoBeadLilac",
+		frame = { image = "img.kill.frameArcs", tint = "UltWellGold", size = 1.6, spin = 20 },
+		crownFrame = { image = "img.fx.rays", tint = "CosmoBeadLilac", size = 2.25, spin = 18 },
+		ornament = { image = "img.icon.star", size = 0.36 },
+		crown = { image = "img.icon.star", size = 0.42, count = 3, fan = 22 },
+		bannerVfx = "Banner/cosmo_supernova",
+		killVfx = "Kill/cosmo_supernova",
+		-- shortcut: no sound sheet of its own yet; it plays Cloudburst's (the airiest set) until one is made.
+		sound = "sfx.kill.cosmo_supernova",
+	},
 }
 
-local IDS: { string } = { "standard", "feather_storm", "sprinkle_blast", "cloudburst", "bubble_burst", "dragon_blaze" }
+local IDS: { string } =
+	{ "standard", "feather_storm", "sprinkle_blast", "cloudburst", "bubble_burst", "dragon_blaze", "cosmo_supernova" }
 
 for _, style in STYLES do
 	table.freeze(style.frame)

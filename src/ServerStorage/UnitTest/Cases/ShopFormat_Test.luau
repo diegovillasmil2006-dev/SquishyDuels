@@ -95,21 +95,27 @@ return function(t: Context)
 		local owned = { kitty_bread = { at = 0 } }
 		local list = ShopFormat.entries(Catalog.list(), owned, 3_000_000, nil, nil)
 		expect.equal(#list, #Catalog.list())
-		-- Commons first (Kitty Bread is not sold, so after the priced Commons), Dragon last.
+		-- Commons first (Kitty Bread is not sold, so after the priced Commons), Dragon last (Series 01 by name among them).
 		expect.deepEqual(ids(list), {
 			"banana",
+			"berry_jelly",
 			"boba_bear",
 			"pancake_pup",
+			"peachy",
 			"toast",
 			"kitty_bread",
 			"butter",
 			"chocolate",
+			"grapey",
+			"bao_buddy",
 			"mochi_fox",
+			"pando",
 			"strawberry_frog",
 			"bird",
 			"cloud_bunny",
 			"cupcake_axolotl",
 			"donut",
+			"cosmo",
 			"dragon",
 		})
 		local byId: { [string]: any } = {}

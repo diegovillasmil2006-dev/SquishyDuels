@@ -133,8 +133,8 @@ return function(t: Context)
 		expect.equal(CAP, 2)
 		expect.near(CYCLE, REPEAT, 1e-12)
 		expect.near(WINDOW, 2 * REPEAT, 1e-9)
-		-- One full squeeze animation: never before the release pop end of any of the 14 squishies.
-		expect.equal(#Catalog.list(), 14)
+		-- One full squeeze animation: never before the release pop end of any of the 20 squishies.
+		expect.equal(#Catalog.list(), 20) -- + Series 01 (2026-11-10)
 		for _, def in Catalog.list() do
 			expect.truthy(REPEAT * 1000 >= SqueezeFeel.timing(def).popEndMs)
 		end

@@ -1,5 +1,5 @@
 --!strict
--- InspectTracks (client only, pure): the 14 first-person Inspect showcases (final polish 2026-10-11; the user moved
+-- InspectTracks (client only, pure): the 20 first-person Inspect showcases (Series 01's 6 from Claude Design's INS2) (final polish 2026-10-11; the user moved
 -- them to the final polish, FP spec answer 5). The 3D Lab's INS table verbatim (design: sd/fp.js:111-142), keyed by
 -- Catalog id (the design's id in each comment), and its event recipes vEv (fp.js:158-194), in du, camera space (-Z
 -- forward, +Y up, +X right; the overlay draws them × overlayStudsPerDu). ViewmodelController plays them; no instances,
@@ -441,6 +441,177 @@ local TRACKS: { [string]: Track } = {
 		},
 		ev = { at(0.3, "wiggle"), at(1.0, "wiggle"), at(2.0, "blub") },
 	}),
+	-- Series 01 (2026-11-10): Claude Design's INS2 (sd/anims2.js), the same row format as INS. New events: steam, orbit,
+	-- twinkle (RECIPES).
+	berry_jelly = track("BerryJelly", { -- design: sd/anims2.js INS2
+		dur = 2.5,
+		toy = {
+			{ 0, 0, 0, 0, 0, 0.25, 0 },
+			{ 0.3, 0, 0.04, 0.05, 0, 0, 0 },
+			{ 0.45, 0.02, 0.04, 0.05, 0, 0, 0.18 },
+			{ 0.6, -0.02, 0.04, 0.05, 0, 0, -0.18 },
+			{ 0.75, 0.015, 0.04, 0.05, 0, 0, 0.12 },
+			{ 0.9, 0, 0.04, 0.05, 0, 0, 0 },
+			{ 1.5, 0, 0.05, 0.05, 0, PI, 0 },
+			{ 2, 0, 0.04, 0.06, 0, TAU, 0 },
+			{ 2.5, 0, 0, 0, 0, TAU + 0.25, 0 },
+		},
+		hands = {
+			{ 0, 1, 0, 0, 0, 0, 0, 0 },
+			{ 0.3, 1, 0, 0, 0, 0, 0, 0 },
+			{ 1.95, 1, 0, 0, 0, 0, 0, 0 },
+			{ 2.05, 1, 0, 0, 0, -0.07, 0.1, 0 },
+			{ 2.15, 1, 0, 0, 0, -0.07, 0.075, 0 },
+			{ 2.25, 1, 0, 0, 0, -0.07, 0.1, 0 },
+			{ 2.45, 1, 0, 0, 0, 0, 0, 0 },
+		},
+		sq = {
+			{ 0, 1, 1, 1 },
+			{ 0.45, 1.08, 0.9, 1.08 },
+			{ 0.6, 0.94, 1.08, 0.94 },
+			{ 0.75, 1.05, 0.95, 1.05 },
+			{ 0.9, 1, 1, 1 },
+			{ 2.05, 1, 1, 1 },
+			{ 2.15, 1.08, 0.88, 1.08 },
+			{ 2.3, 1, 1, 1 },
+		},
+		ev = { at(0.45, "wiggle"), at(1, "swish"), at(2.14, "pat") },
+	}),
+	peachy = track("Peachy", { -- design: sd/anims2.js INS2
+		dur = 2.3,
+		toy = {
+			{ 0, 0, 0, 0, 0, 0.25, 0 },
+			{ 0.35, 0, 0.05, 0.14, 0.2, 0, 0 },
+			{ 0.9, 0, 0.05, 0.14, 0.2, 0, 0 },
+			{ 1.3, 0, 0.04, 0.06, 0, -1.15, 0 },
+			{ 1.8, 0, 0.04, 0.06, 0, -1.15, 0.1 },
+			{ 2.3, 0, 0, 0, 0, 0.25, 0 },
+		},
+		hands = {
+			{ 0, 1, 0, 0, 0, 0, 0, 0 },
+			{ 2.3, 1, 0, 0, 0, 0, 0, 0 },
+		},
+		sq = {
+			{ 0, 1, 1, 1 },
+			{ 0.5, 1.03, 0.97, 1.03 },
+			{ 0.8, 1, 1, 1 },
+		},
+		ev = { at(0.5, "sniff"), at(0.75, "sparkle"), at(1.45, "flick") },
+	}),
+	grapey = track("Grapey", { -- design: sd/anims2.js INS2
+		dur = 2.7,
+		toy = {
+			{ 0, 0, 0, 0, 0, 0.25, 0 },
+			{ 0.25, 0, 0.06, 0.04, 0, 0, 0 },
+			{ 0.37, 0, 0.1, 0.04, 0, 0, 0.12 },
+			{ 0.49, 0, 0.04, 0.04, 0, 0, -0.12 },
+			{ 0.61, 0, 0.1, 0.04, 0, 0, 0.12 },
+			{ 0.73, 0, 0.04, 0.04, 0, 0, -0.12 },
+			{ 0.9, 0, 0.06, 0.04, 0, 0, 0 },
+			{ 1.5, 0, 0.05, 0.05, 0, PI, 0 },
+			{ 2, 0, 0.04, 0.06, 0, TAU, 0 },
+			{ 2.4, 0, 0.03, 0.06, 0, TAU, 0 },
+			{ 2.7, 0, 0, 0, 0, TAU + 0.25, 0 },
+		},
+		hands = {
+			{ 0, 1, 0, 0, 0, 0, 0, 0 },
+			{ 2.05, 1, 0, 0, 0, 0, 0, 0 },
+			{ 2.15, 1, 0, 0, 0, -0.04, 0.06, 0.04 },
+			{ 2.25, 1, 0, 0, 0, -0.04, 0.03, 0.04 },
+			{ 2.4, 1, 0, 0, 0, 0, 0, 0 },
+		},
+		sq = {
+			{ 0, 1, 1, 1 },
+			{ 0.37, 0.96, 1.06, 0.96 },
+			{ 0.49, 1.05, 0.95, 1.05 },
+			{ 0.61, 0.96, 1.06, 0.96 },
+			{ 0.73, 1.05, 0.95, 1.05 },
+			{ 0.9, 1, 1, 1 },
+			{ 2.2, 1, 1, 1 },
+			{ 2.27, 1.06, 0.9, 1.06 },
+			{ 2.4, 1, 1, 1 },
+		},
+		ev = { at(0.3, "rattle"), at(1.05, "swish"), at(2.25, "tap") },
+	}),
+	bao_buddy = track("BaoBuddy", { -- design: sd/anims2.js INS2
+		dur = 2.5,
+		toy = {
+			{ 0, 0, 0, 0, 0, 0.25, 0 },
+			{ 0.35, 0, 0.07, 0.06, 0.4, 0, 0 },
+			{ 0.8, 0, 0.07, 0.06, 0.4, 0, 0 },
+			{ 1.4, 0, 0.05, 0.05, 0, TAU, 0 },
+			{ 1.9, 0, 0.04, 0.06, 0, TAU, 0 },
+			{ 2.5, 0, 0, 0, 0, TAU + 0.25, 0 },
+		},
+		hands = {
+			{ 0, 1, 0, 0, 0, 0, 0, 0 },
+			{ 1.95, 1, 0, 0, 0, 0, 0, 0 },
+			{ 2.05, 1, 0, 0, 0, -0.07, 0.1, 0 },
+			{ 2.15, 1, 0, 0, 0, -0.07, 0.075, 0 },
+			{ 2.25, 1, 0, 0, 0, -0.07, 0.1, 0 },
+			{ 2.45, 1, 0, 0, 0, 0, 0, 0 },
+		},
+		sq = {
+			{ 0, 1, 1, 1 },
+			{ 2.08, 1, 1, 1 },
+			{ 2.15, 1.07, 0.88, 1.07 },
+			{ 2.3, 1, 1, 1 },
+		},
+		ev = { at(0.45, "steam"), at(1, "twirl"), at(2.14, "pat") },
+	}),
+	pando = track("Pando", { -- design: sd/anims2.js INS2
+		dur = 2.8,
+		toy = {
+			{ 0, 0, 0, 0, 0, 0.25, 0 },
+			{ 0.3, 0, 0.04, 0.05, 0, 0, 0 },
+			{ 1.8, 0, 0.04, 0.05, 0, 0, 0 },
+			{ 2, 0, 0.05, 0.05, 0, 0, 0.25 },
+			{ 2.15, 0, 0.05, 0.05, 0, 0, -0.2 },
+			{ 2.3, 0, 0.05, 0.05, 0, 0, 0.1 },
+			{ 2.8, 0, 0, 0, 0, 0.25, 0 },
+		},
+		hands = {
+			{ 0, 1, 0, 0, 0, 0, 0, 0 },
+			{ 0.35, 1, 0, 0, 0, 0, 0, 0 },
+			{ 0.5, 1, 0.02, 0.06, 0.03, -0.02, 0.06, 0.03 },
+			{ 0.75, 1, 0.02, 0.06, 0.03, -0.02, 0.06, 0.03 },
+			{ 0.95, 1, 0, 0, 0, 0, 0, 0 },
+		},
+		sq = {
+			{ 0, 1, 1, 1 },
+			{ 0.35, 1, 1, 1 },
+			{ 0.55, 1.1, 0.8, 1.1 },
+			{ 0.75, 1.1, 0.8, 1.1 },
+			{ 1.5, 1.02, 0.97, 1.02 },
+			{ 1.8, 1, 1, 1 },
+		},
+		ev = { at(0.5, "stretch"), at(1.55, "sparkle"), at(2, "flick") },
+	}),
+	cosmo = track("Cosmo", { -- design: sd/anims2.js INS2
+		dur = 2.9,
+		toy = {
+			{ 0, 0, 0, 0, 0, 0.25, 0 },
+			{ 0.35, 0, 0.08, 0.02, 0, 0, 0 },
+			{ 0.8, 0, 0.13, 0.03, 0.25, 0.6, 0.12 },
+			{ 1.3, 0, 0.14, 0.03, 0.25, PI + 0.6, -0.12 },
+			{ 1.8, 0, 0.13, 0.03, 0.1, TAU + 0.25, 0.06 },
+			{ 2.3, 0, 0.02, 0, 0, TAU + 0.25, 0 },
+			{ 2.9, 0, 0, 0, 0, TAU + 0.25, 0 },
+		},
+		hands = {
+			{ 0, 1, 0, 0, 0, 0, 0, 0 },
+			{ 0.35, 0.25, 0, 0, 0, 0, 0, 0 },
+			{ 2.1, 0.25, 0, 0, 0, 0, 0, 0 },
+			{ 2.45, 1, 0, 0, 0, 0, 0, 0 },
+		},
+		sq = {
+			{ 0, 1, 1, 1 },
+			{ 2.3, 1, 1, 1 },
+			{ 2.42, 1.08, 0.9, 1.08 },
+			{ 2.6, 1, 1, 1 },
+		},
+		ev = { at(0.4, "sparkle"), at(0.9, "orbit"), at(1.5, "twinkle"), at(2.4, "plop") },
+	}),
 }
 
 -- pc(n, o) (design: fp.js:171): the toy's own specks with these defaults, o over them.
@@ -553,6 +724,57 @@ local RECIPES: { [string]: Recipe } = {
 		}) :: any,
 	},
 	ring = { sound = "sfx.inspect.ring" }, -- design: fp.js:192
+	-- Series 01 (2026-11-10, Claude Design's EVENTS2 played by sd/lab50.js:204-206). Sounds: the nearest one-shots we have
+	-- (steam: spread's soft filtered noise; twinkle: sparkle's chimes; orbit: the whoosh).
+	steam = { -- 6 white puffs rising from the top (lab50.js:204)
+		sound = "sfx.inspect.spread",
+		specks = table.freeze({
+			kind = "emit",
+			count = 6,
+			shape = "sphere",
+			colours = { Palette.White },
+			velMin = Vector3.new(-0.03, 0.12, 0),
+			velMax = Vector3.new(0.03, 0.22, 0),
+			size = 0.012,
+			life = 0.9,
+			gravity = 0.15,
+			drag = 1.5,
+			offsetY = 0.05,
+		}) :: any,
+	},
+	orbit = { -- 10 beads in Cosmo's colours flung round the toy (lab50.js:205; a burst stands in for the circle)
+		sound = WHOOSH,
+		specks = table.freeze({
+			kind = "burst",
+			count = 10,
+			shape = "sphere",
+			colours = {
+				Palette.CosmoBeadPink,
+				Palette.CosmoBeadGold,
+				Palette.CosmoBeadMint,
+				Palette.CosmoBeadBlue,
+				Palette.CosmoBeadLilac,
+			},
+			speed = 0.3,
+			size = 0.006,
+			life = 0.5,
+			gravity = 0,
+		}) :: any,
+	},
+	twinkle = { -- star sparks at the top (lab50.js:206)
+		sound = "sfx.inspect.sparkle",
+		specks = table.freeze({
+			kind = "burst",
+			count = 6,
+			shape = "spark",
+			colours = { Palette.InspectSparkleYellow, Palette.White },
+			speed = 0.25,
+			size = 0.007,
+			life = 0.5,
+			gravity = 0,
+			offsetY = 0.07,
+		}) :: any,
+	},
 }
 for _, recipe in RECIPES do
 	table.freeze(recipe)

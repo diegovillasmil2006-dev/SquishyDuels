@@ -39,6 +39,13 @@ local SquishyBlueprints: { [string]: Blueprint } = {
 	strawberry_frog = require(script.strawberry_frog),
 	cloud_bunny = require(script.cloud_bunny),
 	cupcake_axolotl = require(script.cupcake_axolotl),
+	-- Series 01 (2026-11-10).
+	berry_jelly = require(script.berry_jelly),
+	peachy = require(script.peachy),
+	grapey = require(script.grapey),
+	bao_buddy = require(script.bao_buddy),
+	pando = require(script.pando),
+	cosmo = require(script.cosmo),
 	gift_box = require(script.gift_box),
 	dragon_head_vfx = require(script.dragon_head_vfx),
 }

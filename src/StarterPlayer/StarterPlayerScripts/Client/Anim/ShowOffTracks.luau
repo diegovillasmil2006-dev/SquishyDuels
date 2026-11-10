@@ -1,5 +1,5 @@
 --!strict
--- ShowOffTracks (client only, pure): the 14 shelf show-off loops (pens3 phase 11; lobby design v6 kit.json
+-- ShowOffTracks (client only, pure): the 20 shelf show-off loops (Series 01's 6 from Claude Design's SHOWOFF2) (pens3 phase 11; lobby design v6 kit.json
 -- "showoff", K:6982-7829, one per squishy kind, `K:n` = kit.json line n, `P3D:n` = "Squishy Lobby 3D.html" line n),
 -- keyed by Catalog id, verbatim: each loop is `length` s long, each track a K prop ("posY", "rotX", "rotY", "rotZ" in
 -- degrees, "scale" {x, y, z}, "scaleY") with its keys {time s, value, ease}; a key's ease shapes the segment that
@@ -43,6 +43,7 @@ local EASES: { [string]: { Enum.EasingStyle | Enum.EasingDirection } } = {
 	["Quad Out"] = { Enum.EasingStyle.Quad, Enum.EasingDirection.Out },
 	["Quad InOut"] = { Enum.EasingStyle.Quad, Enum.EasingDirection.InOut },
 	["Back Out"] = { Enum.EasingStyle.Back, Enum.EasingDirection.Out },
+	["Cubic InOut"] = { Enum.EasingStyle.Cubic, Enum.EasingDirection.InOut }, -- Series 01: Bao Buddy's spin
 }
 
 -- K:6982-7829, verbatim (the kind's K name and its idea in each comment).
@@ -248,6 +249,119 @@ local LOOPS: { [string]: Loop } = {
 					{ 1.2, { 1, 1, 1 }, "Sine InOut" },
 				},
 			},
+		},
+	},
+	-- Series 01 (2026-11-10): Claude Design's SHOWOFF2 (sd/anims2.js), posY / rot only like the brief asked. Its ease
+	-- drives the segment that starts at its key (anims2.js:3), so each ease sits here on the key that ends that segment.
+	-- BerryJelly: Jelly Hop. Two little hops then a wobbly lean, like jelly settling.
+	berry_jelly = {
+		length = 2,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.28, 0.55, "Quad Out" },
+					{ 0.56, 0, "Quad In" },
+					{ 0.78, 0.3, "Quad Out" },
+					{ 1, 0, "Quad In" },
+					{ 2, 0, "-" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1, 0, "-" },
+					{ 1.25, 7, "Sine InOut" },
+					{ 1.55, -5, "Sine InOut" },
+					{ 1.8, 2, "Sine InOut" },
+					{ 2, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- Peachy: Peach Sway. Sways like it hangs from a branch and turns to show its cleft.
+	peachy = {
+		length = 3,
+		tracks = {
+			{ prop = "rotZ", keys = { { 0, 0, "-" }, { 0.75, 8, "Sine InOut" }, { 2.25, -8, "Sine InOut" }, { 3, 0, "Sine InOut" } } },
+			{ prop = "rotY", keys = { { 0, 0, "-" }, { 1.5, -40, "Sine InOut" }, { 3, 0, "Sine InOut" } } },
+			{ prop = "posY", keys = { { 0, 0, "-" }, { 1.5, 0.12, "Sine InOut" }, { 3, 0, "Sine InOut" } } },
+		},
+	},
+	-- Grapey: Bunch Bounce. Quick double bounce, then a shimmy so the grapes jiggle.
+	grapey = {
+		length = 1.8,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.22, 0.35, "Quad Out" },
+					{ 0.44, 0, "Quad In" },
+					{ 0.62, 0.2, "Quad Out" },
+					{ 0.8, 0, "Quad In" },
+					{ 1.8, 0, "-" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.8, 0, "-" },
+					{ 1, 12, "Sine InOut" },
+					{ 1.2, -12, "Sine InOut" },
+					{ 1.4, 8, "Sine InOut" },
+					{ 1.6, 0, "Sine InOut" },
+					{ 1.8, 0, "-" },
+				},
+			},
+		},
+	},
+	-- BaoBuddy: Steam Spin. Little hop, then a slow lazy-Susan spin in its steamer.
+	bao_buddy = {
+		length = 2.4,
+		tracks = {
+			{ prop = "posY", keys = { { 0, 0, "-" }, { 0.3, 0.4, "Quad Out" }, { 0.6, 0, "Quad In" }, { 2.4, 0, "-" } } },
+			{ prop = "rotY", keys = { { 0, 0, "-" }, { 0.6, 0, "-" }, { 1.8, 360, "Cubic InOut" }, { 2.4, 360, "-" } } },
+		},
+	},
+	-- Pando: Slow Rise Nod. Slow sleepy nod and rise, then an ear-tilt shimmy.
+	pando = {
+		length = 3.2,
+		tracks = {
+			{ prop = "rotX", keys = { { 0, 0, "-" }, { 1, 10, "Sine InOut" }, { 2.2, 0, "Sine InOut" }, { 3.2, 0, "-" } } },
+			{ prop = "posY", keys = { { 0, 0, "-" }, { 2.2, 0.15, "Sine InOut" }, { 3.2, 0, "Sine InOut" } } },
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 2.2, 0, "-" },
+					{ 2.45, 6, "Sine InOut" },
+					{ 2.7, -6, "Sine InOut" },
+					{ 2.95, 0, "Sine InOut" },
+					{ 3.2, 0, "-" },
+				},
+			},
+		},
+	},
+	-- Cosmo: Planet Orbit. Floats up, tilts on its axis like a planet and turns once.
+	cosmo = {
+		length = 4,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1, 0.8, "Sine InOut" },
+					{ 2, 0.6, "Sine InOut" },
+					{ 3, 0.8, "Sine InOut" },
+					{ 4, 0, "Sine InOut" },
+				},
+			},
+			{ prop = "rotY", keys = { { 0, 0, "-" }, { 4, 360, "-" } } },
+			{ prop = "rotZ", keys = { { 0, 0, "-" }, { 1, 12, "Sine InOut" }, { 3, 12, "Sine InOut" }, { 4, 0, "Sine InOut" } } },
 		},
 	},
 }

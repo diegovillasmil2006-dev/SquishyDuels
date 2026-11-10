@@ -299,48 +299,51 @@ return function(t: Context)
 		expect.equal(w.saves, 0)
 	end)
 
-	t.test("restricted accounts open the fixed order: no draw, the same price, Fox at 11, Frog at 12", function()
+	-- Series 01 (2026-11-10): the Soft Box's order is 150 long and its first Rares are boxes 16 (Fox) and 17 (Frog), so
+	-- this account has opened 5 before and its 12 opens are boxes 6-17.
+	t.test("restricted accounts open the fixed order: no draw, the same price, Fox at 16, Frog at 17", function()
 		local w = setup()
 		local p, profile = readyPlayer(w, 30 * SNACK_COST)
 		w.policy[p] = false -- restricted, checking or unknown: anything but eligible
 		profile.pen.spots = 12 -- room for every one
+		profile.boxOrder.snack = 5 -- 5 opened before
 		local got: { string } = {}
 		for n = 1, 12 do
 			local req = string.format("%08x-0000-0000-0000-000000000000", n)
 			local result = BoxService.open(p, "snack", req)
 			expect.equal(result.ok, true)
 			table.insert(got, result.data.squishyId)
-			expect.equal(profile.boxOrder.snack, n) -- counted in the same steps as the grant
+			expect.equal(profile.boxOrder.snack, 5 + n) -- counted in the same steps as the grant
 			w.clock.advance(MIN_SECONDS)
 		end
 		for index, id in got do
-			expect.equal(id, Boxes.fixedItem("snack", index - 1))
+			expect.equal(id, Boxes.fixedItem("snack", 5 + index - 1))
 		end
-		expect.equal(got[11], "mochi_fox")
-		expect.equal(got[12], "strawberry_frog")
+		expect.equal(got[11], "mochi_fox") -- box 16
+		expect.equal(got[12], "strawberry_frog") -- box 17
 		expect.equal(w.draws, 0) -- never random
 		expect.equal(profile.coins, 18 * SNACK_COST) -- the same price as everyone
 		expect.equal(profile.boxOrder.sweet, 0)
 		-- A replay is the stored result and never moves the order.
 		local replay = BoxService.open(p, "snack", string.format("%08x-0000-0000-0000-000000000000", 12))
 		expect.equal(replay.data.squishyId, "strawberry_frog")
-		expect.equal(profile.boxOrder.snack, 12)
+		expect.equal(profile.boxOrder.snack, 17)
 		-- Once eligible, opens are random again and the count stays where it was.
 		w.policy[p] = nil
 		w.rolls = { R_BUTTER }
 		expect.equal(BoxService.open(p, "snack", REQ_A).data.squishyId, "butter")
-		expect.equal(profile.boxOrder.snack, 12)
+		expect.equal(profile.boxOrder.snack, 17)
 		expect.equal(w.draws, 1)
 	end)
 
-	t.test("the Sweet Box's fixed order gives its Dragon at box 501 to a restricted account", function()
+	t.test("the Sweet Box's fixed order gives its Dragon at box 834 to a restricted account (Series 01)", function()
 		local w = setup()
 		local p, profile = readyPlayer(w, Config.Economy.maxCoins)
 		w.policy[p] = false
-		profile.boxOrder.sweet = 500 -- 500 opened before
+		profile.boxOrder.sweet = 833 -- 833 opened before
 		local result = BoxService.open(p, "sweet", REQ_A)
 		expect.equal(result.data.squishyId, "dragon")
-		expect.equal(profile.boxOrder.sweet, 501)
+		expect.equal(profile.boxOrder.sweet, 834)
 		expect.equal(w.draws, 0)
 	end)
 

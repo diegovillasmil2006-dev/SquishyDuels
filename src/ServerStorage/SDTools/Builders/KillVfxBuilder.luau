@@ -69,9 +69,11 @@ type Spec = {
 local GENERATOR_ID = "kill_vfx"
 local VERSION = 3 -- 2: the first playtest: smaller, see-through world effects (they hid the players behind them), a candy pop on the standard one, a yellow bolt
 -- 3 (2026-10-17, owner: "the kill effects don't do anything, make them insane"): big world effects at the K.O. itself
+-- 2026-11-10: Cosmo's Supernova added (Series 01). The live library may be tuned in VFX Studio, so it was added by
+-- building and copying only its Banner/cosmo_supernova and Kill/cosmo_supernova templates in (VERSION unchanged).
 local ROOT_NAME = "SD_KillVfx"
 
-local SETS = { "standard", "feather_storm", "sprinkle_blast", "cloudburst", "bubble_burst", "dragon_blaze" }
+local SETS = { "standard", "feather_storm", "sprinkle_blast", "cloudburst", "bubble_burst", "dragon_blaze", "cosmo_supernova" }
 
 local ENGINE = {
 	smoke = "rbxasset://textures/particles/smoke_main.dds",
@@ -110,6 +112,12 @@ local C = {
 	FireCore = hex("#FFB43B"),
 	FireTip = hex("#FFE27A"),
 	FireDeep = hex("#FF7A2F"),
+	-- Cosmo (Series 01; design: sd/ults2.js:44 disc, ring, glow and shards)
+	CosmoPink = hex("#FF9FC7"),
+	CosmoGold = hex("#FFE27A"),
+	CosmoMint = hex("#8FE3C2"),
+	CosmoBlue = hex("#8AB8FF"),
+	CosmoLilac = hex("#C7A0FF"),
 }
 
 -- Module table
@@ -1027,6 +1035,72 @@ local function killDragon(): Part
 	return part
 end
 
+-- Cosmo's Supernova (Cosmo, Series 01 2026-11-10; design: sd/ults2.js:43-45, "Cosmo hops up, its ring flares into a
+-- gold disc, beads fling out as stars and it pops back to size"): its colours are the design's disc, ring, glow and
+-- shards.
+local COSMO_BEADS = { C.CosmoPink, C.CosmoGold, C.CosmoMint, C.CosmoBlue, C.CosmoLilac }
+
+local function bannerCosmo(): Part
+	local part = carrier("cosmo_supernova", "Cosmo's Supernova (Cosmo): a gold flash, beads flung out as stars, an orbit ring from 5k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.CosmoGold),
+		bannerBits("Stars", tex("twinkle"), COSMO_BEADS, 10, { 5, 9 }, 0.45, { 0.5, 0.8 }, { light = 0.4 }),
+		bannerBits("Sparkles", tex("sparkle"), C.White, 6, { 3, 6 }, 0.35, { 0.4, 0.6 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "OrbitRing",
+			texture = tex("softRing"),
+			color = C.CosmoGold,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.CosmoLilac, 6, 6),
+	}, true)
+	return part
+end
+
+local function killCosmo(): Part
+	local part = carrier("cosmo_supernova", "Cosmo's Supernova (Cosmo): the ring flares into a gold disc, the beads fling out as stars, a lilac shockwave")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local column = attachment(part, "Pillar", Vector3.new(0, 4, 0))
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		{
+			name = "GoldDisc",
+			texture = tex("softRing"),
+			color = C.CosmoGold,
+			size = { { 0, 2 }, { 0.6, 11 }, { 1, 12 } },
+			transparency = { { 0, 0.05 }, { 0.6, 0.25 }, { 1, 1 } },
+			lifetime = { 0.45 },
+			speed = { 0.01 },
+			spread = Vector2.zero,
+			lightEmission = 0.5,
+			zOffset = 1.2,
+			orientation = FLAT,
+			direction = Enum.NormalId.Top,
+			emitCount = 1,
+		},
+		coreFlash(C.CosmoLilac, 6, nil),
+		worldBits("Stars", tex("twinkle"), COSMO_BEADS, 20, { 14, 24 }, 1.3, { 0.8, 1.1 }, { drag = 2, light = 0.4, delay = 0.1 }),
+		worldBits("StarDust", tex("sparkle"), C.White, 10, { 6, 12 }, 0.9, { 0.6, 0.9 }, { drag = 2, light = 0.5, delay = 0.15 }),
+		airRing("OrbitRing", C.CosmoGold, 3, 17, 0.35, 0.1),
+		coreFlash(C.CosmoBlue, 3.5, FINISH),
+		worldBits("FinishStars", tex("twinkle"), COSMO_BEADS, 8, { 8, 14 }, 1.0, { 0.7, 1.0 }, { drag = 2, light = 0.4, delay = FINISH }),
+	}, false)
+	addAll(column, { upStreaks("StarStreaks", { C.CosmoGold, C.White }, 8, { 28, 40 }, 0.1) }, false)
+	addAll(floor, {
+		floorRing("LilacShock", tex("softRing"), C.CosmoLilac, 1, 15, 0.55, 0.1),
+		floorRing("BlueShock", tex("shockRing"), C.CosmoBlue, 1, 11, 0.5, 0.15),
+	}, false)
+	return part
+end
+
 -- Public
 
 local BANNERS: { [string]: () -> Part } = {
@@ -1036,6 +1110,7 @@ local BANNERS: { [string]: () -> Part } = {
 	cloudburst = bannerCloud,
 	bubble_burst = bannerBubble,
 	dragon_blaze = bannerDragon,
+	cosmo_supernova = bannerCosmo,
 }
 
 local KILLS: { [string]: () -> Part } = {
@@ -1045,6 +1120,7 @@ local KILLS: { [string]: () -> Part } = {
 	cloudburst = killCloud,
 	bubble_burst = killBubble,
 	dragon_blaze = killDragon,
+	cosmo_supernova = killCosmo,
 }
 
 -- The library as a new, UNPARENTED Folder (marked when `Generated`, SDTools' root marker module, is given). `AssetTable`

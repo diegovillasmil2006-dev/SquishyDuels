@@ -317,6 +317,16 @@ local Palette = {
 	InspectSnapGold = Color3.fromHex("#E8B84A"), -- design: fp.js:179 (the chocolate snap's foil glint, with white)
 	InspectSparkleYellow = Color3.fromHex("#FFE27A"), -- design: fp.js:189 (sparkle, with white and lilac)
 	InspectSparkleLilac = Color3.fromHex("#D5C8F6"), -- design: fp.js:189
+	-- Cosmo's bead colours (Series 01, Claude Design's sd/toys2.js Cosmo trail pcols): its inspect orbit, its Gravity Well
+	-- beads and its kill set's shards.
+	CosmoBeadPink = Color3.fromHex("#FF9FC7"),
+	CosmoBeadGold = Color3.fromHex("#FFD36B"),
+	CosmoBeadMint = Color3.fromHex("#8FE3C2"),
+	CosmoBeadBlue = Color3.fromHex("#8AB8FF"),
+	CosmoBeadLilac = Color3.fromHex("#C7A0FF"),
+	CosmoBeadPeach = Color3.fromHex("#FFA77A"), -- the 6th bead (design: sd/lab50.js:274)
+	UltWellZone = Color3.fromHex("#8AB8FF"), -- Gravity Well's zone ring (design: sd/lab50.js:275)
+	UltWellGold = Color3.fromHex("#FFE27A"), -- its pop's first ring (design: sd/lab50.js:290)
 	InspectEmberOrange = Color3.fromHex("#FF9A4D"), -- design: fp.js:182 (the Dragon's roar embers)
 	InspectEmberYellow = Color3.fromHex("#FFD25E"), -- design: fp.js:182
 	InspectEmberPink = Color3.fromHex("#FF6F7D"), -- design: fp.js:182

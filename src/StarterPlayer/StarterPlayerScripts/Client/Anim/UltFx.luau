@@ -16,6 +16,10 @@
 --     drizzle for hoverSeconds (sfx.ultCloudHover as it parks); each drop: its shadow (radius 1.6, UltRainShadow, pulse
 --     held to 3 Hz) from shadowAt for shadowSeconds, then the drop falling from over the centre to its point along k²
 --     in fallSeconds, then a splash ring, 8 puffs and sfx.ultRainDrop.
+--   Gravity Well (Cosmo, Series 01; design: sd/lab50.js:273-293): a one-drop rain drawn as a well: the zone disc
+--     (UltWellZone, pulsing) until the pop, Cosmo flying to wellHoverStuds over the centre in wellLobSeconds and
+--     spinning there, 6 beads (its colours) spiralling in from the ring to the centre, and at the pop 40 stars, a gold
+--     and a lilac ring and sfx.ultBubblePop.
 --   Bubble Pop: the Axolotl in its bubble shell (UltBubbleShell) on the design's 0.9 m arc; at its server end (a hit
 --     or its pop) the pop ring (6 studs), 26 puffs and sfx.ultBubblePop. Bubble Pop bounce (2026-10-16): with the
 --     release's `bounce` the path turns there onto the bounce leg (the Axolotl faces its new way) and the arc spans the
@@ -120,6 +124,12 @@ type Rain = {
 	drizzle: ParticleEmitter?,
 	drops: { Drop },
 	endsAt: number,
+	-- Gravity Well (Cosmo, Series 01): the same show with the zone until the pop, Cosmo spinning over it and the
+	-- beads spiralling in instead of the drops (drawn from its one drop's times).
+	well: boolean,
+	zoneSeconds: number,
+	hoverSeconds: number,
+	beads: { BasePart },
 }
 
 type Cast = {
@@ -142,6 +152,17 @@ local SHADOW_NAME = "SD_UltShadow"
 local DROP_NAME = "SD_UltDrop"
 local LANE_THICKNESS = 0.1
 local DISC_THICKNESS = 0.1
+local WELL_ID = "gravity_well" -- Cosmo's (Config.Abilities): a one-drop rain drawn as a well
+local WELL_RADIUS = Config.Abilities.gravity_well.radius :: number -- set (Config.validate checks it)
+local BEAD_NAME = "SD_UltBead"
+local BEAD_COLORS = {
+	Palette.CosmoBeadPink,
+	Palette.CosmoBeadGold,
+	Palette.CosmoBeadMint,
+	Palette.CosmoBeadBlue,
+	Palette.CosmoBeadLilac,
+	Palette.CosmoBeadPeach,
+} -- design: sd/lab50.js:274
 local SPRINKLE_COLORS = {
 	Palette.White,
 	Palette.UltSprinkleBlue,
@@ -618,7 +639,7 @@ local function makeDisc(name: string, center: Vector3, radius: number, color: Co
 	return part
 end
 
-local function startRain(event: Types.UltimateEventPayload, ability: any, squishyId: string)
+local function startRain(event: Types.UltimateEventPayload, ability: any, squishyId: string, well: boolean)
 	local center = event.center
 	local drops = event.drops
 	if center == nil or drops == nil then
@@ -628,16 +649,25 @@ local function startRain(event: Types.UltimateEventPayload, ability: any, squish
 	local releaseAt = event.telegraphEndsAt
 	local casterRoot = rootOf(event.casterId)
 	local from = if casterRoot then casterRoot.Position + Vector3.new(0, 1.8, 0) else event.origin
-	local top = center + Vector3.new(0, FX.bunnyHeight, 0)
-	local lobSeconds = (top - from).Magnitude / math.max(ability.speed, 1)
+	local top = center + Vector3.new(0, if well then FX.wellHoverStuds else FX.bunnyHeight, 0)
+	-- The well: Cosmo reaches its spot in the design's 0.5 s whatever the distance (sd/lab50.js:280).
+	local lobSeconds = if well then FX.wellLobSeconds else (top - from).Magnitude / math.max(ability.speed, 1)
 	local def = Catalog.get(squishyId)
 	local bunnyScale = flightScaleOf(squishyId, if def then def.throw.radius else 1) -- the toy at its flight size
+	-- The well's zone and hover last until its pop (its one drop's landAt).
+	local popIn = if well and drops[1] then math.max(drops[1].landAt - releaseAt, 0) else 0
 	local rain: Rain = {
 		casterId = event.casterId,
 		center = center,
 		floorY = floorY,
 		releaseAt = releaseAt,
-		zone = makeDisc(ZONE_NAME, center + Vector3.new(0, FX.laneLift, 0), ability.radius, Palette.UltRainZone, 1),
+		zone = makeDisc(
+			ZONE_NAME,
+			center + Vector3.new(0, FX.laneLift, 0),
+			ability.radius,
+			if well then Palette.UltWellZone else Palette.UltRainZone,
+			1
+		),
 		bunny = newModel(squishyId, bunnyScale),
 		bunnyScale = bunnyScale,
 		from = from,
@@ -646,7 +676,28 @@ local function startRain(event: Types.UltimateEventPayload, ability: any, squish
 		drizzle = nil,
 		drops = {},
 		endsAt = releaseAt + math.max(FX.zoneSeconds, lobSeconds + FX.hoverSeconds),
+		well = well,
+		zoneSeconds = if well then popIn else FX.zoneSeconds,
+		hoverSeconds = if well then math.max(popIn - lobSeconds, 0) else FX.hoverSeconds,
+		beads = {},
 	}
+	if well then
+		rain.endsAt = releaseAt + popIn + FX.wellRingLilacSeconds
+		for index = 1, FX.wellBeadCount do
+			table.insert(
+				rain.beads,
+				FxPool.default():acquirePart({
+					Name = BEAD_NAME,
+					Shape = Enum.PartType.Ball,
+					Size = Vector3.one * (2 * FX.wellBeadRadius),
+					Color = BEAD_COLORS[(index - 1) % #BEAD_COLORS + 1],
+					CFrame = CFrame.new(center),
+					Transparency = 0,
+					Material = Enum.Material.SmoothPlastic,
+				})
+			)
+		end
+	end
 	for _, drop in drops do
 		table.insert(rain.drops, {
 			position = drop.position,
@@ -669,26 +720,31 @@ local function stepRain(rain: Rain, now: number): boolean
 	local t = now - rain.releaseAt
 	local reduced = isReduced()
 	local zone = rain.zone
+	local zoneSeconds = math.max(rain.zoneSeconds, 1e-3)
 	if zone then
-		if t > FX.zoneSeconds then
+		if t > zoneSeconds then
 			rain.zone = nil
 			releasePart(zone)
 		else
 			local s = if reduced then 0.5 else UltFx.pulse(t, FX.zonePulseHz)
 			local opacity = FX.zoneOpacity * FX.zoneFill * (0.55 + 0.45 * s) -- design: fx.js:146-151
-			zone.Transparency = 1 - opacity * math.clamp((FX.zoneSeconds - t) / (FX.zoneSeconds * 0.15), 0, 1)
+			-- Rain Check fades over its last 15%; the well stays bright until its pop.
+			local fade = if rain.well then 1 else math.clamp((zoneSeconds - t) / (zoneSeconds * 0.15), 0, 1)
+			zone.Transparency = 1 - opacity * fade
 		end
 	end
 	local bunny = rain.bunny
 	if bunny then
-		local top = rain.center + Vector3.new(0, FX.bunnyHeight, 0)
+		local top = rain.center + Vector3.new(0, if rain.well then FX.wellHoverStuds else FX.bunnyHeight, 0)
 		if t < rain.lobSeconds then
 			local k = math.clamp(t / rain.lobSeconds, 0, 1)
 			local p = rain.from:Lerp(top, k) + Vector3.new(0, math.sin(math.pi * k) * FX.bunnyArcStuds, 0)
 			bunny:PivotTo(CFrame.new(p))
 		else
 			local ht = t - rain.lobSeconds
-			if not rain.arrived then
+			if not rain.arrived and rain.well then
+				rain.arrived = true -- the well: no hover sound, no drizzle (the design spins Cosmo over the zone)
+			elseif not rain.arrived then
 				rain.arrived = true
 				play(SOUND_HOVER, top, rain.casterId)
 				local props = particleProps(Palette.UltRainDrizzle, FX.drizzleSize, FX.drizzleLifetime, FX.drizzleSpeed)
@@ -705,7 +761,7 @@ local function stepRain(rain: Rain, now: number): boolean
 				emitter.Enabled = true
 				rain.drizzle = emitter
 			end
-			if ht > FX.hoverSeconds then
+			if ht > rain.hoverSeconds then
 				rain.bunny = nil
 				bunny:Destroy()
 				local drizzle = rain.drizzle
@@ -713,6 +769,11 @@ local function stepRain(rain: Rain, now: number): boolean
 					rain.drizzle = nil
 					FxPool.default():release(drizzle)
 				end
+			elseif rain.well then
+				-- design: sd/lab50.js:282 (a small bob, spinning 9 rad/s)
+				local bob = if reduced then 0 else 0.03 / 0.28 * math.sin(ht * 8)
+				local spin = if reduced then 0 else ht * FX.wellSpinRate
+				bunny:PivotTo(CFrame.new(top + Vector3.new(0, bob, 0)) * CFrame.Angles(0, spin, 0))
 			else
 				local grow = 1 + FX.bunnyGrow * ViewmodelMath.backOut(math.clamp(ht / FX.bunnyGrowSeconds, 0, 1))
 				local wanted = rain.bunnyScale * grow
@@ -727,6 +788,61 @@ local function stepRain(rain: Rain, now: number): boolean
 	end
 	for _, drop in rain.drops do
 		if drop.landed then
+			continue
+		end
+		if rain.well then
+			-- design: sd/lab50.js:283-291. The beads spiral in from the ring (radius R·(1 - pull·k²), spinning faster);
+			-- at the pop: the stars, a gold and a lilac ring and the pop sound.
+			local span = math.max(drop.landAt - rain.releaseAt, 1e-3)
+			if now >= drop.landAt then
+				drop.landed = true
+				for _, bead in rain.beads do
+					releasePart(bead)
+				end
+				table.clear(rain.beads)
+				local at = Vector3.new(drop.position.X, rain.floorY, drop.position.Z)
+				FxShapes.ring(
+					at,
+					Vector3.yAxis,
+					FX.wellRingGoldTo,
+					FX.wellRingGoldSeconds,
+					Palette.UltWellGold,
+					FX.wellRingTransparencyFrom
+				)
+				FxShapes.ring(
+					at,
+					Vector3.yAxis,
+					FX.wellRingLilacTo,
+					FX.wellRingLilacSeconds,
+					Palette.CosmoBeadLilac,
+					FX.wellRingTransparencyFrom
+				)
+				burst(
+					at + Vector3.new(0, 0.35 / 0.28, 0),
+					FX.wellPopStars,
+					BEAD_COLORS,
+					FX.wellPopSize,
+					FX.wellPopLifetime,
+					FX.wellPopSpeed,
+					FX.wellPopGravity
+				)
+				play(SOUND_POP, at, rain.casterId)
+				continue
+			end
+			local ts = math.max(now - rain.releaseAt, 0)
+			local k = math.clamp(ts / span, 0, 1)
+			local ring = (1 - FX.wellBeadPull * k * k) * WELL_RADIUS
+			-- angle: ∫(spin + gain·k) dt = spin·t + gain·t²/(2·span)
+			local swept = FX.wellBeadSpin * ts + FX.wellBeadSpinGain * ts * ts / (2 * span)
+			for index, bead in rain.beads do
+				local a = (index - 1) / #rain.beads * 2 * math.pi + swept
+				local bob = if reduced then 0 else FX.wellBeadBobStuds * math.sin(2 * a)
+				bead.CFrame = CFrame.new(
+					drop.position.X + math.cos(a) * ring,
+					rain.floorY + FX.wellBeadHeight + bob,
+					drop.position.Z + math.sin(a) * ring
+				)
+			end
 			continue
 		end
 		if now >= drop.landAt then
@@ -916,7 +1032,7 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			table.insert(lanes, { part = part, untilClock = os.clock() + FX.laneSeconds })
 		end
 	elseif kind == "rain" then
-		startRain(event, ability, squishyId)
+		startRain(event, ability, squishyId, ultimateId == WELL_ID)
 		local drops: { Types.UltimateDrop } = event.drops or {}
 		for _, drop in drops do
 			remember(drop.projId, drop.landAt)
@@ -972,6 +1088,10 @@ function UltFx.step(now: number)
 					releasePart(drop.drop)
 				end
 			end
+			for _, bead in rain.beads do
+				releasePart(bead)
+			end
+			table.clear(rain.beads)
 		end
 	end
 	local clock = os.clock()

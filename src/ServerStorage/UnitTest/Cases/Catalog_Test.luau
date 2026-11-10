@@ -2,7 +2,7 @@
 -- Catalog_Test: unit tests for ReplicatedStorage.Shared.Catalog and the rarity language it uses (Rarity,
 -- Art/RarityStyle, Art/Palette). Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §2.2, §4.1-§4.3, §7.2): the catalog holds exactly the 8 squishies of §4.2 in table order, then the
--- 6 of the squishy overhaul (spec 2026-10-09 §3.3), with their names, rarities, throw stats, prices, trails,
+-- 6 of the squishy overhaul (spec 2026-10-09 §3.3), then the 6 of Series 01 (2026-11-10), with their names, rarities, throw stats, prices, trails,
 -- ultimates, elimination effects and presentation data; each new squishy throws exactly like its same-rarity sibling;
 -- no accent trips the splat red guard; every nameKey exists in Strings and every blueprintId in
 -- Art/SquishyBlueprints; throw stats sit inside Config.Combat.Bands; squishy power follows
@@ -231,6 +231,84 @@ local EXPECTED: { Expected } = {
 		elimination = "bubble_burst",
 		shopPrice = 1_800_000_000,
 	},
+	-- Series 01 (2026-11-10): Claude Design's CATALOG2 names and rarities; throws and prices are their siblings'.
+	{
+		id = "berry_jelly",
+		name = "Berry Jelly",
+		rarity = "Common",
+		speed = 95,
+		gravity = 35,
+		radius = 1.0,
+		cooldown = 1.00,
+		windup = 0.18,
+		elimination = "standard",
+		shopPrice = 789_000,
+	},
+	{
+		id = "peachy",
+		name = "Peachy",
+		rarity = "Common",
+		speed = 105,
+		gravity = 25,
+		radius = 0.8,
+		cooldown = 1.05,
+		windup = 0.18,
+		elimination = "standard",
+		shopPrice = 789_000,
+	},
+	{
+		id = "grapey",
+		name = "Grapey",
+		rarity = "Uncommon",
+		speed = 95,
+		gravity = 30,
+		radius = 0.9,
+		cooldown = 1.05,
+		windup = 0.15,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 937_500,
+	},
+	{
+		id = "bao_buddy",
+		name = "Bao Buddy",
+		rarity = "Rare",
+		speed = 95,
+		gravity = 30,
+		radius = 0.9,
+		cooldown = 1.05,
+		windup = 0.15,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 3_750_000,
+	},
+	{
+		id = "pando",
+		name = "Pando",
+		rarity = "Rare",
+		speed = 90,
+		gravity = 40,
+		radius = 1.4,
+		cooldown = 1.00,
+		windup = 0.18,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 3_750_000,
+	},
+	{
+		id = "cosmo",
+		name = "Cosmo",
+		rarity = "Exclusive",
+		speed = 92,
+		gravity = 35,
+		radius = 1.0,
+		cooldown = 1.05,
+		windup = 0.19,
+		trail = "twinRibbon",
+		ultimate = "gravity_well", -- sd/ults2.js:4
+		elimination = "cosmo_supernova",
+		shopPrice = 1_100_000_000_000,
+	},
 }
 
 -- Spec 2026-10-09 §3.3: each new squishy plays exactly like this same-rarity sibling.
@@ -241,6 +319,13 @@ local SIBLING: { [string]: string } = {
 	strawberry_frog = "chocolate",
 	cloud_bunny = "bird",
 	cupcake_axolotl = "donut",
+	-- Series 01 (2026-11-10)
+	berry_jelly = "kitty_bread",
+	peachy = "toast",
+	grapey = "butter",
+	bao_buddy = "mochi_fox",
+	pando = "strawberry_frog",
+	cosmo = "dragon",
 }
 
 -- DESIGN §4.2 presentation table. The "ears/wings rigidity" notes are blueprint part rigidities (§8.2), not hooks.
@@ -388,6 +473,67 @@ local PRESENTATION: { [string]: Presentation } = {
 		accent = "#F9AFCB",
 		spin = "wobble",
 	},
+	-- Series 01 (2026-11-10): accents are the design's trail colours.
+	berry_jelly = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.28,
+		accent = "#FF7AA5",
+		spin = "wobble",
+	},
+	peachy = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.36,
+		accent = "#FFA868",
+		spin = "wobble",
+	},
+	grapey = {
+		grip = Vector3.new(0, -0.50, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.30,
+		accent = "#B27AEB",
+		spin = "wobble",
+	},
+	bao_buddy = {
+		grip = Vector3.new(0, -0.40, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.40,
+		accent = "#E8C892",
+		spin = "wobble",
+	},
+	pando = {
+		grip = Vector3.new(0, -0.50, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.42,
+		accent = "#FFC25E",
+		spin = "roll",
+	},
+	cosmo = {
+		grip = Vector3.new(0, -0.55, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.32,
+		accent = "#C7A0FF",
+		spin = "wobble",
+	},
 }
 
 local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Exclusive" } -- Rare: 2026-11-01
@@ -499,9 +645,9 @@ return function(t: Context)
 
 	-- Catalog: content (§4.2) ---------------------------------------------------------------------------------------
 
-	t.test("list returns the 8 squishies of DESIGN §4.2 in table order, then the 6 new ones", function()
+	t.test("list returns the 8 squishies of DESIGN §4.2 in table order, then the 6 new ones, then Series 01", function()
 		local list = Catalog.list()
-		expect.equal(#list, 14)
+		expect.equal(#list, 20)
 		expect.equal(#list, #EXPECTED)
 		expect.equal(ids(list), ids(EXPECTED))
 	end)
@@ -636,7 +782,7 @@ return function(t: Context)
 
 	-- Spec phase 5 (user decision 2026-10-11): "Ultimates are reserved for Epic and Exclusive squishies" (design:
 	-- fp.js:576); Dragon keeps Dragon Rush and the four Epics get the design's ultimates (ults.js:3-6).
-	t.test("Dragon and the four Epics have ultimates, each in Config.Abilities; only Epics and Exclusives", function()
+	t.test("Dragon, Cosmo and the four Epics have ultimates, each in Config.Abilities; only Epics and Exclusives", function()
 		local count = 0
 		for _, row in EXPECTED do
 			local def = Catalog.get(row.id)
@@ -647,7 +793,7 @@ return function(t: Context)
 				expect.truthy(def.rarity == "Epic" or def.rarity == "Exclusive")
 			end
 		end
-		expect.equal(count, 5)
+		expect.equal(count, 6) -- + Cosmo (Exclusive, Series 01)
 		for _, def in Catalog.byRarity("Epic") do
 			expect.truthy(def.ultimateId ~= nil)
 		end
@@ -816,7 +962,7 @@ return function(t: Context)
 		expect.equal(#Catalog.list(), #EXPECTED)
 		local commons = Catalog.byRarity("Common")
 		table.clear(commons)
-		expect.equal(#Catalog.byRarity("Common"), 5)
+		expect.equal(#Catalog.byRarity("Common"), 7) -- 5 + Series 01's Berry Jelly and Peachy
 	end)
 
 	-- Rarity (§2.2, §4.3, §6.5) --------------------------------------------------------------------------------------

@@ -81,22 +81,31 @@ end
 -- phase 22); Sweet 450M, the 4 Epics 24.99% each and Dragon 0.04%; Royal (free on day 7, never sold) Commons 14%,
 -- Butter and Chocolate 9%, Mochi Fox and Strawberry Frog 6%, Epics 3.5% each. New items sit right after their
 -- same-rarity siblings and Dragon stays last.
+-- Series 01 (2026-11-10, plan "50 squishies" step 3): the Soft Box keeps its rarity totals (Commons 76%, Uncommons
+-- 16%, Rares 8%) as closely as one weight per rarity allows: 6 Commons 12.66% each (75.96%), 3 Uncommons 5.32%
+-- (15.96%), 4 Rares 2.02% (8.08%); the Sweet Box gives Cosmo the Dragon's 0.04% (Dragon stays last) and its Epics
+-- 24.98% each. Lower weights only raise the old shop price ceilings.
 local LIST: { BoxDef } = {
 	{
 		id = "snack",
 		nameKey = "box.snack.name",
 		cost = 150_000,
 		paid = true,
-		fixedCycle = 25, -- V3:163: Toast, Banana, Boba 5, Pup 4, Butter, Choco 2, Fox, Frog 1 (Fox at 11, Frog at 12)
+		fixedCycle = 150, -- each Common 19 times, each Uncommon 8, each Rare 3 (the first Rare, Mochi Fox, at box 16)
 		items = {
-			item("toast", 1900),
-			item("banana", 1900),
-			item("boba_bear", 1900),
-			item("pancake_pup", 1900),
-			item("butter", 800),
-			item("chocolate", 800),
-			item("mochi_fox", 400),
-			item("strawberry_frog", 400),
+			item("toast", 1266),
+			item("banana", 1266),
+			item("boba_bear", 1266),
+			item("pancake_pup", 1266),
+			item("berry_jelly", 1266),
+			item("peachy", 1266),
+			item("butter", 532),
+			item("chocolate", 532),
+			item("grapey", 532),
+			item("mochi_fox", 202),
+			item("strawberry_frog", 202),
+			item("bao_buddy", 202),
+			item("pando", 202),
 		},
 	},
 	{
@@ -104,12 +113,13 @@ local LIST: { BoxDef } = {
 		nameKey = "box.sweet.name",
 		cost = 450_000_000,
 		paid = true,
-		fixedCycle = 2500, -- V3:163: each Epic about 625 times, the Dragon once (at box 501, V4:252)
+		fixedCycle = 2500, -- each Epic 624 or 625 times, Cosmo once (box 417), the Dragon once (box 834)
 		items = {
-			item("bird", 2499),
-			item("donut", 2499),
-			item("cloud_bunny", 2499),
-			item("cupcake_axolotl", 2499),
+			item("bird", 2498),
+			item("donut", 2498),
+			item("cloud_bunny", 2498),
+			item("cupcake_axolotl", 2498),
+			item("cosmo", 4),
 			item("dragon", 4),
 		},
 	},

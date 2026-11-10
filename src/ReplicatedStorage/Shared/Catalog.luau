@@ -1,6 +1,6 @@
 --!strict
--- Catalog: the 14 squishy definitions (DESIGN §4.1, §4.2; the 6 after Dragon from the squishy overhaul spec
--- 2026-10-09 §3.3), in catalog order. Shared (server and client).
+-- Catalog: the 20 squishy definitions (DESIGN §4.1, §4.2; the 6 after Dragon from the squishy overhaul spec
+-- 2026-10-09 §3.3; the 6 Series 01 at the end, 2026-11-10), in catalog order. Shared (server and client).
 -- Every system (inventory, shop, squeeze rewards, Inspect, combat, quests) reads these fields; no stat is copied
 -- anywhere else. All numbers are [P]. Box membership and odds live in Boxes.luau, prices are checked against box
 -- odds by Pricing.luau, the throw power budget is checked by server Logic/PowerBudget (§5.8), and the cross-checks
@@ -233,6 +233,89 @@ local DEFS: { SquishyDef } = {
 		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#F9AFCB" },
 		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
 		hold = { grip = Vector3.new(0, -0.50, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	-- Series 01 (owner 2026-11-10 "Yes, Series 01 first"; plan "50 squishies" step 3; looks from Claude Design's
+	-- "Squishies 50 Lineup", sd/toys2.js CATALOG2): appended so every slot before stays put. 5 go in the Soft Box, Cosmo
+	-- (the design's Legendary = our Exclusive) in the Sweet Box next to Dragon. Each throw is an exact copy of a
+	-- same-rarity sibling (no new balance point) and each price its sibling's; accents are the design's trail colours.
+	{
+		id = "berry_jelly",
+		nameKey = "squishy.berryJelly.name",
+		rarity = "Common",
+		blueprintId = "berry_jelly",
+		shopPrice = 789_000,
+		throw = { speed = 95, gravity = 35, radius = 1.0, cooldown = 1.00, windup = 0.18 }, -- = kitty_bread
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#FF7AA5" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.28 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "peachy",
+		nameKey = "squishy.peachy.name",
+		rarity = "Common",
+		blueprintId = "peachy",
+		shopPrice = 789_000,
+		throw = { speed = 105, gravity = 25, radius = 0.8, cooldown = 1.05, windup = 0.18 }, -- = toast
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#FFA868" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "grapey",
+		nameKey = "squishy.grapey.name",
+		rarity = "Uncommon",
+		blueprintId = "grapey",
+		shopPrice = 937_500, -- = butter
+		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 }, -- = butter
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#B27AEB" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.30 },
+		hold = { grip = Vector3.new(0, -0.50, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "bao_buddy",
+		nameKey = "squishy.baoBuddy.name",
+		rarity = "Rare",
+		blueprintId = "bao_buddy",
+		shopPrice = 3_750_000, -- = mochi_fox
+		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 }, -- = mochi_fox
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#E8C892" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.40 },
+		hold = { grip = Vector3.new(0, -0.40, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "pando",
+		nameKey = "squishy.pando.name",
+		rarity = "Rare",
+		blueprintId = "pando",
+		shopPrice = 3_750_000, -- = strawberry_frog
+		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = strawberry_frog
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "roll", accent = "#FFC25E" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.42 },
+		hold = { grip = Vector3.new(0, -0.50, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "cosmo",
+		nameKey = "squishy.cosmo.name",
+		rarity = "Exclusive", -- the design's Legendary (Strings show Exclusive as "Legendary")
+		blueprintId = "cosmo",
+		shopPrice = 1_100_000_000_000, -- = dragon
+		throw = { speed = 92, gravity = 35, radius = 1.0, cooldown = 1.05, windup = 0.19 }, -- = dragon
+		ultimateId = "gravity_well", -- the design's own (sd/ults2.js:4), paid for out of the power budget (§5.8)
+		eliminationEffectId = "cosmo_supernova", -- the design's kill set (sd/ults2.js:43, Art/KillStyle)
+		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#C7A0FF" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
+		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
 		inspect = { yaw = 25, pitch = 12 },
 	},
 }

@@ -680,7 +680,8 @@ return function(t: Context)
 		function()
 			local pedestals = WorldLayout.Collection.pedestals
 			expect.equal(#pedestals, 14)
-			expect.equal(#Catalog.list(), 14)
+			expect.equal(#Catalog.list(), 20) -- Series 01 (2026-11-10): the 6 new ones have no pedestal yet
+
 			-- Diego's IndexShelf (315°, r 41): 3 units, slot tiles 1.8 x 0.25 x 1.6 with tops at 7.65 (top row) and
 			-- 4.65; read from the hub, top row first, left to right (owner 2026-10-23: "Small squishies on slots").
 			local middle = Vector3.new(0.7071, 0, -0.7071) -- the middle unit's front, toward the hub

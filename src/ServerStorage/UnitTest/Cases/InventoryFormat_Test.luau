@@ -91,16 +91,18 @@ return function(t: Context)
 		expect.equal(#list, #Catalog.list())
 		expect.equal(list[1].id, "toast")
 		expect.equal(list[1].equipped, true)
-		expect.equal(list[2].id, "dragon") -- Exclusive, unowned
-		expect.equal(list[2].owned, false)
+		-- Exclusive by name, unowned: Cosmo (Series 01), Dragon
+		expect.equal(list[2].id, "cosmo")
+		expect.equal(list[3].id, "dragon")
+		expect.equal(list[3].owned, false)
 		-- Epic by name: Birdie, Cloud Bunny, Cupcake Axolotl, Donut
 		expect.deepEqual(
-			ids({ list[3], list[4], list[5], list[6] }),
+			ids({ list[4], list[5], list[6], list[7] }),
 			{ "bird", "cloud_bunny", "cupcake_axolotl", "donut" }
 		)
-		-- Commons last, by name (Banana, Boba Bear, Kitty Bread, Pancake Pup; Toast is equipped, so first)
+		-- Commons last, by name (... Boba Bear, Kitty Bread, Pancake Pup, Peachy; Toast is equipped, so first)
 		local tail = ids({ list[#list - 3], list[#list - 2], list[#list - 1], list[#list] })
-		expect.deepEqual(tail, { "banana", "boba_bear", "kitty_bread", "pancake_pup" })
+		expect.deepEqual(tail, { "boba_bear", "kitty_bread", "pancake_pup", "peachy" })
 		for _, entry in list do
 			if not entry.owned then
 				expect.equal(entry.equipped, false)
@@ -135,11 +137,11 @@ return function(t: Context)
 		-- UI FINAL R5 (H:927): the tab counts are the catalogue totals, owned or not.
 		expect.deepEqual(
 			InventoryFormat.tabCounts(list),
-			{ All = 14, Common = 5, Uncommon = 2, Rare = 2, Epic = 4, Exclusive = 1 } -- Rare since 2026-11-01
+			{ All = 20, Common = 7, Uncommon = 3, Rare = 4, Epic = 4, Exclusive = 2 } -- Rare since 2026-11-01, Series 01
 		)
 		local n, total = InventoryFormat.collected(list)
 		expect.equal(n, 2)
-		expect.equal(total, 14)
+		expect.equal(total, 20)
 	end)
 
 	t.test("chips and empty state: texts from Strings", function()

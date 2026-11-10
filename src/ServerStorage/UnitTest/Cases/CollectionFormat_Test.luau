@@ -37,11 +37,17 @@ return function(t: Context)
 		expect.near(a.Z, b.Z, tol)
 	end
 
-	t.test("slots follow Catalog.list() over the 14 pedestals (D4: every squishy has one)", function()
+	-- Series 01 (2026-11-10): the shelf still has 14 pedestals, so the 6 new squishies (after them in Catalog order)
+	-- have none (slotOf nil) until it grows.
+	t.test("slots follow Catalog.list() over the 14 pedestals (D4; Series 01 has none yet)", function()
 		local defs = Catalog.list()
 		expect.equal(#LAYOUT.pedestals, 14)
-		expect.equal(#defs, 14)
+		expect.equal(#defs, 20)
 		for slot, def in defs do
+			if slot > 14 then
+				expect.equal(CollectionFormat.slotOf(def.id), nil)
+				continue
+			end
 			expect.equal(CollectionFormat.squishyForSlot(slot), def.id)
 			expect.equal(CollectionFormat.slotOf(def.id), slot)
 			expect.equal(LAYOUT.pedestals[slot].slot, slot)
@@ -58,7 +64,8 @@ return function(t: Context)
 		end
 		expect.equal(CollectionFormat.squishyForSlot(1, reversed), defs[#defs].id)
 		expect.equal(CollectionFormat.slotOf(defs[#defs].id, reversed), 1)
-		expect.equal(CollectionFormat.slotOf(defs[1].id, reversed), 14)
+		expect.equal(CollectionFormat.slotOf(defs[1].id, reversed), nil) -- 20th in that list: past the 14 pedestals
+		expect.equal(CollectionFormat.slotOf(defs[7].id, reversed), 14)
 		-- A short list leaves the other pedestals empty.
 		expect.equal(CollectionFormat.squishyForSlot(3, { defs[1], defs[2] }), nil)
 	end)

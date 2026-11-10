@@ -266,6 +266,13 @@ local STYLE_OF: { [string]: string } = {
 	pancake_pup = "sidearm", -- PancakePup
 	cloud_bunny = "lob", -- CloudBunny
 	cupcake_axolotl = "lob", -- CupcakeAxolotl
+	-- Series 01 (2026-11-10, Claude Design's THROW_STYLE2, sd/anims2.js)
+	berry_jelly = "overhand", -- BerryJelly
+	peachy = "lob", -- Peachy
+	grapey = "sidearm", -- Grapey
+	bao_buddy = "skip", -- BaoBuddy
+	pando = "bounce", -- Pando
+	cosmo = "spiral", -- Cosmo
 }
 
 local STYLE_NAMES: { string } = {}

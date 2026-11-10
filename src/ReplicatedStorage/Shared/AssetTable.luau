@@ -221,15 +221,18 @@ local function lobbySound(id: number, volume: number, file: string): ApprovedSou
 	}
 end
 
--- An image slot holding a kill banner emblem (`file` is the uploaded PNG).
-local function killEmblem(key: string, id: number, file: string, use: string): AssetSlot
+-- An image slot holding a kill banner emblem (`file` is the uploaded PNG). `by` names another uploader (Series 01:
+-- Cosmo's emblem, Claude's Studio MCP upload_image as jayyyyy2806, 2026-11-10); nil = VillasmilGaming's.
+local function killEmblem(key: string, id: number, file: string, use: string, by: string?): AssetSlot
 	return {
 		key = key,
 		kind = "image",
 		id = id,
-		source = `VillasmilGaming upload (Studio): '{file}'`,
-		license = EMBLEM_LICENSE,
-		verifiedAt = KILL_DATE,
+		source = `{by or "VillasmilGaming"} upload (Studio): '{file}'`,
+		license = if by
+			then "Own upload (jayyyyy2806): a render of Claude Design's emblem SVG for the game's own Cosmo (no third-party art)"
+			else EMBLEM_LICENSE,
+		verifiedAt = if by then "2026-11-10" else KILL_DATE,
 		notes = use,
 	}
 end
@@ -520,6 +523,16 @@ local SLOTS: { AssetSlot } = {
 		nil,
 		"Bubble Pop wind-up (0.5 s); design fp.js:463; rendered sfx_ultCharge_cupcake_axolotl.wav",
 		uploaded(107592384694914, 1, "sfx.ultCharge.cupcake_axolotl (Axolotl ult charge-up).wav")
+	),
+	-- Series 01 (2026-11-10): Cosmo's Gravity Well wind-up (0.7 s). shortcut: Rain Check's wind-up file (the same
+	-- rising sparkle family) until Cosmo gets its own.
+	soundSlot(
+		"sfx.ultCharge.cosmo",
+		"SFX",
+		true,
+		nil,
+		"Gravity Well wind-up (0.7 s); for now Rain Check's file, sfx_ultCharge_cloud_bunny.wav",
+		uploaded(114287899394348, 1, "sfx.ultCharge.cloud_bunny (Cloud Bunny ult charge-up).wav")
 	),
 	soundSlot(
 		"sfx.ultRelease",
@@ -990,6 +1003,15 @@ local SLOTS: { AssetSlot } = {
 		false,
 		nil,
 		"kill banner sheet, Cloud Bunny (Cloudburst: wind swell, harp; thunder from 4k; 6k: thunder crack and rain); file 'sfx_kill_cloudburst_v2.ogg'",
+		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
+	),
+	-- Series 01 (2026-11-10): Cosmo's Supernova. shortcut: Cloudburst's sheet (the airiest set) until Cosmo gets its own.
+	soundSlot(
+		"sfx.kill.cosmo_supernova",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Cosmo (Cosmo's Supernova): for now Cloudburst's file 'sfx_kill_cloudburst_v2.ogg'",
 		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
 	),
 	soundSlot(
@@ -1712,6 +1734,19 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.squishy.strawberry_frog.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.cloud_bunny.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.cupcake_axolotl.white", "image", IMAGE_NOTE),
+	-- Series 01 (2026-11-10): empty picture slots like the 14's (the cards draw the toy until a picture is uploaded).
+	otherSlot("img.squishy.berry_jelly", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.peachy", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.grapey", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.bao_buddy", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.pando", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.cosmo", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.berry_jelly.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.peachy.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.grapey.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.bao_buddy.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.pando.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.cosmo.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.squishies.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.boxes.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.shop.white", "image", IMAGE_NOTE),
@@ -1834,6 +1869,9 @@ local SLOTS: { AssetSlot } = {
 	killEmblem("img.kill.emblem.bubble_burst.white", 125496553543566, "kill_emblem_bubble_burst_white.png", "Bubble Burst: Cupcake Axolotl, low-fidelity: white silhouette"),
 	killEmblem("img.kill.emblem.dragon_blaze", 107936827492507, "kill_emblem_dragon_blaze.png", "Dragon's Blaze: Dragon, low-fidelity"),
 	killEmblem("img.kill.emblem.dragon_blaze.white", 112730103205754, "kill_emblem_dragon_blaze_white.png", "Dragon's Blaze: Dragon, low-fidelity: white silhouette"),
+	-- Series 01 (2026-11-10): the design's own emblem (sd/ults2.js KILLSETS2.Cosmo), rendered 512 px.
+	killEmblem("img.kill.emblem.cosmo_supernova", 109481490010402, "kill_emblem_cosmo_supernova.png", "Cosmo's Supernova: Cosmo, low-fidelity", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.cosmo_supernova.white", 120324346026269, "kill_emblem_cosmo_supernova_white.png", "Cosmo's Supernova: Cosmo, low-fidelity: white silhouette", "jayyyyy2806"),
 	-- Highway v2 (jayyyyy 2026-10-23, Claude Design's "Highway Zones Spec v2": "Floors get two-tone squares from one
 	-- checker Texture (10-stud cells, black at Transparency 0.92)"; owner: "checkered pattern but with lego texture").
 	{

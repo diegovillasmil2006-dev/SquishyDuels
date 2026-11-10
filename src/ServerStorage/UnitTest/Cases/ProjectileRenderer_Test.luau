@@ -319,7 +319,7 @@ return function(t: Context)
 
 	t.test("every toy's flight keeps the face leading: LookVector·V̂ >= cos(maxNod + 1°)", function()
 		local p = payload(0)
-		expect.equal(#Catalog.list(), 14)
+		expect.equal(#Catalog.list(), 20) -- + Series 01 (2026-11-10)
 		for _, def in Catalog.list() do
 			local flight = flightOf(def)
 			local style = STYLES[flight.style]
@@ -393,6 +393,13 @@ return function(t: Context)
 			donut = false, -- wheel: roll only
 			butter = false, -- tumble without sections or pulse
 			boba_bear = false, -- upright: no flaps
+			-- Series 01 (2026-11-10)
+			berry_jelly = true, -- tumble flaps its calyx
+			grapey = true, -- tumble flaps its leaf
+			peachy = false, -- wobble: no flaps
+			bao_buddy = false, -- upright: no flaps
+			pando = false, -- wheel: roll only
+			cosmo = false, -- spiral: roll only
 		}
 		for _, def in Catalog.list() do
 			local blueprint = Blueprints[def.blueprintId]

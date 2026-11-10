@@ -814,7 +814,7 @@ local Strings = {
 			bird = "Fluff Flyer",
 			cloud_bunny = "Cloud Crusher",
 			cupcake_axolotl = "Frosting Fiend",
-			fallback = "Squishy Slinger",
+			fallback = "Squishy Slinger", -- also Series 01's (the design gives them no title)
 		},
 	},
 
@@ -867,6 +867,14 @@ local Strings = {
 			ready = "Bubble Pop ready",
 			description = "Sends a slow bubble that bounces off cover once, then pops with a big splash when it touches someone, hits cover again or after a moment. Back off or make it pop early.",
 		},
+		-- Series 01 (2026-11-10), design: sd/ults2.js:4 ("The ring shows the whole zone 1.2 s before the pop: walk out
+		-- before the beads reach the middle.")
+		gravityWell = {
+			name = "Gravity Well",
+			incoming = "Gravity Well incoming!",
+			ready = "Gravity Well ready",
+			description = "Opens a ring of beads around your opponent. The beads spiral in, and anyone still inside the ring when they meet loses a life. Walk out before they reach the middle.",
+		},
 	},
 
 	-- Throws / hits / accuracy (duel result and practice panel).
@@ -910,6 +918,13 @@ local Strings = {
 		strawberryFrog = { name = "Strawberry Frog" },
 		cloudBunny = { name = "Cloud Bunny" },
 		cupcakeAxolotl = { name = "Cupcake Axolotl" },
+		-- Series 01 (2026-11-10, the design's names: sd/toys2.js CATALOG2).
+		berryJelly = { name = "Berry Jelly" },
+		peachy = { name = "Peachy" },
+		grapey = { name = "Grapey" },
+		baoBuddy = { name = "Bao Buddy" },
+		pando = { name = "Pando" },
+		cosmo = { name = "Cosmo" },
 		-- Squishies, Shop and Inspect: what a squishy multiplies (progression spec §3, §6; pens3 phase 1: in the pen).
 		-- {n} = its power (Catalog.getPower).
 		power = "x{n} power",
@@ -936,6 +951,7 @@ local Strings = {
 		cloudburst = "Cloudburst",
 		bubble_burst = "Bubble Burst",
 		dragon_blaze = "Dragon's Blaze",
+		cosmo_supernova = "Cosmo's Supernova", -- design: sd/ults2.js:44
 	},
 
 	-- Inspect (§10.7, §10.8, §10.9, §10.6).
@@ -1065,6 +1081,13 @@ local Strings = {
 			boba_bear = "Underhand lob",
 			toast = "Sidearm card-flick",
 			pancake_pup = "Frisbee flick",
+			-- Series 01: the design's labels (sd/anims2.js THROW_STYLE2)
+			berry_jelly = "Overhand jelly fastball",
+			peachy = "Soft underhand lob",
+			grapey = "Sidearm bunch fling",
+			bao_buddy = "Steamer puck slide",
+			pando = "Foam bounce pass",
+			cosmo = "Orbit spiral pass",
 		},
 	},
 

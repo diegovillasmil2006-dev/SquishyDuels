@@ -1,8 +1,8 @@
 --!strict
 -- Pricing_Test: unit tests for ReplicatedStorage.Shared.Pricing. Server only (ServerStorage.UnitTest).
 -- Contract (DESIGN §6.5, §6.6, §13.2 Part 7 L1; pens3 phase 5, ECONOMY_V3:159-163): ceiling(id) = floor(min over the
--- paid boxes containing id of cost × 10000 / weight) (Commons 789,473, Butter and Chocolate 1,875,000, Mochi Fox and
--- Strawberry Frog 3,750,000, Epics 1,800,720,288, Dragon 1,125,000,000,000; nil for Kitty Bread, which is in no box and
+-- paid boxes containing id of cost × 10000 / weight) (Series 01: Commons 1,184,834, Uncommons 2,819,548, Rares
+-- 7,425,742, Epics 1,801,441,152, Dragon and Cosmo 1,125,000,000,000; nil for Kitty Bread, which is in no box and
 -- not sold); every Catalog shopPrice <= its ceiling; shopPrice(id, owned) is the Welcome price (1,000) for a Common
 -- while it is not in `owned`, else the Catalog price (a missing `owned` pays the full price: fail closed), and the
 -- Welcome price is under every ceiling too; copies replaced the duplicate refund (DuplicatePolicy "copy").
@@ -14,21 +14,28 @@ type Context = {
 	requireShared: (path: string) -> any,
 }
 
--- Pens3 phase 5: Common 150K × 10000 / 1900; Butter / Chocolate 150K × 10000 / 800; Mochi Fox / Strawberry Frog 150K ×
--- 10000 / 400; Epic 450M × 10000 / 2499; Dragon 450M × 10000 / 4 (Sweet only).
+-- Series 01 (2026-11-10; were pens3 phase 5's 150K × 10000 / 1900, / 800, / 400 and 450M × 10000 / 2499): Common 150K ×
+-- 10000 / 1266; Uncommon 150K × 10000 / 532; Rare 150K × 10000 / 202; Epic 450M × 10000 / 2498; Dragon and Cosmo
+-- 450M × 10000 / 4 (Sweet only). Every ceiling went up, so every old price still fits.
 local CEILINGS: { [string]: number } = {
-	toast = 789_473,
-	banana = 789_473,
-	boba_bear = 789_473,
-	pancake_pup = 789_473,
-	butter = 1_875_000,
-	chocolate = 1_875_000,
-	mochi_fox = 3_750_000,
-	strawberry_frog = 3_750_000,
-	bird = 1_800_720_288,
-	donut = 1_800_720_288,
-	cloud_bunny = 1_800_720_288,
-	cupcake_axolotl = 1_800_720_288,
+	toast = 1_184_834,
+	banana = 1_184_834,
+	boba_bear = 1_184_834,
+	pancake_pup = 1_184_834,
+	berry_jelly = 1_184_834,
+	peachy = 1_184_834,
+	butter = 2_819_548,
+	chocolate = 2_819_548,
+	grapey = 2_819_548,
+	mochi_fox = 7_425_742,
+	strawberry_frog = 7_425_742,
+	bao_buddy = 7_425_742,
+	pando = 7_425_742,
+	bird = 1_801_441_152,
+	donut = 1_801_441_152,
+	cloud_bunny = 1_801_441_152,
+	cupcake_axolotl = 1_801_441_152,
+	cosmo = 1_125_000_000_000,
 	dragon = 1_125_000_000_000,
 }
 
@@ -54,7 +61,7 @@ return function(t: Context)
 				expect.equal(Boxes.get(row.boxId).cost, nil)
 			end
 		end
-		expect.equal(Pricing.ceiling("toast"), 789_473)
+		expect.equal(Pricing.ceiling("toast"), 1_184_834)
 	end)
 
 	t.test("every shop price is at or below its ceiling", function()
@@ -69,13 +76,14 @@ return function(t: Context)
 		end
 	end)
 
-	-- 2026-11-01: Butter and Chocolate cost half (937.5K: Uncommon power 4 -> 2).
-	t.test("the whole collection through the shop costs 1,107,212,531,000 Coins at full price (V3:163)", function()
+	-- 2026-11-01: Butter and Chocolate cost half (937.5K: Uncommon power 4 -> 2). Series 01 (2026-11-10): 2 Commons, an
+	-- Uncommon, 2 Rares and Cosmo at their siblings' prices.
+	t.test("the whole collection through the shop costs 2,207,222,546,500 Coins at full price (V3:163)", function()
 		local total = 0
 		for _, def in Catalog.list() do
 			total += def.shopPrice or 0
 		end
-		expect.equal(total, 4 * 789_000 + 2 * 937_500 + 2 * 3_750_000 + 4 * 1_800_000_000 + 1_100_000_000_000)
+		expect.equal(total, 6 * 789_000 + 3 * 937_500 + 4 * 3_750_000 + 4 * 1_800_000_000 + 2 * 1_100_000_000_000)
 	end)
 
 	t.test("copies replaced the duplicate refund (pens3 phase 5)", function()

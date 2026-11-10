@@ -8,9 +8,10 @@
 -- integer math and add up to "100.00"; byRarity is rarity descending (Snack: Uncommon 24.00 · Common 76.00);
 -- containing lists every box a squishy is in; paidById holds only the paid boxes; everything is frozen. Pens3 phase 5:
 -- the V3 odds (Soft 1,900 / 800 / 400; Sweet the 4 Epics 2,499 and Dragon 4; Royal 1,400 / 900 / 600 / 350), and the
--- fixed orders of restricted accounts (smooth weighted round-robin, V4:248-252): Soft a cycle of 25 with Mochi Fox at
--- box 11 and Strawberry Frog at 12, Sweet 2,500 with the Dragon at box 501, each item as often as its weight says
--- (rounded, a tie to the earlier item), repeating; isComplete is gone (copies). Tables are compared by value.
+-- fixed orders of restricted accounts (smooth weighted round-robin, V4:248-252), each item as often as its weight says
+-- (rounded, a tie to the earlier item), repeating; isComplete is gone (copies). Series 01 (2026-11-10): Soft a cycle
+-- of 150 with the first Rares at boxes 16-18, Sweet 2,500 with Cosmo at box 417 and the Dragon at 834. Tables are
+-- compared by value.
 
 -- Shape of the context RunUnitTest passes in (restated: Luau has no type-only imports).
 type Context = {
@@ -19,23 +20,31 @@ type Context = {
 	requireShared: (path: string) -> any,
 }
 
--- Pens3 phase 5 (ECONOMY_V3:159-161; Snack = Soft, Treat = Royal), as {id, weight} pairs in table order.
+-- Pens3 phase 5 (ECONOMY_V3:159-161; Snack = Soft, Treat = Royal), as {id, weight} pairs in table order. Series 01
+-- (2026-11-10): Berry Jelly, Peachy, Grapey, Bao Buddy and Pando join the Soft Box (one weight a rarity: 1,266 / 532 /
+-- 202), Cosmo the Sweet Box before the Dragon (4 each, the Epics 2,498); the Royal Box is unchanged.
 local EXPECTED_ITEMS: { [string]: { { any } } } = {
 	snack = {
-		{ "toast", 1900 },
-		{ "banana", 1900 },
-		{ "boba_bear", 1900 },
-		{ "pancake_pup", 1900 },
-		{ "butter", 800 },
-		{ "chocolate", 800 },
-		{ "mochi_fox", 400 },
-		{ "strawberry_frog", 400 },
+		{ "toast", 1266 },
+		{ "banana", 1266 },
+		{ "boba_bear", 1266 },
+		{ "pancake_pup", 1266 },
+		{ "berry_jelly", 1266 },
+		{ "peachy", 1266 },
+		{ "butter", 532 },
+		{ "chocolate", 532 },
+		{ "grapey", 532 },
+		{ "mochi_fox", 202 },
+		{ "strawberry_frog", 202 },
+		{ "bao_buddy", 202 },
+		{ "pando", 202 },
 	},
 	sweet = {
-		{ "bird", 2499 },
-		{ "donut", 2499 },
-		{ "cloud_bunny", 2499 },
-		{ "cupcake_axolotl", 2499 },
+		{ "bird", 2498 },
+		{ "donut", 2498 },
+		{ "cloud_bunny", 2498 },
+		{ "cupcake_axolotl", 2498 },
+		{ "cosmo", 4 },
 		{ "dragon", 4 },
 	},
 	treat = {
@@ -166,7 +175,7 @@ return function(t: Context)
 			expect.equal(sum, 10000)
 			expect.equal(Boxes.totalText(box.id), "100.00")
 		end
-		expect.deepEqual(Boxes.odds("snack")[1], { id = "toast", weight = 1900, percent = 19, text = "19.00" })
+		expect.deepEqual(Boxes.odds("snack")[1], { id = "toast", weight = 1266, percent = 12.66, text = "12.66" })
 		expect.deepEqual(Boxes.odds("nope"), {})
 		expect.equal(Boxes.totalText("nope"), nil)
 	end)
@@ -179,9 +188,10 @@ return function(t: Context)
 			end
 			return out
 		end
-		-- 2026-11-01: Mochi Fox and Strawberry Frog are Rare (Soft 4% each, Royal 6% each).
-		expect.deepEqual(summary("snack"), { { "Rare", "8.00" }, { "Uncommon", "16.00" }, { "Common", "76.00" } })
-		expect.deepEqual(summary("sweet"), { { "Exclusive", "0.04" }, { "Epic", "99.96" } })
+		-- 2026-11-01: Mochi Fox and Strawberry Frog are Rare (Royal 6% each). Series 01 (2026-11-10): the Soft Box's 4
+		-- Rares 2.02% each, Cosmo and the Dragon 0.04% each.
+		expect.deepEqual(summary("snack"), { { "Rare", "8.08" }, { "Uncommon", "15.96" }, { "Common", "75.96" } })
+		expect.deepEqual(summary("sweet"), { { "Exclusive", "0.08" }, { "Epic", "99.92" } })
 		expect.deepEqual(
 			summary("treat"),
 			{ { "Epic", "14.00" }, { "Rare", "12.00" }, { "Uncommon", "18.00" }, { "Common", "56.00" } }
@@ -201,48 +211,61 @@ return function(t: Context)
 	end)
 
 	-- Pens3 phase 5 (restricted accounts, D1:235, V4:248-252): the fixed orders.
+	-- Series 01 (2026-11-10): a cycle of 150 (each Common 19 times, each Uncommon 8, each Rare 3).
 	t.test(
-		"the Soft Box's fixed order: a cycle of 25, Mochi Fox at box 11, Strawberry Frog at 12, repeating",
+		"the Soft Box's fixed order: a cycle of 150, the first Rares at boxes 16-18, repeating",
 		function()
 			local snack = Boxes.get("snack")
-			expect.equal(snack.fixedCycle, 25)
+			expect.equal(snack.fixedCycle, 150)
 			local order: { string } = {}
-			for n = 0, 24 do
+			for n = 0, 149 do
 				table.insert(order, Boxes.fixedItem("snack", n))
 			end
 			expect.equal(
-				table.concat(order, " "),
+				table.concat(order, " ", 1, 24),
 				table.concat({
-					"toast banana boba_bear pancake_pup butter chocolate", -- boxes 1-6
-					"toast banana boba_bear pancake_pup mochi_fox strawberry_frog", -- 7-12
-					"toast banana boba_bear pancake_pup butter chocolate", -- 13-18
-					"toast banana boba_bear pancake_pup toast banana boba_bear", -- 19-25
+					"toast banana boba_bear pancake_pup berry_jelly peachy butter chocolate grapey", -- boxes 1-9
+					"toast banana boba_bear pancake_pup berry_jelly peachy", -- 10-15
+					"mochi_fox strawberry_frog bao_buddy", -- 16-18
+					"toast banana boba_bear pancake_pup berry_jelly peachy", -- 19-24
 				}, " ")
 			)
-			expect.equal(order[11], "mochi_fox")
-			expect.equal(order[12], "strawberry_frog")
-			for n = 0, 24 do
-				expect.equal(Boxes.fixedItem("snack", n + 25), order[n + 1]) -- the cycle repeats
-				expect.equal(Boxes.fixedItem("snack", n + 25 * 4000), order[n + 1])
+			local counts: { [string]: number } = {}
+			for _, id in order do
+				counts[id] = (counts[id] or 0) + 1
+			end
+			expect.equal(counts.toast, 19)
+			expect.equal(counts.grapey, 8)
+			expect.equal(counts.pando, 3)
+			for n = 0, 149 do
+				expect.equal(Boxes.fixedItem("snack", n + 150), order[n + 1]) -- the cycle repeats
+				expect.equal(Boxes.fixedItem("snack", n + 150 * 4000), order[n + 1])
 			end
 		end
 	)
 
-	t.test("the Sweet Box's fixed order: 2,500 long, the Dragon once at box 501, each Epic 625 or 624 times", function()
+	t.test("the Sweet Box's fixed order: 2,500 long, Cosmo once at box 417, the Dragon at 834, each Epic 624-625", function()
 		local sweet = Boxes.get("sweet")
 		expect.equal(sweet.fixedCycle, 2500)
 		local counts: { [string]: number } = {}
 		local dragonAt: { number } = {}
+		local cosmoAt: { number } = {}
 		for n = 0, sweet.fixedCycle - 1 do
 			local id = Boxes.fixedItem("sweet", n) :: string
 			counts[id] = (counts[id] or 0) + 1
 			if id == "dragon" then
 				table.insert(dragonAt, n + 1)
+			elseif id == "cosmo" then
+				table.insert(cosmoAt, n + 1)
 			end
 		end
-		expect.deepEqual(dragonAt, { 501 })
-		expect.deepEqual(counts, { bird = 625, donut = 625, cloud_bunny = 625, cupcake_axolotl = 624, dragon = 1 })
-		expect.equal(Boxes.fixedItem("sweet", 2500 + 500), "dragon")
+		expect.deepEqual(cosmoAt, { 417 })
+		expect.deepEqual(dragonAt, { 834 })
+		expect.deepEqual(
+			counts,
+			{ bird = 625, donut = 625, cloud_bunny = 624, cupcake_axolotl = 624, cosmo = 1, dragon = 1 }
+		)
+		expect.equal(Boxes.fixedItem("sweet", 2500 + 833), "dragon")
 	end)
 
 	t.test("every paid box's fixed order has each item as often as its weight says (rounded)", function()
@@ -287,7 +310,7 @@ return function(t: Context)
 		for _, row in butter do
 			table.insert(seen, { row.boxId, row.text, row.paid })
 		end
-		local expected: { { any } } = { { "snack", "8.00", true }, { "treat", "9.00", false } }
+		local expected: { { any } } = { { "snack", "5.32", true }, { "treat", "9.00", false } }
 		expect.deepEqual(seen, expected)
 		expect.deepEqual(Boxes.containing("nope"), {})
 	end)

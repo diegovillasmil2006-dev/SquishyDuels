@@ -114,12 +114,13 @@ return function(t: Context)
 			return Strings.format(Strings.box.chancesByRarity, { list = table.concat(list, Strings.box.listSeparator) })
 		end
 		-- ECONOMY_V3:159-161 (pens3 phase 5): Soft 4 x 19% Commons; Sweet 4 Epics and Dragon at 0.04%.
-		-- 2026-11-01: Mochi Fox and Strawberry Frog (4% each) are Rare now.
+		-- 2026-11-01: Mochi Fox and Strawberry Frog (4% each) are Rare now. Series 01 (2026-11-10): 6 Commons, 3
+		-- Uncommons and 4 Rares share the Soft Box; Cosmo joins the Dragon in the Sweet Box.
 		expect.equal(
 			BoxFormat.raritySummary("snack"),
-			summary({ { "Rare", "8.00" }, { "Uncommon", "16.00" }, { "Common", "76.00" } })
+			summary({ { "Rare", "8.08" }, { "Uncommon", "15.96" }, { "Common", "75.96" } })
 		)
-		expect.equal(BoxFormat.raritySummary("sweet"), summary({ { "Exclusive", "0.04" }, { "Epic", "99.96" } }))
+		expect.equal(BoxFormat.raritySummary("sweet"), summary({ { "Exclusive", "0.08" }, { "Epic", "99.92" } }))
 	end)
 
 	t.test("box name and price: Coins for the paid boxes, free-only for the Treat Box", function()
@@ -185,12 +186,12 @@ return function(t: Context)
 		expect.equal(restricted.note, Strings.box.restrictedNote)
 		expect.equal(restricted.nextText, Strings.format(Strings.box.nextItem, { name = "Toast" }))
 		expect.equal(Boxes.fixedItem("snack", 0), "toast")
-		local eleventh = with({ policy = "restricted", boxOrder = { snack = 10, sweet = 0 } })
-		expect.equal(eleventh.nextText, Strings.format(Strings.box.nextItem, { name = "Mochi Fox" }))
-		local sweet = with({ policy = "restricted", box = "sweet", coins = 450_000_000, boxOrder = { sweet = 500 } })
+		local sixteenth = with({ policy = "restricted", boxOrder = { snack = 15, sweet = 0 } })
+		expect.equal(sixteenth.nextText, Strings.format(Strings.box.nextItem, { name = "Mochi Fox" })) -- Series 01: box 16
+		local sweet = with({ policy = "restricted", box = "sweet", coins = 450_000_000, boxOrder = { sweet = 833 } })
 		expect.equal(sweet.kind, "open")
-		expect.equal(sweet.nextText, Strings.format(Strings.box.nextItem, { name = "Dragon" })) -- box 501 (V4:252)
-		local again = with({ policy = "restricted", box = "sweet", coins = 450_000_000, boxOrder = { sweet = 3000 } })
+		expect.equal(sweet.nextText, Strings.format(Strings.box.nextItem, { name = "Dragon" })) -- box 834 (Series 01)
+		local again = with({ policy = "restricted", box = "sweet", coins = 450_000_000, boxOrder = { sweet = 3333 } })
 		expect.equal(again.nextText, sweet.nextText) -- the order repeats every fixedCycle (2,500)
 		-- Its blocks are the eligible ones (short of Coins here), and the next squishy still shows.
 		local short = with({ policy = "restricted", coins = 10 })
@@ -622,10 +623,10 @@ return function(t: Context)
 		end
 	)
 	t.test("odds sign: the box's chance by rarity on Diego's 3 plaques, commonest first (owner: the real odds)", function()
-		-- ECONOMY_V3: the Soft Box's 4 Commons 19% each, its Uncommons 8 + 8 + 4 + 4.
-		expect.deepEqual(BoxFormat.signLines("snack"), { "COMMON  76%", "UNCOMMON  16%", "RARE  8%" })
-		-- A non-whole percent keeps its two decimals.
-		expect.deepEqual(BoxFormat.signLines("sweet"), { "EPIC  99.96%", "LEGENDARY  0.04%", "" })
+		-- Series 01 (2026-11-10): the Soft Box's 6 Commons 12.66% each, 3 Uncommons 5.32%, 4 Rares 2.02%. A non-whole
+		-- percent keeps its two decimals.
+		expect.deepEqual(BoxFormat.signLines("snack"), { "COMMON  75.96%", "UNCOMMON  15.96%", "RARE  8.08%" })
+		expect.deepEqual(BoxFormat.signLines("sweet"), { "EPIC  99.92%", "LEGENDARY  0.08%", "" })
 		-- the Royal Box has 4 rarities since Rare (2026-11-01): its 3 commonest (it is never on a stand)
 		expect.deepEqual(BoxFormat.signLines("treat"), { "COMMON  56%", "UNCOMMON  18%", "RARE  12%" })
 		expect.deepEqual(BoxFormat.signLines("nope"), { "", "", "" })
@@ -762,13 +763,16 @@ return function(t: Context)
 	end)
 
 	t.test("toyTiles: rarest first (item order inside a rarity), at most max, owned or a silhouette", function()
-		-- Pens3 phase 5: the Sweet Box holds 5 squishies (fewer than max: every one); the Treat Box's 12 stop at max.
+		-- Series 01: the Sweet Box holds 6 squishies (= max: every one, Cosmo before the Dragon in item order); the Treat
+		-- Box's 12 stop at max.
 		expect.equal(#BoxFormat.toyTiles("treat", nil, 6), 6)
 		local tiles = BoxFormat.toyTiles("sweet", { dragon = true }, 6)
-		expect.equal(#tiles, 5)
-		expect.equal(tiles[1].id, "dragon")
-		expect.equal(tiles[1].owned, true)
-		expect.equal(tiles[2].owned, false)
+		expect.equal(#tiles, 6)
+		expect.equal(tiles[1].id, "cosmo")
+		expect.equal(tiles[1].owned, false)
+		expect.equal(tiles[2].id, "dragon")
+		expect.equal(tiles[2].owned, true)
+		expect.equal(tiles[3].owned, false)
 		for i = 2, #tiles do
 			local a = Rarity.index(Catalog.get(tiles[i - 1].id).rarity)
 			local b = Rarity.index(Catalog.get(tiles[i].id).rarity)
