@@ -35,6 +35,11 @@
 --   hit (a Rain Check drop, a pop) happens once at its server time: the first victim (or practice target) whose feet
 --   (the capsule's lowest point) are within its radius of its floor point and passes canDamage is hit; a drop that
 --   hits nobody sends nothing, a pop that hits nobody sends its end impact (expired / geometry) at the pop point.
+-- * Layer Cake Shockwave (Frosty Box, 2026-11-10; AbilityService "shockwave", launchRing): a ring that grows from radius
+--   0 at its centre (on the floor) at `speed` up to maxRadius, ignoring cover (the design's cake ring), hitting each
+--   victim (or practice target) once when its wall (half-thickness `width`) meets the capsule horizontally
+--   (UltRules.ringTouches), unless the victim's feet are higher than clearHeight above the floor (jumped); it flies on
+--   like a lane and sends nothing when it ends.
 -- * Order against the match timers (§5.2 rule 7, DuelRules "timed transitions happen at their deadline"): the match
 --   owner calls syncTo(now) before it advances its timers to `now`, so every projectile is swept up to that time
 --   first and a hit whose impact comes just before a phase deadline is applied before the deadline fires. A throw or
@@ -308,6 +313,20 @@ export type AreaSpec = {
 	floorY: number,
 }
 
+-- Layer Cake Shockwave (2026-11-10): one growing ring (AbilityService "shockwave").
+export type RingSpec = {
+	caster: Fighter?,
+	player: Player?,
+	squishyId: string,
+	center: Vector3, -- on the floor
+	startAt: number, -- server time it starts growing from radius 0
+	speed: number, -- studs/s
+	maxRadius: number,
+	width: number, -- the ring wall's half-thickness
+	clearHeight: number, -- feet higher than this above the floor jump it
+	floorY: number,
+}
+
 -- What the guard and AbilityService read about a practising player.
 type PracticeActor = {
 	nextThrowAt: number,
@@ -355,6 +374,7 @@ type Projectile = {
 	splashRadius: number?, -- a bubble: its pop becomes an area hit
 	bounce: UltBounce?, -- a bubble's leg after its bounce, until it is flown (Bubble Pop bounce, 2026-10-16)
 	area: Area?, -- an area hit waiting for (or at) its time
+	ring: Ring?, -- Layer Cake Shockwave (2026-11-10): a growing ring (lastT = seconds since ring.startAt swept)
 	areaHits: number, -- victims / targets its area already hit
 	charge: number?, -- feature 1: a throw's charge (ThrowStarted.power)
 	crush: Crush?, -- feature 1: caught; it bursts at crush.burstAt (no more sweeping)
@@ -368,6 +388,9 @@ type Area = {
 	endKind: Types.ImpactKind?, -- sent at the center when nobody is hit (nil: silent, a Rain Check drop)
 	normal: Vector3?,
 }
+
+-- Layer Cake Shockwave: a ring's own numbers (RingSpec; maxT = maxRadius / speed seconds of growth).
+type Ring = { center: Vector3, startAt: number, speed: number, maxT: number, width: number, clearHeight: number }
 
 -- What this module needs from the outside world (useDeps). `send` fires a server -> client remote to a list of
 -- recipients (non-players are skipped by NetService).
@@ -1031,6 +1054,74 @@ local function areaStep(proj: Projectile, now: number): Candidate?
 	}
 end
 
+-- Layer Cake Shockwave (2026-11-10): the ring's step from proj.lastT to now (both as seconds of growth). The first enemy
+-- (duel: the opponent; ffa: every enemy; practice: the targets) not hit yet whose capsule the wall met in this step,
+-- whose feet are not above clearHeight, and that may be damaged when the ring reaches it, is the candidate; with none
+-- the ring grows on (lastT = now) and finishes silently at its full size.
+local function ringStep(proj: Projectile, ring: Ring, now: number): Candidate?
+	if now < ring.startAt then
+		return nil
+	end
+	local t0, t1 = proj.lastT, math.min(now - ring.startAt, ring.maxT)
+	local r0, r1 = ring.speed * t0, ring.speed * t1
+	local floorY = proj.floorY or ring.center.Y
+	local function candidateFor(position: Vector3, at: number): Candidate
+		local away = flatUnit(position - ring.center)
+		return {
+			proj = proj,
+			kind = "player",
+			time = math.clamp(at, ring.startAt + t0, ring.startAt + t1),
+			a = t0,
+			position = Vector3.new(position.X, floorY, position.Z),
+			normal = nil,
+			direction = if away ~= Vector3.zero then away else Vector3.zAxis,
+		}
+	end
+	local port = proj.port
+	if port then
+		local attacker = proj.owner :: Fighter
+		local victims: { Fighter } = if port.ffa then port.fighters else { opponentOf(port, attacker) :: Fighter }
+		for _, victim in victims do
+			local enemy = if port.ffa then isEnemy(port, attacker, victim) else true
+			local root = if enemy and not proj.hitOnce[victim] then victim.getRoot() else nil
+			if
+				root
+				and not UltRules.feetAbove(root.Position, floorY, ring.clearHeight)
+				and UltRules.ringTouches(ring.center, r0, r1, ring.width, root.Position)
+			then
+				local d = Vector3.new(root.Position.X - ring.center.X, 0, root.Position.Z - ring.center.Z).Magnitude
+				local candidate = candidateFor(root.Position, UltRules.ringReachTime(ring.startAt, ring.speed, ring.width, d))
+				if canDamage(port, attacker, victim, root.Position, candidate.time) then
+					candidate.victim = victim
+					return candidate
+				end
+			end
+		end
+	elseif proj.kind == "practiceUlt" then
+		local at = ring.startAt + t1
+		for _, target in PracticeService.targets() do
+			if not proj.hitOnce[target.id] and not PracticeService.isTargetDown(target.id, at) then
+				local bottom, _, radius = PracticeService.capsuleAt(target, at)
+				local box = { bottomOffset = 0, topOffset = 0, radius = radius }
+				if
+					bottom.Y - radius - floorY <= ring.clearHeight
+					and UltRules.ringTouches(ring.center, r0, r1, ring.width, bottom, box)
+				then
+					local candidate = candidateFor(bottom, at)
+					candidate.kind = "target"
+					candidate.targetId = target.id
+					return candidate
+				end
+			end
+		end
+	end
+	proj.lastT = t1
+	if t1 >= ring.maxT then
+		finish(proj)
+	end
+	return nil
+end
+
 -- A Bubble Pop bubble pops where `at` says (its first contact, or the end of its flight): from now on it is an area hit.
 local function pop(proj: Projectile, at: Candidate, now: number): Candidate?
 	proj.area = {
@@ -1078,6 +1169,10 @@ local function simulate(proj: Projectile, now: number): Candidate?
 	end
 	if proj.area ~= nil then
 		return areaStep(proj, now)
+	end
+	local ring = proj.ring
+	if ring ~= nil then
+		return ringStep(proj, ring, now)
 	end
 	if now < proj.releaseAt then
 		return nil
@@ -2056,6 +2151,50 @@ function CombatService.launchArea(spec: AreaSpec): number
 		flyOn = false,
 		floorY = spec.floorY,
 		area = { center = spec.position, at = spec.at, radius = spec.radius, endKind = nil, normal = nil },
+		areaHits = 0,
+	}
+	addProjectile(proj)
+	return proj.projId
+end
+
+-- Starts one Layer Cake Shockwave ring (AbilityService, Frosty Box 2026-11-10): it grows from spec.center at spec.startAt
+-- (see the header and ringStep). Duel ones test the caster's opponent (FFA/TDM v1: every enemy) with the normal
+-- canDamage, practice ones only practice targets. Returns the projId.
+function CombatService.launchRing(spec: RingSpec): number
+	local owner: any, kind: ProjectileKind, port: MatchPort?, ownerId: number = ultOwner(spec.caster, spec.player)
+	local speed = math.max(spec.speed, 1e-3)
+	local growth = math.max(spec.maxRadius, 0) / speed
+	local proj: Projectile = {
+		projId = newProjId(),
+		kind = kind,
+		ownerId = ownerId,
+		owner = owner,
+		player = spec.player,
+		port = port,
+		squishyId = spec.squishyId,
+		origin = spec.center,
+		velocity = Vector3.zero,
+		gravity = 0,
+		radius = spec.width,
+		releaseAt = spec.startAt,
+		lastT = 0,
+		maxT = growth,
+		fizzle = false,
+		released = true,
+		done = false,
+		countsAsLive = false,
+		hitOnce = {},
+		endKind = "expired",
+		flyOn = true, -- a hit does not end it: it grows on past that victim (hitOnce)
+		floorY = spec.floorY,
+		ring = {
+			center = spec.center,
+			startAt = spec.startAt,
+			speed = speed,
+			maxT = growth,
+			width = spec.width,
+			clearHeight = spec.clearHeight,
+		},
 		areaHits = 0,
 	}
 	addProjectile(proj)

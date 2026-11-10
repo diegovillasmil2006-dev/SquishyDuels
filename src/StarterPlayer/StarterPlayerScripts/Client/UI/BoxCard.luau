@@ -95,13 +95,21 @@ local OPEN = B.open
 local TOYS = B.toys
 local LIP = Config.UI.Sticker.lip.button
 local WHITE = Color3.new(1, 1, 1)
-local ART_KEYS = { snack = "img.nav.boxes", sweet = "img.box.sweet", treat = "img.box.treat" } :: { [string]: string }
+local ART_KEYS = {
+	snack = "img.nav.boxes",
+	sweet = "img.box.sweet",
+	treat = "img.box.treat",
+	frosty = "img.box.frosty", -- plan "50 squishies": no id yet, so the tinted gift
+} :: { [string]: string }
 local PLATES = {
 	snack = { Palette.StickerBoxSnackTop, Palette.StickerBoxSnackEnd },
 	sweet = { Palette.StickerBoxSweetTop, Palette.StickerBoxSweetEnd },
 	treat = { Palette.StickerFeaturedTop, Palette.StickerBoxTreatEnd },
+	frosty = { Palette.StickerBoxFrostyTop, Palette.StickerBoxFrostyEnd },
 } :: { [string]: { Color3 } }
-local TINTS = { sweet = Palette.BoxTintSweet, treat = Palette.BoxTintTreat } :: { [string]: Color3 }
+local TINTS = { sweet = Palette.BoxTintSweet, treat = Palette.BoxTintTreat, frosty = Palette.BoxTintFrosty } :: {
+	[string]: Color3,
+}
 local GIFT_BOX = "gift_box"
 
 -- Module table

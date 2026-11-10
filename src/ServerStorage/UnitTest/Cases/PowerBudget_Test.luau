@@ -62,6 +62,15 @@ local TABLE: { Row } = {
 	{ id = "bao_buddy", speed = 95, radius = 0.9, cooldown = 1.05, windup = 0.15, Ps = 0, Pr = -0.25, Pw = 1.20, Pc = -0.95, sum = 0.00, ult = 0, net = 0.00, flight = 0.421, slack = 2.94 },
 	{ id = "pando", speed = 90, radius = 1.4, cooldown = 1.00, windup = 0.18, Ps = -0.94, Pr = 1.00, Pw = 0, Pc = 0, sum = 0.06, ult = 0, net = 0.06, flight = 0.444, slack = 3.29 },
 	{ id = "cosmo", speed = 92, radius = 1.0, cooldown = 1.05, windup = 0.19, Ps = -0.55, Pr = 0, Pw = -0.40, Pc = -0.95, sum = -1.90, ult = 2.00, net = 0.10, flight = 0.435, slack = 3.70 },
+	-- Frosty Box (2026-11-10): siblings kitty_bread, toast, butter, chocolate, mochi_fox, bird and dragon (Geyser Line
+	-- costs Rain Check's 0.27, Layer Cake Shockwave Dragon Rush's 2.00).
+	{ id = "cone_cub", speed = 95, radius = 1.0, cooldown = 1.00, windup = 0.18, Ps = 0, Pr = 0, Pw = 0, Pc = 0, sum = 0.00, ult = 0, net = 0.00, flight = 0.421, slack = 3.32 },
+	{ id = "slushy_seal", speed = 105, radius = 0.8, cooldown = 1.05, windup = 0.18, Ps = 1.60, Pr = -0.50, Pw = 0, Pc = -0.95, sum = 0.15, ult = 0, net = 0.15, flight = 0.381, slack = 2.88 },
+	{ id = "ice_pop_beaver", speed = 95, radius = 0.9, cooldown = 1.05, windup = 0.15, Ps = 0, Pr = -0.25, Pw = 1.20, Pc = -0.95, sum = 0.00, ult = 0, net = 0.00, flight = 0.421, slack = 2.94 },
+	{ id = "mint_chip_mouse", speed = 90, radius = 1.4, cooldown = 1.00, windup = 0.18, Ps = -0.94, Pr = 1.00, Pw = 0, Pc = 0, sum = 0.06, ult = 0, net = 0.06, flight = 0.444, slack = 3.29 },
+	{ id = "sundae_manatee", speed = 95, radius = 0.9, cooldown = 1.05, windup = 0.15, Ps = 0, Pr = -0.25, Pw = 1.20, Pc = -0.95, sum = 0.00, ult = 0, net = 0.00, flight = 0.421, slack = 2.94 },
+	{ id = "gelato_narwhal", speed = 110, radius = 0.9, cooldown = 1.10, windup = 0.18, Ps = 2.30, Pr = -0.25, Pw = 0, Pc = -1.82, sum = 0.23, ult = 0.27, net = 0.50, flight = 0.364, slack = 2.50 },
+	{ id = "parfait_wyvern", speed = 92, radius = 1.0, cooldown = 1.05, windup = 0.19, Ps = -0.55, Pr = 0, Pw = -0.40, Pc = -0.95, sum = -1.90, ult = 2.00, net = 0.10, flight = 0.435, slack = 3.70 },
 }
 
 -- Spec phase 5: the four Epics carry the design's ultimates (ults.js:3-6); Series 01: Cosmo its own (ults2.js:4).
@@ -72,6 +81,8 @@ local ULTIMATE: { [string]: string } = {
 	cloud_bunny = "rain_check",
 	cupcake_axolotl = "bubble_pop",
 	cosmo = "gravity_well",
+	gelato_narwhal = "geyser_line", -- Frosty Box (ults2.js)
+	parfait_wyvern = "layer_cake_shockwave",
 }
 
 local TOLERANCE = 0.01 -- the table is rounded to 2 decimals

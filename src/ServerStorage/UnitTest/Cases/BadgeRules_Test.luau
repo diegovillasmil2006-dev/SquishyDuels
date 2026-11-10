@@ -88,7 +88,7 @@ return function(t: Context)
 	t.test("every Common (the starter among them) and the Dragon", function()
 		local p = profile()
 		local commons = Catalog.byRarity("Common")
-		expect.equal(#commons, 7) -- 5 + Series 01's Berry Jelly and Peachy (2026-11-10)
+		expect.equal(#commons, 9) -- 5 + Series 01's Berry Jelly and Peachy + the Frosty Box's Cone Cub and Slushy Seal
 		for index = 1, #commons - 1 do
 			p.owned[commons[index].id] = { at = 1, src = "shop" }
 		end

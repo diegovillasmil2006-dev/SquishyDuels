@@ -22,7 +22,8 @@ return function(t: Context)
 	local BoxBuilder = t.requireShared("Art/BoxBuilder")
 	local Palette = t.requireShared("Art/Palette")
 
-	local KINDS = { snack = "soft", sweet = "sweet", treat = "royal" }
+	-- frosty (2026-11-10): the igloo's imported meshes (ReplicatedStorage.SD_Models.box_frosty) must be in the place.
+	local KINDS = { snack = "soft", sweet = "sweet", treat = "royal", frosty = "frosty" }
 
 	local function lidNodes(bp: any): { [string]: boolean }
 		local under: { [string]: boolean } = { hinge = true }
@@ -141,11 +142,35 @@ return function(t: Context)
 			end
 			-- a squash about the floor: heights scale by y
 			BoxBuilder.write(built, CFrame.identity, Vector3.new(1, 0.5, 1), nil)
-			local body = built.named.Body or built.named.Core or built.named.Velvet
+			local body = built.named.Body or built.named.Core or built.named.Velvet or built.named.Base
 			expect.truthy(body ~= nil)
 			expect.near(body.CFrame.Position.Y, before[body].Position.Y * 0.5, 1e-4)
 			built.model:Destroy()
 		end
+	end)
+
+	-- Claude Design BOXES zip (2026-11-10): the Frosty igloo is the design's own meshes at the design's size, the lid
+	-- turning about the lid group's centre (sd/boxes.js:143), every Mesh part a copy of its imported MeshPart.
+	t.test("the Frosty igloo: the imported meshes, the lid group's pivot, the design's size", function()
+		local bp = BoxBuilder.blueprint("frosty")
+		expect.truthy(bp ~= nil)
+		expect.equal(bp.meshModel, "box_frosty")
+		expect.near(bp.nodes.hinge.pos.Y, 0.226 * 1.3 / 0.28, 1e-3)
+		expect.equal(bp.top, bp.nodes.hinge.pos.Y)
+		local built = BoxBuilder.build(bp, 1)
+		local source = game:GetService("ReplicatedStorage").SD_Models.box_frosty
+		for _, name in { "Base", "BaseOutline", "Glow", "Lid", "LidOutline" } do
+			local part = built.named[name]
+			expect.truthy(part ~= nil and part:IsA("MeshPart"))
+			expect.equal((part :: MeshPart).MeshId, (source[name] :: MeshPart).MeshId)
+			expect.truthy(((part :: MeshPart).Size - (source[name] :: MeshPart).Size).Magnitude < 0.01)
+		end
+		expect.equal(built.named.Glow.Material, Enum.Material.Neon)
+		-- 3.76 x 2.49 x 3.24 studs (STATUS3.md): the base's outline is the widest, the lid's top the highest
+		expect.near(built.named.BaseOutline.Size.X, 3.76 + 2 * 0.0414, 0.02)
+		local top = built.named.LidOutline.Position.Y + built.named.LidOutline.Size.Y / 2
+		expect.near(top, 2.49, 0.05)
+		built.model:Destroy()
 	end)
 
 	t.test("nodeFrames: a child node follows its parent's motion", function()

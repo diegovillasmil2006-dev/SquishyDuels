@@ -75,6 +75,8 @@ local SOUND_KEYS = {
 	"sfx.ultCharge.cloud_bunny",
 	"sfx.ultCharge.cupcake_axolotl",
 	"sfx.ultCharge.cosmo", -- Series 01 (2026-11-10): Gravity Well's wind-up
+	"sfx.ultCharge.gelato_narwhal", -- Frosty Box (2026-11-10): Geyser Line's and Layer Cake Shockwave's wind-ups
+	"sfx.ultCharge.parfait_wyvern",
 	"sfx.ultRelease",
 	"sfx.ultRainDrop",
 	"sfx.ultCloudHover",
@@ -300,7 +302,7 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 71) -- + Series 01's sfx.ultCharge.cosmo
+		expect.equal(#keys, 73) -- + Series 01's sfx.ultCharge.cosmo, the Frosty Box's 2
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
 	end)
 
@@ -480,6 +482,7 @@ return function(t: Context)
 				"img.icon.match",
 				"img.box.sweet",
 				"img.box.treat",
+				"img.box.frosty", -- Frosty Box (2026-11-10): waits for Claude Design's box look
 				"img.fx.rays",
 				"img.fx.raysDetail",
 				"img.fx.raysReveal",
@@ -526,6 +529,20 @@ return function(t: Context)
 				"img.squishy.bao_buddy.white",
 				"img.squishy.pando.white",
 				"img.squishy.cosmo.white",
+				"img.squishy.cone_cub", -- Frosty Box (2026-11-10)
+				"img.squishy.slushy_seal",
+				"img.squishy.ice_pop_beaver",
+				"img.squishy.mint_chip_mouse",
+				"img.squishy.sundae_manatee",
+				"img.squishy.gelato_narwhal",
+				"img.squishy.parfait_wyvern",
+				"img.squishy.cone_cub.white",
+				"img.squishy.slushy_seal.white",
+				"img.squishy.ice_pop_beaver.white",
+				"img.squishy.mint_chip_mouse.white",
+				"img.squishy.sundae_manatee.white",
+				"img.squishy.gelato_narwhal.white",
+				"img.squishy.parfait_wyvern.white",
 				"img.nav.squishies.white",
 				"img.nav.boxes.white",
 				"img.nav.shop.white",

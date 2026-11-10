@@ -73,7 +73,18 @@ local VERSION = 3 -- 2: the first playtest: smaller, see-through world effects (
 -- building and copying only its Banner/cosmo_supernova and Kill/cosmo_supernova templates in (VERSION unchanged).
 local ROOT_NAME = "SD_KillVfx"
 
-local SETS = { "standard", "feather_storm", "sprinkle_blast", "cloudburst", "bubble_burst", "dragon_blaze", "cosmo_supernova" }
+-- 2026-11-10: the Frosty Box's two (Narwhal's Brain Freeze, Wyvern's Sugar Storm) added the same way.
+local SETS = {
+	"standard",
+	"feather_storm",
+	"sprinkle_blast",
+	"cloudburst",
+	"bubble_burst",
+	"dragon_blaze",
+	"cosmo_supernova",
+	"narwhal_brain_freeze",
+	"wyvern_sugar_storm",
+}
 
 local ENGINE = {
 	smoke = "rbxasset://textures/particles/smoke_main.dds",
@@ -118,6 +129,14 @@ local C = {
 	CosmoMint = hex("#8FE3C2"),
 	CosmoBlue = hex("#8AB8FF"),
 	CosmoLilac = hex("#C7A0FF"),
+	-- Frosty Box (2026-11-10; design: sd/ults2.js:57-58, 69-70 disc, ring, glow and shards)
+	NarwhalBlue = hex("#8CCDEB"),
+	NarwhalGlow = hex("#BFEFFF"),
+	NarwhalWaffle = hex("#E9B46C"),
+	WyvernPink = hex("#FF8FAE"),
+	WyvernGold = hex("#FFDD88"),
+	WyvernCream = hex("#FFF3E6"),
+	WyvernBlueberry = hex("#A8A2F2"),
 }
 
 -- Module table
@@ -1101,6 +1120,122 @@ local function killCosmo(): Part
 	return part
 end
 
+-- Narwhal's Brain Freeze (Gelato Narwhal, Frosty Box 2026-11-10; design: sd/ults2.js:57-59, "The narwhal salutes with
+-- its waffle horn, a frost disc snaps open, ice cubes burst and snow drifts down"): the design's disc, ring, glow and
+-- shards (white, blue, waffle, frost).
+local NARWHAL_SHARDS = { C.White, C.NarwhalBlue, C.NarwhalWaffle, C.NarwhalGlow }
+
+local function bannerNarwhal(): Part
+	local part = carrier("narwhal_brain_freeze", "Narwhal's Brain Freeze (Gelato Narwhal): a frost flash, ice bits, snow sparkles from 3k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.NarwhalGlow),
+		bannerBits("Ice", tex("sparkle"), NARWHAL_SHARDS, 10, { 5, 9 }, 0.45, { 0.5, 0.8 }, { light = 0.4 }),
+		bannerBits("Snow", tex("twinkle"), C.White, 6, { 2, 4 }, 0.35, { 0.6, 0.9 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "FrostDisc",
+			texture = tex("softRing"),
+			color = C.NarwhalBlue,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.NarwhalGlow, 6, 6),
+	}, true)
+	return part
+end
+
+local function killNarwhal(): Part
+	local part = carrier("narwhal_brain_freeze", "Narwhal's Brain Freeze (Gelato Narwhal): a frost disc snaps open, ice cubes burst, snow drifts down")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local column = attachment(part, "Pillar", Vector3.new(0, 4, 0))
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		{
+			name = "FrostDisc",
+			texture = tex("softRing"),
+			color = C.NarwhalBlue,
+			size = { { 0, 2 }, { 0.6, 11 }, { 1, 12 } },
+			transparency = { { 0, 0.05 }, { 0.6, 0.25 }, { 1, 1 } },
+			lifetime = { 0.45 },
+			speed = { 0.01 },
+			spread = Vector2.zero,
+			lightEmission = 0.5,
+			zOffset = 1.2,
+			orientation = FLAT,
+			direction = Enum.NormalId.Top,
+			emitCount = 1,
+		},
+		coreFlash(C.NarwhalGlow, 6, nil),
+		worldBits("IceCubes", tex("sparkle"), NARWHAL_SHARDS, 20, { 14, 24 }, 1.3, { 0.8, 1.1 }, { drag = 2, light = 0.4, delay = 0.1 }),
+		airRing("FrostRing", C.White, 3, 17, 0.35, 0.1),
+		coreFlash(C.NarwhalBlue, 3.5, FINISH),
+		worldBits("Snow", tex("twinkle"), C.White, 14, { 2, 5 }, 1.6, { 0.5, 0.8 }, { drag = 3, light = 0.5, delay = FINISH }),
+	}, false)
+	addAll(column, { upStreaks("FrostStreaks", { C.NarwhalGlow, C.White }, 8, { 28, 40 }, 0.1) }, false)
+	addAll(floor, {
+		floorRing("FrostShock", tex("softRing"), C.NarwhalGlow, 1, 15, 0.55, 0.1),
+		floorRing("BlueShock", tex("shockRing"), C.NarwhalBlue, 1, 11, 0.5, 0.15),
+	}, false)
+	return part
+end
+
+-- Wyvern's Sugar Storm (Parfait Wyvern, Frosty Box 2026-11-10; design: sd/ults2.js:69-71, "Sugar wings flare, three
+-- parfait layers ring out around it in pink, cream and blueberry, and sugar petals swirl"): the design's colours.
+local WYVERN_SHARDS = { C.WyvernPink, C.WyvernGold, C.WyvernBlueberry, C.White }
+
+local function bannerWyvern(): Part
+	local part = carrier("wyvern_sugar_storm", "Wyvern's Sugar Storm (Parfait Wyvern): a gold flash, sugar petals, a pink layer ring from 5k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.WyvernGold),
+		bannerBits("Petals", tex("heart"), WYVERN_SHARDS, 10, { 5, 9 }, 0.45, { 0.5, 0.8 }, { light = 0.4 }),
+		bannerBits("Sugar", tex("sparkle"), C.White, 6, { 3, 6 }, 0.35, { 0.4, 0.6 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "LayerRing",
+			texture = tex("softRing"),
+			color = C.WyvernPink,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.WyvernCream, 6, 6),
+	}, true)
+	return part
+end
+
+local function killWyvern(): Part
+	local part = carrier("wyvern_sugar_storm", "Wyvern's Sugar Storm (Parfait Wyvern): three layer rings (pink, cream, blueberry), sugar petals swirl")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local column = attachment(part, "Pillar", Vector3.new(0, 4, 0))
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		coreFlash(C.WyvernGold, 6, nil),
+		worldBits("Petals", tex("heart"), WYVERN_SHARDS, 20, { 14, 24 }, 1.3, { 0.8, 1.1 }, { drag = 2, light = 0.4, delay = 0.1 }),
+		worldBits("Sugar", tex("sparkle"), C.White, 10, { 6, 12 }, 0.9, { 0.6, 0.9 }, { drag = 2, light = 0.5, delay = 0.15 }),
+		airRing("GoldRing", C.WyvernGold, 3, 17, 0.35, 0.1),
+		coreFlash(C.WyvernPink, 3.5, FINISH),
+		worldBits("FinishPetals", tex("heart"), WYVERN_SHARDS, 8, { 8, 14 }, 1.0, { 0.7, 1.0 }, { drag = 2, light = 0.4, delay = FINISH }),
+	}, false)
+	addAll(column, { upStreaks("SugarStreaks", { C.WyvernGold, C.White }, 8, { 28, 40 }, 0.1) }, false)
+	addAll(floor, {
+		floorRing("PinkLayer", tex("softRing"), C.WyvernPink, 1, 11, 0.45, 0),
+		floorRing("CreamLayer", tex("softRing"), C.WyvernCream, 1, 14, 0.5, 0.12),
+		floorRing("BlueberryLayer", tex("shockRing"), C.WyvernBlueberry, 1, 17, 0.55, 0.24),
+	}, false)
+	return part
+end
+
 -- Public
 
 local BANNERS: { [string]: () -> Part } = {
@@ -1111,6 +1246,8 @@ local BANNERS: { [string]: () -> Part } = {
 	bubble_burst = bannerBubble,
 	dragon_blaze = bannerDragon,
 	cosmo_supernova = bannerCosmo,
+	narwhal_brain_freeze = bannerNarwhal,
+	wyvern_sugar_storm = bannerWyvern,
 }
 
 local KILLS: { [string]: () -> Part } = {
@@ -1121,6 +1258,8 @@ local KILLS: { [string]: () -> Part } = {
 	bubble_burst = killBubble,
 	dragon_blaze = killDragon,
 	cosmo_supernova = killCosmo,
+	narwhal_brain_freeze = killNarwhal,
+	wyvern_sugar_storm = killWyvern,
 }
 
 -- The library as a new, UNPARENTED Folder (marked when `Generated`, SDTools' root marker module, is given). `AssetTable`

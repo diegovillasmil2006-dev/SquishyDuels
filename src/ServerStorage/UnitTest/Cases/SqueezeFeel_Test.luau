@@ -206,8 +206,9 @@ return function(t: Context)
 				then squeeze.squeezeFx[def.anim.squeezeFx]
 				else nil
 			expect.equal(plan.steam, hook)
-			-- Series 01 (2026-11-10): Cosmo's design has no squeeze puff of its own (its ring and antenna move instead).
-			if def.rarity == "Exclusive" and hook == nil and def.id ~= "cosmo" then
+			-- Series 01 (2026-11-10): Cosmo's design has no squeeze puff of its own (its ring and antenna move instead);
+			-- nor has Parfait Wyvern's (Frosty Box: its sugar wings flutter).
+			if def.rarity == "Exclusive" and hook == nil and def.id ~= "cosmo" and def.id ~= "parfait_wyvern" then
 				error(`{def.id}: an Exclusive without its squeezeFx hook`)
 			end
 		end

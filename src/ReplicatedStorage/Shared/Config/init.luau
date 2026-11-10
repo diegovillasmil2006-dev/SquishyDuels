@@ -129,7 +129,8 @@ local MIN_TELEGRAPH_SECONDS = 0.35
 local MIN_ABILITY_INTERVAL_SECONDS = 20
 -- Spec phase 5: the ability kinds AbilityService runs (Config.Abilities header), and the kinds whose sphere flies above
 -- the floor (laneHeightAboveFloor > radius).
-local ABILITY_KINDS: { [string]: boolean } = { lane = true, volley = true, roller = true, rain = true, bubble = true }
+local ABILITY_KINDS: { [string]: boolean } =
+	{ lane = true, volley = true, roller = true, rain = true, bubble = true, shockwave = true }
 local FLYING_KINDS: { [string]: boolean } = { lane = true, volley = true, roller = true, bubble = true }
 local MAX_VOLLEY_COUNT = 8 -- reading: a fan wider than this is a typo
 local ULTIMATE_RARITIES: { [string]: boolean } = { Epic = true, Exclusive = true } -- design: fp.js:576
@@ -958,6 +959,16 @@ local function checkAbilities(problems: Problems)
 				radiiOk,
 				`{p}.dropRadii must be a non-empty list of numbers in [0, radius {show(ability.radius)}] (drops land in the zone)`
 			)
+			if ability.dropSpacing ~= nil then
+				expectPositive(problems, `{p}.dropSpacing`, ability.dropSpacing) -- Geyser Line (2026-11-10)
+			end
+		elseif kind == "shockwave" then
+			-- Layer Cake Shockwave (2026-11-10): its rings.
+			expectCount(problems, `{p}.count`, ability.count, 1)
+			expectNonNegative(problems, `{p}.staggerSeconds`, ability.staggerSeconds)
+			expectPositive(problems, `{p}.clearHeight`, ability.clearHeight)
+			expectPositive(problems, `{p}.speed`, ability.speed)
+			expectPositive(problems, `{p}.maxLength`, ability.maxLength)
 		end
 	end
 end

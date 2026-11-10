@@ -228,6 +228,27 @@ return function(t: Context)
 		expect.deepEqual(profile.boxOrder, { snack = 0, sweet = 0 }) -- a random open never moves the fixed order
 	end)
 
+	-- Plan "50 squishies" (Frosty Box, 2026-11-10): a zone box is refused until profile.highway.biome reaches its zone;
+	-- nothing is charged or drawn before that.
+	t.test("the Frosty Box opens only once Frozen Dessert Peaks (biome 4) is reached", function()
+		local w = setup()
+		local cost = Boxes.get("frosty").cost :: number
+		local p, profile = readyPlayer(w, cost)
+		profile.highway = { best = 0, biome = 1 } -- a new profile's highway (ProfileSchema)
+		refused(BoxService.open(p, "frosty", REQ_A), "box.zoneLocked")
+		profile.highway.biome = 3
+		refused(BoxService.open(p, "frosty", REQ_A), "box.zoneLocked")
+		profile.highway = nil -- no highway record: locked (fail closed)
+		refused(BoxService.open(p, "frosty", REQ_A), "box.zoneLocked")
+		expect.equal(profile.coins, cost)
+		expect.equal(w.draws, 0)
+		profile.highway = { best = 0, biome = 4 }
+		local result = BoxService.open(p, "frosty", REQ_A)
+		expect.equal(result.ok, true)
+		expect.equal(profile.coins, 0)
+		expect.equal(profile.boxLog[1].box, "frosty")
+	end)
+
 	t.test("the same requestId replays the stored result: no charge, no draw, no save", function()
 		local w = setup()
 		local p, profile = readyPlayer(w, COINS)

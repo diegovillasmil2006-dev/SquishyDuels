@@ -2,8 +2,9 @@
 -- Config.Abilities: ultimates keyed by Catalog `ultimateId` (DESIGN §5.9). Shared, data only. All [P].
 -- Six abilities: Dragon Rush (Dragon, Exclusive), the four Epic ultimates of the design (spec phase 5 §1.4-§1.8;
 -- design: ults.js:3-6): Flock Volley (Birdie), Sprinkle Roller (Donut), Rain Check (Cloud Bunny) and Bubble Pop
--- (Cupcake Axolotl), and Gravity Well (Cosmo, Exclusive; Series 01, a one-drop rain). Each has a `kind`, the behaviour
--- AbilityService runs for it:
+-- (Cupcake Axolotl), Gravity Well (Cosmo, Exclusive; Series 01, a one-drop rain), and the Frosty Box's two (2026-11-10;
+-- design: sd/ults2.js:5-6, lab50.js:295-325): Geyser Line (Gelato Narwhal, Epic; a rain of 3 drops in a line) and Layer
+-- Cake Shockwave (Parfait Wyvern, Exclusive). Each has a `kind`, the behaviour AbilityService runs for it:
 --   lane    Dragon Rush: a sphere of `radius` swept from O to E at `speed`, at laneHeightAboveFloor, flying on through
 --           the player it hits; tested at standing height (jumping never avoids it).
 --   volley  `count` projectiles of `radius` fanned over `fanDeg` around the aim, `staggerSeconds` apart, straight at
@@ -11,7 +12,11 @@
 --   roller  a lane of half-width `radius` rolling along the floor at `speed` over maxLength, flying on; a body touching
 --           it is hit unless its feet are higher than clearHeight above the floor (it can be jumped).
 --   rain    a zone of `radius` centred on the opponent at the release; `drops` drops, each with a shadow first, hit a
---           player whose feet are within dropHitRadius of the drop when it lands.
+--           player whose feet are within dropHitRadius of the drop when it lands. With dropSpacing (Geyser Line) the
+--           drops stand in a line toward the centre from the caster's side, dropSpacing apart, the centre last.
+--   shockwave  Layer Cake Shockwave: `count` rings grow from the caster's feet, `staggerSeconds` apart, at `speed` out
+--           to maxLength, through cover; a ring's wall (half-thickness `radius`) hits a body it meets unless the feet
+--           are higher than clearHeight above the floor (it can be jumped).
 --   bubble  one projectile of `radius` at `speed`; it pops on a player, at cover or after popSeconds, and a player whose
 --           feet are within splashRadius of the pop (on the floor) is hit. Bubble Pop bounce (2026-10-16): the first
 --           `bounces` covers it meets bounce it off (mirrored on the cover's side, same speed) instead of popping it;
@@ -34,7 +39,7 @@
 -- or lost lives), starts ULT_START_SECONDS short of full, empties at each use, and minIntervalSeconds = the cooldown.
 local ULT_START_SECONDS = 8
 
-export type AbilityKind = "lane" | "volley" | "roller" | "rain" | "bubble"
+export type AbilityKind = "lane" | "volley" | "roller" | "rain" | "bubble" | "shockwave"
 
 export type Ability = {
 	kind: AbilityKind,
@@ -84,6 +89,7 @@ export type Ability = {
 	dropRadii: { number }?,
 	dropAngleStep: number?,
 	targetRadius: number?,
+	dropSpacing: number?, -- Geyser Line (2026-11-10): the drops in a line this far apart
 }
 
 local Abilities = {
@@ -310,6 +316,80 @@ local Abilities = {
 		dropRadii = { 0 }, -- the pop is the zone's centre
 		dropAngleStep = 0.1, -- one drop: unused
 		targetRadius = 7, -- the aimed player in the zone gets the pop at its own spot (the centre already is)
+	},
+	-- Gelato Narwhal (Frosty Box, 2026-11-10; design: ults2.js:5 "Geyser Line", lab50.js:295-307): 3 frost circles in a
+	-- line up to the opponent, each erupting 0.5 s after it shows.
+	geyser_line = {
+		kind = "rain",
+		nameKey = "ability.geyserLine.name",
+		descriptionKey = "ability.geyserLine.description",
+		incomingKey = "ability.geyserLine.incoming",
+		readyKey = "ability.geyserLine.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js:5 (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 38, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 38,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 38, -- design: ults2.js:5 (cooldown 38 s)
+		telegraphSeconds = 0.5, -- design: ults2.js:5 (charge 0.5 s): the wind-up
+		radius = 3, -- design: ults2.js:5 (3 st each); the rain kind's zone: the drops lie on its centre's line
+		laneHeightAboveFloor = 13, -- as Rain Check (unused by the geysers' look; the rain kind needs it)
+		speed = 9 / 0.28, -- as Rain Check (cosmetic)
+		maxLength = 110, -- as Rain Check: the practice target nearest the aim within this many studs
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 0.27, -- the narwhal throws exactly like Cloud Bunny, so it pays Rain Check's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 2, -- as Rain Check
+		drops = 3, -- design: ults2.js:5 ("3 in a line")
+		firstShadowSeconds = 0.1, -- circle k shows 0.1 + 0.35k s after the release (design: lab50.js:301)
+		dropStepSeconds = 0.35, -- design: lab50.js:301
+		shadowSeconds = 0.5, -- design: ults2.js:5 ("0.5 s frost circle each"), lab50.js:301
+		fallSeconds = 0.01, -- a geyser erupts at once (the rain kind wants it above 0)
+		dropHitRadius = 3, -- design: ults2.js:5 ("Radius 3 st each", "inside a circle as it erupts = out")
+		dropRadii = { 0 }, -- unused: the line places the drops
+		dropAngleStep = 0.1, -- unused: the line places the drops
+		-- Only the aimed player (at the centre, the last geyser) keeps its own spot; anyone else stays on the line.
+		targetRadius = 0.5,
+		dropSpacing = 5, -- design: ults2.js:5 ("5 st apart"), lab50.js:297
+	},
+	-- Parfait Wyvern (Frosty Box, 2026-11-10; design: ults2.js:6 "Layer Cake Shockwave", lab50.js:309-325): it leaps,
+	-- lands on its own spot, and 3 cake rings (pink, cream, blueberry) grow out from it.
+	layer_cake_shockwave = {
+		kind = "shockwave",
+		nameKey = "ability.layerCakeShockwave.name",
+		descriptionKey = "ability.layerCakeShockwave.description",
+		incomingKey = "ability.layerCakeShockwave.incoming",
+		readyKey = "ability.layerCakeShockwave.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js:6 (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 45, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 45,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 45, -- design: ults2.js:6 (cooldown 45 s)
+		telegraphSeconds = 0.8, -- design: ults2.js:6 (charge 0.8 s): the wind-up (the leap and the landing)
+		radius = 0.5, -- the ring wall's half-thickness (the design's ring is a thin open cylinder, lab50.js:313)
+		laneHeightAboveFloor = 0.6, -- the ring's middle (design: lab50.js:322, 0.6 st up); it does not fly
+		speed = 12, -- design: ults2.js:6 ("12 st/s")
+		maxLength = 14, -- design: ults2.js:6 ("out to 14 st")
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 2.0, -- the wyvern throws exactly like the Dragon, so it pays Dragon Rush's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 0, -- the rings start at the caster's feet
+		count = 3, -- design: ults2.js:6 ("3 layers")
+		staggerSeconds = 0.4, -- design: ults2.js:6 ("0.4 s apart")
+		clearHeight = 1.2, -- design: ults2.js:6 ("touch a ring = out (1.2 st tall)"): feet above it jump the ring
 	},
 } :: { [string]: Ability }
 

@@ -47,6 +47,16 @@ local EXPECTED_ITEMS: { [string]: { { any } } } = {
 		{ "cosmo", 4 },
 		{ "dragon", 4 },
 	},
+	-- Plan "50 squishies" step 4 (Frosty Box, 2026-11-10): 30 / 30 / 13 / 13 / 10 / 3.9 / 0.1 %.
+	frosty = {
+		{ "cone_cub", 3000 },
+		{ "slushy_seal", 3000 },
+		{ "ice_pop_beaver", 1300 },
+		{ "mint_chip_mouse", 1300 },
+		{ "sundae_manatee", 1000 },
+		{ "gelato_narwhal", 390 },
+		{ "parfait_wyvern", 10 },
+	},
 	treat = {
 		{ "toast", 1400 },
 		{ "banana", 1400 },
@@ -81,12 +91,17 @@ return function(t: Context)
 		return (tonumber(whole) :: number) * 100 + (tonumber(frac) :: number)
 	end
 
-	t.test("the three boxes hold the §6.4 data exactly", function()
+	t.test("the four boxes hold the §6.4 data exactly (the Frosty Box, 2026-11-10)", function()
 		local ids = {}
 		for _, box in Boxes.list() do
 			table.insert(ids, box.id)
 		end
-		expect.deepEqual(ids, { "snack", "sweet", "treat" })
+		expect.deepEqual(ids, { "snack", "sweet", "frosty", "treat" })
+		local frosty = Boxes.get("frosty")
+		expect.equal(frosty.cost, 20_000_000_000)
+		expect.equal(frosty.paid, true)
+		expect.equal(frosty.zone, 4)
+		expect.equal(frosty.fixedCycle, 1000)
 		expect.equal(Boxes.WeightTotal, 10000)
 
 		local snack, sweet, treat = Boxes.get("snack"), Boxes.get("sweet"), Boxes.get("treat")
@@ -323,7 +338,7 @@ return function(t: Context)
 			table.insert(paid, id)
 		end
 		table.sort(paid)
-		expect.deepEqual(paid, { "snack", "sweet" })
+		expect.deepEqual(paid, { "frosty", "snack", "sweet" })
 		expect.equal(Boxes.paidById.treat, nil)
 		expect.equal(Boxes.get("nope"), nil)
 		expect.equal(Boxes.get(nil), nil)
@@ -340,6 +355,19 @@ return function(t: Context)
 		end
 		local list = Boxes.list()
 		table.remove(list)
-		expect.equal(#Boxes.list(), 3)
+		expect.equal(#Boxes.list(), 4)
+	end)
+
+	-- Plan "50 squishies": a zone box opens from its zone on (profile.highway.biome), every other box always.
+	t.test("isOpenFor: the Frosty Box from biome 4; the others always; unknown boxes never", function()
+		expect.falsy(Boxes.isOpenFor("frosty", 1))
+		expect.falsy(Boxes.isOpenFor("frosty", 3))
+		expect.truthy(Boxes.isOpenFor("frosty", 4))
+		expect.truthy(Boxes.isOpenFor("frosty", 8)) -- the Golden Gates
+		expect.falsy(Boxes.isOpenFor("frosty", nil)) -- not known: biome 1
+		expect.falsy(Boxes.isOpenFor("frosty", 0 / 0))
+		expect.truthy(Boxes.isOpenFor("snack", nil))
+		expect.truthy(Boxes.isOpenFor("sweet", 1))
+		expect.falsy(Boxes.isOpenFor("nope", 9))
 	end)
 end

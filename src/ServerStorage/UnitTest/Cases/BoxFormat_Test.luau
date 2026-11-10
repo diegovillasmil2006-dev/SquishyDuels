@@ -272,6 +272,23 @@ return function(t: Context)
 		end
 	end)
 
+	-- Plan "50 squishies" (Frosty Box, 2026-11-10): before its zone a zone box shows its lock and the zone's name, never
+	-- Open, whatever the Coins; from its zone it is a box like the others.
+	t.test("open area: the Frosty Box is locked until Frozen Dessert Peaks", function()
+		local rich = { box = "frosty", policy = "eligible", coins = 30_000_000_000, owned = {} }
+		local locked = BoxFormat.openView(rich)
+		expect.equal(locked.kind, "zoneLocked")
+		expect.equal(locked.enabled, false)
+		expect.equal(locked.reason, Strings.format(Strings.box.zoneLocked, { zone = Strings.highway.biome.frozenDessertPeaks }))
+		local reached = table.clone(rich)
+		reached.biome = 4
+		local open = BoxFormat.openView(reached)
+		expect.equal(open.kind, "open")
+		expect.equal(open.enabled, true)
+		reached.biome = 3
+		expect.equal(BoxFormat.openView(reached).kind, "zoneLocked")
+	end)
+
 	t.test("open area: eligible blocks (Coins, Toy Box full, saving, duel, profile) and the armed confirm", function()
 		local poor = BoxFormat.openView({ box = "snack", policy = "eligible", coins = 149_880, owned = {} })
 		expect.equal(poor.kind, "needCoins")

@@ -46,6 +46,14 @@ local SquishyBlueprints: { [string]: Blueprint } = {
 	bao_buddy = require(script.bao_buddy),
 	pando = require(script.pando),
 	cosmo = require(script.cosmo),
+	-- Frosty Box (2026-11-10)
+	cone_cub = require(script.cone_cub),
+	slushy_seal = require(script.slushy_seal),
+	ice_pop_beaver = require(script.ice_pop_beaver),
+	mint_chip_mouse = require(script.mint_chip_mouse),
+	sundae_manatee = require(script.sundae_manatee),
+	gelato_narwhal = require(script.gelato_narwhal),
+	parfait_wyvern = require(script.parfait_wyvern),
 	gift_box = require(script.gift_box),
 	dragon_head_vfx = require(script.dragon_head_vfx),
 }

@@ -103,20 +103,27 @@ return function(t: Context)
 			"pancake_pup",
 			"peachy",
 			"toast",
+			"cone_cub", -- Frosty Box (2026-11-10): full price from the first one, after the Welcome-priced Commons
+			"slushy_seal",
 			"kitty_bread",
 			"butter",
 			"chocolate",
 			"grapey",
+			"ice_pop_beaver",
+			"mint_chip_mouse",
 			"bao_buddy",
 			"mochi_fox",
 			"pando",
 			"strawberry_frog",
+			"sundae_manatee",
 			"bird",
 			"cloud_bunny",
 			"cupcake_axolotl",
 			"donut",
+			"gelato_narwhal",
 			"cosmo",
 			"dragon",
+			"parfait_wyvern",
 		})
 		local byId: { [string]: any } = {}
 		for _, e in list do

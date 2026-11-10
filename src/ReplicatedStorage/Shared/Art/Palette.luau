@@ -327,6 +327,16 @@ local Palette = {
 	CosmoBeadPeach = Color3.fromHex("#FFA77A"), -- the 6th bead (design: sd/lab50.js:274)
 	UltWellZone = Color3.fromHex("#8AB8FF"), -- Gravity Well's zone ring (design: sd/lab50.js:275)
 	UltWellGold = Color3.fromHex("#FFE27A"), -- its pop's first ring (design: sd/lab50.js:290)
+	-- Frosty Box (2026-11-10). Geyser Line (design: sd/lab50.js:298-304): the frost circles, the geyser column, its cubes.
+	UltGeyserFrost = Color3.fromHex("#BFEFFF"),
+	UltGeyserColumn = Color3.fromHex("#DDF6FF"),
+	UltGeyserBlue = Color3.fromHex("#8CCDEB"),
+	-- Layer Cake Shockwave (design: sd/lab50.js:310-322): the landing spot, the three cake rings (pink, cream, blueberry).
+	UltCakeSpot = Color3.fromHex("#FFDD88"),
+	UltCakePink = Color3.fromHex("#FF8FAE"),
+	UltCakeCream = Color3.fromHex("#FFF3E6"),
+	UltCakeBlueberry = Color3.fromHex("#A8A2F2"),
+	KillNarwhalWaffle = Color3.fromHex("#E9B46C"), -- Narwhal's Brain Freeze's waffle shard (design: sd/ults2.js:57)
 	InspectEmberOrange = Color3.fromHex("#FF9A4D"), -- design: fp.js:182 (the Dragon's roar embers)
 	InspectEmberYellow = Color3.fromHex("#FFD25E"), -- design: fp.js:182
 	InspectEmberPink = Color3.fromHex("#FF6F7D"), -- design: fp.js:182
@@ -387,6 +397,11 @@ local Palette = {
 	BoxFloorBlob = Color3.fromHex("#140A28"), -- stage:71: rgba(20,10,40,.55) -> 0
 	BoxTintSweet = Color3.fromHex("#D9C6FF"), -- the Sweet box art's fallback gift tint
 	BoxTintTreat = Color3.fromHex("#FFE6A6"), -- the Royal box art's fallback gift tint
+	-- Frosty Box (plan "50 squishies"; until Claude Design's box look): the plate from the design's zone colour
+	-- (sd/toys2.js:852 #7CC8F2) up to the slush seal's frost (toys2.js:869), the gift tinted the narwhal's glow (ults2.js:57).
+	StickerBoxFrostyTop = Color3.fromHex("#DDF4FF"),
+	StickerBoxFrostyEnd = Color3.fromHex("#7CC8F2"),
+	BoxTintFrosty = Color3.fromHex("#BFEFFF"),
 	BoxSoftPolka = Color3.fromHex("#8FF3F8"), -- stage:58: the polka gradient's top (to #3FCFE2)
 	BoxSoftRibbon = Color3.fromHex("#FF6F9E"), -- stage:103
 	BoxSoftBlush = Color3.fromHex("#FF8FB8"), -- stage:112
@@ -415,6 +430,14 @@ local Palette = {
 	BoxRoyalSeam = Color3.fromHex("#FFE38A"), -- stage:169
 	BoxRoyalLight = Color3.fromHex("#FFD36B"), -- stage:186 (its beam: Lemon #FFD86B)
 	BoxRoyalSheen = Color3.fromHex("#FF9CF0"), -- stage:159, stage:186: the velvet sheen, a sparkle colour
+	-- The Frosty Box's igloo (Claude Design BOXES zip 2026-11-10, `boxes:n` = its sd/boxes.js line n, BOXES3 frosty):
+	-- its inner light, beam and burst colours (the igloo's meshes keep their own colours).
+	BoxFrostyLight = Color3.fromHex("#DFF6FF"), -- open.flash; the inner glow (boxes:142)
+	BoxFrostyBeam = Color3.fromHex("#BDE6FB"), -- open.beam and open.ring
+	BoxFrostyIce = Color3.fromHex("#7CC8F2"), -- the box colour; a burst cube colour
+	BoxFrostyMint = Color3.fromHex("#BFF2DC"), -- a burst cube colour
+	BoxFrostySprinkle = Color3.fromHex("#FF8FB8"), -- a burst capsule colour
+	BoxFrostyLemon = Color3.fromHex("#FFE36B"), -- a burst capsule colour
 	-- Buttons and badges (each a top / mid / end or top / end gradient, 180deg).
 	StickerGreenTop = Color3.fromHex("#A6F796"), -- H:245: the primary (green) buttons
 	StickerGreenMid = Color3.fromHex("#4CD45C"), -- H:245 (55%)

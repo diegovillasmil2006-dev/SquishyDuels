@@ -92,7 +92,7 @@
 --                                   every item, never below 0; 0 for anything that is not a pen (fail closed: nothing
 --                                   is granted into a broken pen). 0 = the Toy Box is full.
 -- Pens3 phase 7 (selling, D1:217-225; the 10-minute buy-back):
---   PenMath.sellPrice(item)      -> number: sellPrice[rarity] × sellFormMult[form + 1] Coins (level and coat add
+--   PenMath.sellPrice(item)      -> number: sellPrice[rarity] × boxMult × sellFormMult[form + 1] Coins (level and coat add
 --                                   nothing: food and coatings are not refunded); 0 for anything not an item's look
 --   PenMath.sellDecision(pen, ids) -> (Sale?, code?): the pure SellItems / SellAll checks, each over every id before
 --                                   the next: a broken pen, or ids not a list of 1..sellMaxIds distinct whole numbers
@@ -678,7 +678,8 @@ function PenMath.sellPrice(item: any): number
 		return 0
 	end
 	local def = Catalog.get(item.kind) :: Types.SquishyDef
-	return math.min((PEN.sellPrice[def.rarity] or 0) * PEN.sellFormMult[item.form + 1], MAX_COINS)
+	-- Plan "50 squishies": a zone box's squishy sells for its boxMult times its rarity's price.
+	return math.min((PEN.sellPrice[def.rarity] or 0) * (def.boxMult or 1) * PEN.sellFormMult[item.form + 1], MAX_COINS)
 end
 
 function PenMath.sellDecision(pen: any, ids: any): (Sale?, string?)

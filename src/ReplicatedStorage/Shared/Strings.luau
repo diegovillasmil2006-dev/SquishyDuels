@@ -158,6 +158,7 @@ local Strings = {
 			unknown = BOX_UNKNOWN_TEXT,
 			paused = "Boxes are paused while the server restarts soon.",
 			saving = "Saving your collection…",
+			zoneLocked = "Throw a squishy farther on the highway to open this box.", -- plan "50 squishies": zone boxes
 		},
 		shop = {
 			priceChanged = "The price changed. Please check it and try again.",
@@ -875,6 +876,22 @@ local Strings = {
 			ready = "Gravity Well ready",
 			description = "Opens a ring of beads around your opponent. The beads spiral in, and anyone still inside the ring when they meet loses a life. Walk out before they reach the middle.",
 		},
+		-- Frosty Box (2026-11-10), design: sd/ults2.js:5 ("The frost circles appear one by one along a line: step
+		-- sideways out of the line before each one erupts.")
+		geyserLine = {
+			name = "Geyser Line",
+			incoming = "Geyser Line incoming!",
+			ready = "Geyser Line ready",
+			description = "Three frost circles appear one by one in a line up to your opponent, and each one erupts in an icy geyser. Anyone inside a circle when it erupts loses a life. Step sideways out of the line.",
+		},
+		-- Design: sd/ults2.js:6 ("Each ring is short: jump it as it reaches you, or stay more than 14 st from the landing
+		-- spot.")
+		layerCakeShockwave = {
+			name = "Layer Cake Shockwave",
+			incoming = "Layer Cake Shockwave incoming!",
+			ready = "Layer Cake Shockwave ready",
+			description = "Leaps up and lands with a bang, sending out 3 cake rings one after another. Touching a ring takes a life. Jump over each ring as it reaches you, or stay far away.",
+		},
 	},
 
 	-- Throws / hits / accuracy (duel result and practice panel).
@@ -925,6 +942,14 @@ local Strings = {
 		baoBuddy = { name = "Bao Buddy" },
 		pando = { name = "Pando" },
 		cosmo = { name = "Cosmo" },
+		-- Frosty Box (2026-11-10, the design's names: sd/toys2.js CATALOG2 round 2).
+		coneCub = { name = "Cone Cub" },
+		slushySeal = { name = "Slushy Seal" },
+		icePopBeaver = { name = "Ice Pop Beaver" },
+		mintChipMouse = { name = "Mint Chip Mouse" },
+		sundaeManatee = { name = "Sundae Manatee" },
+		gelatoNarwhal = { name = "Gelato Narwhal" },
+		parfaitWyvern = { name = "Parfait Wyvern" },
 		-- Squishies, Shop and Inspect: what a squishy multiplies (progression spec §3, §6; pens3 phase 1: in the pen).
 		-- {n} = its power (Catalog.getPower).
 		power = "x{n} power",
@@ -952,6 +977,8 @@ local Strings = {
 		bubble_burst = "Bubble Burst",
 		dragon_blaze = "Dragon's Blaze",
 		cosmo_supernova = "Cosmo's Supernova", -- design: sd/ults2.js:44
+		narwhal_brain_freeze = "Narwhal's Brain Freeze", -- design: sd/ults2.js:58
+		wyvern_sugar_storm = "Wyvern's Sugar Storm", -- design: sd/ults2.js:70
 	},
 
 	-- Inspect (§10.7, §10.8, §10.9, §10.6).
@@ -1088,6 +1115,14 @@ local Strings = {
 			bao_buddy = "Steamer puck slide",
 			pando = "Foam bounce pass",
 			cosmo = "Orbit spiral pass",
+			-- Frosty Box
+			cone_cub = "Cone spiral dart",
+			slushy_seal = "Belly-slide skip",
+			ice_pop_beaver = "Ice-pop stick flick",
+			mint_chip_mouse = "Scoop fastball",
+			sundae_manatee = "Careful sundae lob",
+			gelato_narwhal = "Two-hand horn lance",
+			parfait_wyvern = "Two-hand sugar glide",
 		},
 	},
 
@@ -1101,6 +1136,7 @@ local Strings = {
 	box = {
 		snack = { name = "Soft Box" }, -- owner 2026-10-15 "Keep all": Soft / Sweet / Royal (ids kept)
 		sweet = { name = "Sweet Box" },
+		frosty = { name = "Frosty Box" }, -- plan "50 squishies" step 4 (the plan's name)
 		treat = { name = "Royal Box" },
 		-- Readings (Part 7; DESIGN implies these texts but never words them): the Boxes screen title; the Treat Box
 		-- row's note in place of Open (day = Config.Economy.Daily.freeBoxDay, worded like box.restrictedNote; Strings_Test
@@ -1131,6 +1167,8 @@ local Strings = {
 		footer = "Chances are the same for every player and never change. A squishy you already own is one more copy for your pen.",
 		-- Pens3 phase 5: a fixed-order box's next squishy ({name} = its name), shown before you open (D1:235).
 		nextItem = "Next in this box: {name}",
+		-- Plan "50 squishies": a zone box before its zone is reached ({zone} = the biome's name as the highway shows it).
+		zoneLocked = "Reach {zone} to open",
 		details = "Details: items & chances",
 		needCoins = { one = "You need {missing} more Coin", many = "You need {missing} more Coins" },
 		howToEarn = "How to earn Coins",

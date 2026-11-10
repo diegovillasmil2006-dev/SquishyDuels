@@ -169,7 +169,9 @@ function EventSchedule.restockOffers(index: number): { Offer }
 	local function pick(rarities: { string }, count: number): { Types.SquishyDef }
 		local pool = {}
 		for _, def in Catalog.list() do
-			if def.shopPrice ~= nil and table.find(rarities, def.rarity) then
+			-- Plan "50 squishies" (2026-11-10): a zone box's squishies (boxMult) stay out: their prices are far above a
+			-- restock buyer's Coins, so the offers stay the Soft and Sweet boxes' like before.
+			if def.shopPrice ~= nil and def.boxMult == nil and table.find(rarities, def.rarity) then
 				table.insert(pool, def)
 			end
 		end

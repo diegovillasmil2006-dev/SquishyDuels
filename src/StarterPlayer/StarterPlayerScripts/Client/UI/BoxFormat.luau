@@ -53,6 +53,7 @@ local Format = require(Shared.Util.Format)
 local PenMath = require(Shared.PenMath)
 local Rarity = require(Shared.Rarity)
 local Strings = require(Shared.Strings)
+local WorldLayout = require(Shared.World.WorldLayout)
 
 -- Types
 
@@ -110,7 +111,16 @@ export type Ledger = { { n: number, untilS: number } }
 -- Which control the open area shows: the two-step ConfirmButton, the Try again button, or none.
 export type OpenButton = "confirm" | "retry"
 
-export type OpenKind = "open" | "confirm" | "checking" | "retry" | "full" | "saving" | "needCoins" | "freeOnly"
+export type OpenKind =
+	"open"
+	| "confirm"
+	| "checking"
+	| "retry"
+	| "full"
+	| "saving"
+	| "needCoins"
+	| "freeOnly"
+	| "zoneLocked"
 
 export type OpenInput = {
 	box: string, -- box id
@@ -124,6 +134,7 @@ export type OpenInput = {
 	retryWaitSeconds: number?, -- seconds before Try again works again (Config.Monetization.Policy.manualRetryMinSeconds)
 	pen: any?, -- StateDelta.pen (pens3 phase 5: PenMath.room 0 = the Toy Box is full; nil = not known yet)
 	boxOrder: any?, -- StateDelta.boxOrder (pens3 phase 5: the fixed-order opens so far, per paid box id)
+	biome: number?, -- StateDelta.highway.biome (plan "50 squishies": a zone box opens from its zone; nil = 1)
 }
 
 export type OpenView = {
@@ -298,7 +309,8 @@ end
 
 -- Public: the open area (§6.10 table, §11.5, §11.6) --------------------------------------------------------------------
 
--- What the area under the disclosure shows. Order: free-only, then the policy (unknown, anything but eligible or
+-- What the area under the disclosure shows. Order: free-only, then a zone box whose zone is not reached yet (plan "50
+-- squishies": box.zoneLocked with the zone's name, never open; the server refuses it too), then the policy (unknown, anything but eligible or
 -- restricted = checking; restricted needs its next squishy, else checking too), then the profile (not ready, save
 -- pending), the Toy Box full, the lobby lock, the Coins, the armed confirm, open.
 function BoxFormat.openView(input: OpenInput): OpenView
@@ -323,6 +335,13 @@ function BoxFormat.openView(input: OpenInput): OpenView
 		view.kind = "freeOnly"
 		view.button = nil
 		view.text = Strings.box.freeOnly
+		return view
+	end
+	if not Boxes.isOpenFor(input.box, input.biome) then
+		local biome = WorldLayout.Highway.biomes[box.zone :: number]
+		local zone = if biome then Strings.resolve(biome.nameKey) else nil
+		view.kind = "zoneLocked"
+		view.reason = Strings.format(Strings.box.zoneLocked, { zone = zone or "?" })
 		return view
 	end
 	local policy = if type(input.policy) == "string" and POLICY_STATES[input.policy] then input.policy else "checking"

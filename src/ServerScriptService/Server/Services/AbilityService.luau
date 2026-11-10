@@ -49,6 +49,12 @@
 --   LaneSpec.floorY); Rain Check's centre and drops sit on the ground under the aimed enemy, and its drop targets are
 --   the enemies within targetRadius of the centre, nearest first (far ones no longer use up drops); detachFighter
 --   forgets one player who left a running match (SPEC D6) while the rest play on.
+-- * Frosty Box (2026-11-10; design: sd/ults2.js:5-6, lab50.js:295-325): Geyser Line is a rain whose drops stand in a
+--   line (dropSpacing) from the caster's side up to the centre (UltRules.rainDrops' `toward` = centre - origin), the
+--   nearest one first. Layer Cake Shockwave is the "shockwave" kind: no room needed, the centre is the caster's feet
+--   (rooted), and at the release `count` rings (CombatService.launchRing) start staggerSeconds apart, each growing at
+--   `speed` out to maxLength with a wall of half-thickness `radius`, jumped above clearHeight; the release carries
+--   them as `shots` (projId, origin = the centre, dir = zero, length = maxLength, releaseAt = its start).
 -- * Power-ups v1.1 (2026-10-16, MatchService's pads): addChargeFraction(userId, fraction) is the ult charge power-up
 --   (fraction × chargeMax onto the meter, clamped, UltimateCharge sent at once); the end of a root on an ffa port gives
 --   the standing caster port.movement(fighter) (its live speed / super jump power-ups) instead of the plain
@@ -129,6 +135,7 @@ export type AbilityDef = {
 	dropRadii: { number }?,
 	dropAngleStep: number?,
 	targetRadius: number?,
+	dropSpacing: number?, -- Geyser Line (2026-11-10): rain drops in a line this far apart
 }
 
 type CasterPhase = "idle" | "telegraph" | "recovery"
@@ -597,7 +604,7 @@ local function openMapRain(
 	for _, entry in near do
 		table.insert(targets, entry.spot)
 	end
-	return center, UltRules.rainDrops(center, ability, event.telegraphEndsAt, targets)
+	return center, UltRules.rainDrops(center, ability, event.telegraphEndsAt, targets, center - event.origin)
 end
 
 -- Rain Check at the release: the centre (the opponent's spot clamped into its half; practice: the target nearest the
@@ -619,7 +626,7 @@ local function rainDrops(caster: Caster, event: Types.UltimateEventPayload): (Ve
 		if spot then
 			table.insert(targets, UltRules.feetPoint(spot))
 		end
-		return center, UltRules.rainDrops(center, ability, releaseAt, targets)
+		return center, UltRules.rainDrops(center, ability, releaseAt, targets, center - event.origin)
 	end
 	local spots: { Vector3 } = {}
 	for _, target in PracticeService.targets() do
@@ -630,7 +637,7 @@ local function rainDrops(caster: Caster, event: Types.UltimateEventPayload): (Ve
 	local bounds = PracticeTargets.BOUNDS
 	local zone = { cframe = CFrame.new(bounds.position), size = bounds.size }
 	local center = UltRules.rainCenter(aimed, fallback, zone, floorY)
-	return center, UltRules.rainDrops(center, ability, releaseAt, spots)
+	return center, UltRules.rainDrops(center, ability, releaseAt, spots, center - event.origin)
 end
 
 local BEHAVIOURS: { [string]: Behaviour } = {
@@ -762,6 +769,46 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 			end
 			out.center = center
 			out.drops = list
+			return out
+		end,
+	},
+	-- Layer Cake Shockwave (Frosty Box, 2026-11-10; design: ults2.js:6, lab50.js:309-325): the caster leaps and lands
+	-- where it stands; at the release `count` cake rings grow from its feet, staggerSeconds apart.
+	shockwave = {
+		prepare = function(_caster: Caster, ctx: CastContext, rootPosition: Vector3, _dir: Vector3): (string?, Prepared?)
+			return nil, {
+				origin = Vector3.new(rootPosition.X, ctx.floorY, rootPosition.Z),
+				length = 0,
+				stoppedByGeometry = false,
+			}
+		end,
+		launch = function(caster: Caster, event: Types.UltimateEventPayload): Types.UltimateEventPayload
+			local ability = caster.ability
+			local out = released(event)
+			local shots: { Types.UltimateShot } = {}
+			for index = 1, math.max(1, math.floor(ability.count or 1)) do
+				local startAt = event.telegraphEndsAt + (ability.staggerSeconds or 0) * (index - 1)
+				local projId = CombatService.launchRing({
+					caster = caster.fighter,
+					player = caster.player,
+					squishyId = caster.squishyId,
+					center = event.origin,
+					startAt = startAt,
+					speed = ability.speed,
+					maxRadius = ability.maxLength,
+					width = ability.radius,
+					clearHeight = ability.clearHeight or 0,
+					floorY = caster.floorY,
+				})
+				table.insert(shots, {
+					projId = projId,
+					origin = event.origin,
+					dir = Vector3.zero,
+					length = ability.maxLength,
+					releaseAt = startAt,
+				})
+			end
+			out.shots = shots
 			return out
 		end,
 	},

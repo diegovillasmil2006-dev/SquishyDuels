@@ -11,7 +11,9 @@
 --     rad and radius 2, 4, 6, 2, 4 around it, its shadow at 0.9 + 0.36k s after the release and its landing 0.75 s
 --     later; a target within 7.5 studs of the centre gets a drop at its own spot, from the last drop back
 --     (design: fp.js:352-357, 371-372);
---   * the practice range's rain centres on the target nearest the aim.
+--   * the practice range's rain centres on the target nearest the aim;
+--   * Frosty Box (2026-11-10): Geyser Line's 3 drops stand in a line toward the centre, 5 studs apart, the centre last,
+--     0.35 s apart; a Layer Cake Shockwave ring hits a body its wall meets this step and reaches it at d - R - width.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -117,6 +119,33 @@ return function(t: Context)
 		-- A drop is at floor height even when a target stands on something.
 		local raised = UltRules.rainDrops(center, RAIN, 0, { Vector3.new(1, 4, 30) })
 		expect.near(raised[5].position.Y, 0, 1e-9)
+	end)
+
+	t.test("rainDrops with dropSpacing: Geyser Line's drops in a line up to the centre, the nearest first", function()
+		local GEYSER = Config.Abilities.geyser_line
+		local center = Vector3.new(10, 0, 40)
+		local drops = UltRules.rainDrops(center, GEYSER, 100, {}, Vector3.new(0, 3, 30)) -- from the caster's side (-Z)
+		expect.equal(#drops, 3)
+		near(drops[1].position, Vector3.new(10, 0, 30))
+		near(drops[2].position, Vector3.new(10, 0, 35))
+		near(drops[3].position, center)
+		expect.near(drops[1].shadowAt, 100.1, 1e-9)
+		expect.near(drops[3].shadowAt, 100.1 + 0.7, 1e-9)
+		expect.near(drops[3].landAt - drops[3].shadowAt, 0.51, 1e-9)
+		-- Without `toward` the drops stay where the angle rule puts them (Rain Check's way).
+		near(UltRules.rainDrops(center, GEYSER, 0, {})[1].position, center)
+	end)
+
+	t.test("ringTouches / ringReachTime: the cake ring meets a body as its wall passes it", function()
+		local center = Vector3.new(0, 0, 0)
+		local R = HITBOX.radius
+		local root = Vector3.new(8, STAND, 0)
+		expect.falsy(UltRules.ringTouches(center, 2, 4, 0.5, root)) -- not there yet
+		expect.truthy(UltRules.ringTouches(center, 6, 8 - R - 0.5, 0.5, root)) -- the wall just reaches the body
+		expect.truthy(UltRules.ringTouches(center, 7.5, 8.5, 0.5, root)) -- passing through it
+		expect.falsy(UltRules.ringTouches(center, 8 + R + 0.6, 12, 0.5, root)) -- already past
+		expect.near(UltRules.ringReachTime(10, 12, 0.5, 8), 10 + (8 - R - 0.5) / 12, 1e-9)
+		expect.near(UltRules.ringReachTime(10, 12, 0.5, 0.2), 10, 1e-9) -- at the centre: at once
 	end)
 
 	t.test("practiceCenter: the target nearest the aim within range; none in front gives nil", function()

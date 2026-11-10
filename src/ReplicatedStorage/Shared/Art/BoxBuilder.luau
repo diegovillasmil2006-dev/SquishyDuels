@@ -14,6 +14,9 @@
 -- Roblox limits, stated (G7.9): no rounded boxes, cones, tori, canvas textures or back-face ink hulls; each is the
 -- nearest primitive (see each blueprint's header). The models are the reveal's fallback until the user imports the
 -- Blender meshes named after the nodes (plan G7.9).
+--   Mesh (2026-11-10, the zone boxes: Art/BoxFrosty): a copy of the MeshPart `name` of the blueprint's `meshModel`
+--   (ReplicatedStorage.SD_Models.<meshModel>, imported from Blender with its colours stored in the mesh: `color` White
+--   keeps them). A blueprint whose meshes are not all there has no blueprint() (the reveal shows the Snack box).
 -- write() keeps the squash exact for parts turned with the box and close for the others: a part's size follows the
 -- squash along its own axes (|R x squash| per axis). Sizes are written only when the squash changes.
 -- Pure (unit-tested): blueprint(boxId), nodeFrames(blueprint, scale, motion), partCount(blueprint), nodeOf(part).
@@ -28,7 +31,7 @@ local Palette = require(ReplicatedStorage.Shared.Art.Palette)
 
 -- Types
 
-export type Shape = "Block" | "Ball" | "Ellipsoid" | "Cylinder" | "Tri"
+export type Shape = "Block" | "Ball" | "Ellipsoid" | "Cylinder" | "Tri" | "Mesh"
 export type BoxNode = { parent: string?, pos: Vector3, rot: Vector3? }
 export type BoxPart = {
 	name: string,
@@ -42,7 +45,8 @@ export type BoxPart = {
 	material: string?,
 }
 export type BoxBlueprint = {
-	kind: "soft" | "sweet" | "royal",
+	kind: "soft" | "sweet" | "royal" | "frosty",
+	meshModel: string?, -- the ReplicatedStorage.SD_Models model holding the Mesh parts
 	nodes: { [string]: BoxNode },
 	order: { string },
 	parts: { BoxPart },
@@ -71,7 +75,8 @@ export type Built = {
 local CYLINDER_FIX = CFrame.Angles(0, 0, math.pi / 2) -- a Roblox cylinder lies on X; the blueprints stand it on Y
 local TRI_HALF_YAW = math.rad(90) -- SquishyBuilder's TRI_HALF_YAW_DEG: the two halves make a "Λ"
 local SQUASH_EPSILON = 1e-4
-local MODELS = { snack = "BoxSoft", sweet = "BoxSweet", treat = "BoxRoyal" } :: { [string]: string }
+local MODELS = { snack = "BoxSoft", sweet = "BoxSweet", treat = "BoxRoyal", frosty = "BoxFrosty" } :: { [string]: string }
+local MESH_FOLDER = "SD_Models"
 
 -- Module table
 
@@ -110,16 +115,34 @@ local function newPart(
 	return part
 end
 
+-- The imported MeshPart a Mesh part copies, or nil.
+local function meshSource(bp: BoxBlueprint, name: string): MeshPart?
+	local folder = ReplicatedStorage:FindFirstChild(MESH_FOLDER)
+	local model = if folder and bp.meshModel then folder:FindFirstChild(bp.meshModel) else nil
+	local source = if model then model:FindFirstChild(name) else nil
+	return if source and source:IsA("MeshPart") then source else nil
+end
+
 -- Public: pure
 
--- The blueprint of a box id (snack -> BoxSoft, sweet -> BoxSweet, treat -> BoxRoyal); nil for anything else.
+-- The blueprint of a box id (snack -> BoxSoft, sweet -> BoxSweet, treat -> BoxRoyal, frosty -> BoxFrosty); nil for
+-- anything else, and for a blueprint whose imported meshes are not all there.
 function BoxBuilder.blueprint(boxId: string): BoxBlueprint?
 	local name = MODELS[boxId]
 	if name == nil then
 		return nil
 	end
 	local module = script.Parent:FindFirstChild(name)
-	return if module and module:IsA("ModuleScript") then (require(module) :: any) :: BoxBlueprint else nil
+	if not (module and module:IsA("ModuleScript")) then
+		return nil
+	end
+	local bp = (require(module) :: any) :: BoxBlueprint
+	for _, spec in bp.parts do
+		if spec.shape == "Mesh" and meshSource(bp, spec.name) == nil then
+			return nil
+		end
+	end
+	return bp
 end
 
 -- Every node's frame (model space, studs) at `scale`, with each node's `motion` applied after its own rest turn.
@@ -170,7 +193,20 @@ function BoxBuilder.build(bp: BoxBlueprint, scale: number): Built
 	for _, spec in bp.parts do
 		local at = CFrame.new((spec.pos or Vector3.zero) * s) * angles(spec.rot)
 		local size = spec.size * s
-		if spec.shape == "Tri" then
+		if spec.shape == "Mesh" then
+			local source = meshSource(bp, spec.name)
+			assert(source, `BoxBuilder: the {bp.meshModel} mesh {spec.name} is missing`)
+			local part = source:Clone()
+			local look = newPart("Part", spec.name, spec.color, spec.transparency, spec.material)
+			part.Name = spec.name
+			part.Anchored, part.CanCollide, part.CanTouch, part.CanQuery = true, false, false, false
+			part.CastShadow, part.Massless = false, true
+			part.Color, part.Transparency, part.Material = look.Color, look.Transparency, look.Material
+			look:Destroy()
+			part:ClearAllChildren()
+			add(part, spec, at, size)
+			named[spec.name] = part
+		elseif spec.shape == "Tri" then
 			local half = Vector3.new(size.Z, size.Y, size.X / 2)
 			for side, x in { -size.X / 4, size.X / 4 } do
 				local yaw = if side == 1 then TRI_HALF_YAW else -TRI_HALF_YAW

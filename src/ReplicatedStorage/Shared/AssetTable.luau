@@ -230,7 +230,7 @@ local function killEmblem(key: string, id: number, file: string, use: string, by
 		id = id,
 		source = `{by or "VillasmilGaming"} upload (Studio): '{file}'`,
 		license = if by
-			then "Own upload (jayyyyy2806): a render of Claude Design's emblem SVG for the game's own Cosmo (no third-party art)"
+			then "Own upload (jayyyyy2806): a render of Claude Design's emblem SVG for the game's own squishy (no third-party art)"
 			else EMBLEM_LICENSE,
 		verifiedAt = if by then "2026-11-10" else KILL_DATE,
 		notes = use,
@@ -533,6 +533,24 @@ local SLOTS: { AssetSlot } = {
 		nil,
 		"Gravity Well wind-up (0.7 s); for now Rain Check's file, sfx_ultCharge_cloud_bunny.wav",
 		uploaded(114287899394348, 1, "sfx.ultCharge.cloud_bunny (Cloud Bunny ult charge-up).wav")
+	),
+	-- Frosty Box (2026-11-10). shortcut: borrowed wind-ups until each gets its own: Geyser Line (0.5 s) Rain Check's (the
+	-- same drop family), Layer Cake Shockwave (0.8 s) the Sprinkle Roller's (a ground attack).
+	soundSlot(
+		"sfx.ultCharge.gelato_narwhal",
+		"SFX",
+		true,
+		nil,
+		"Geyser Line wind-up (0.5 s); for now Rain Check's file, sfx_ultCharge_cloud_bunny.wav",
+		uploaded(114287899394348, 1, "sfx.ultCharge.cloud_bunny (Cloud Bunny ult charge-up).wav")
+	),
+	soundSlot(
+		"sfx.ultCharge.parfait_wyvern",
+		"SFX",
+		true,
+		nil,
+		"Layer Cake Shockwave wind-up (0.8 s); for now the Sprinkle Roller's file, sfx_ultCharge_donut.wav",
+		uploaded(133399262015268, 1, "sfx.ultCharge.donut (Donut ult charge-up).wav")
 	),
 	soundSlot(
 		"sfx.ultRelease",
@@ -1013,6 +1031,24 @@ local SLOTS: { AssetSlot } = {
 		nil,
 		"kill banner sheet, Cosmo (Cosmo's Supernova): for now Cloudburst's file 'sfx_kill_cloudburst_v2.ogg'",
 		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
+	),
+	-- Frosty Box (2026-11-10). shortcut: borrowed sheets until each set gets its own: Narwhal's Brain Freeze Cloudburst's
+	-- (wind, rain), Wyvern's Sugar Storm Sprinkle Blast's (sprinkle tinkles).
+	soundSlot(
+		"sfx.kill.narwhal_brain_freeze",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Gelato Narwhal (Narwhal's Brain Freeze): for now Cloudburst's file 'sfx_kill_cloudburst_v2.ogg'",
+		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
+	),
+	soundSlot(
+		"sfx.kill.wyvern_sugar_storm",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Parfait Wyvern (Wyvern's Sugar Storm): for now Sprinkle Blast's file 'sfx_kill_sprinkle_blast_v2.ogg'",
+		killSheet(121984041164424, "sfx_kill_sprinkle_blast_v2.ogg")
 	),
 	soundSlot(
 		"sfx.kill.bubble_burst",
@@ -1696,6 +1732,7 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.icon.match", "image", IMAGE_NOTE),
 	otherSlot("img.box.sweet", "image", IMAGE_NOTE),
 	otherSlot("img.box.treat", "image", IMAGE_NOTE),
+	otherSlot("img.box.frosty", "image", IMAGE_NOTE), -- Claude Design BOXES zip (2026-11-10): pictures/box_frosty.png
 	otherSlot("img.fx.rays", "image", IMAGE_NOTE),
 	otherSlot("img.fx.raysDetail", "image", IMAGE_NOTE),
 	otherSlot("img.fx.raysReveal", "image", IMAGE_NOTE),
@@ -1747,6 +1784,21 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.squishy.bao_buddy.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.pando.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.cosmo.white", "image", IMAGE_NOTE),
+	-- Frosty Box (2026-11-10): empty picture slots like Series 01's.
+	otherSlot("img.squishy.cone_cub", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.slushy_seal", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.ice_pop_beaver", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.mint_chip_mouse", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.sundae_manatee", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.gelato_narwhal", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.parfait_wyvern", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.cone_cub.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.slushy_seal.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.ice_pop_beaver.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.mint_chip_mouse.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.sundae_manatee.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.gelato_narwhal.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.parfait_wyvern.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.squishies.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.boxes.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.shop.white", "image", IMAGE_NOTE),
@@ -1872,6 +1924,11 @@ local SLOTS: { AssetSlot } = {
 	-- Series 01 (2026-11-10): the design's own emblem (sd/ults2.js KILLSETS2.Cosmo), rendered 512 px.
 	killEmblem("img.kill.emblem.cosmo_supernova", 109481490010402, "kill_emblem_cosmo_supernova.png", "Cosmo's Supernova: Cosmo, low-fidelity", "jayyyyy2806"),
 	killEmblem("img.kill.emblem.cosmo_supernova.white", 120324346026269, "kill_emblem_cosmo_supernova_white.png", "Cosmo's Supernova: Cosmo, low-fidelity: white silhouette", "jayyyyy2806"),
+	-- Frosty Box (2026-11-10): the design's own emblems (sd/ults2.js KILLSETS2), rendered 512 px.
+	killEmblem("img.kill.emblem.narwhal_brain_freeze", 86802954605919, "kill_emblem_narwhal_brain_freeze.png", "Narwhal's Brain Freeze: Gelato Narwhal, low-fidelity", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.narwhal_brain_freeze.white", 132330938740445, "kill_emblem_narwhal_brain_freeze_white.png", "Narwhal's Brain Freeze: Gelato Narwhal, low-fidelity: white silhouette", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.wyvern_sugar_storm", 118259618907542, "kill_emblem_wyvern_sugar_storm.png", "Wyvern's Sugar Storm: Parfait Wyvern, low-fidelity", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.wyvern_sugar_storm.white", 115534404080966, "kill_emblem_wyvern_sugar_storm_white.png", "Wyvern's Sugar Storm: Parfait Wyvern, low-fidelity: white silhouette", "jayyyyy2806"),
 	-- Highway v2 (jayyyyy 2026-10-23, Claude Design's "Highway Zones Spec v2": "Floors get two-tone squares from one
 	-- checker Texture (10-stud cells, black at Transparency 0.92)"; owner: "checkered pattern but with lego texture").
 	{
@@ -2084,6 +2141,7 @@ local IMAGE_IDS: { [string]: number } = {
 	["img.icon.match"] = 75650728481067,
 	["img.box.sweet"] = 102246400652557,
 	["img.box.treat"] = 108858759156594,
+	["img.box.frosty"] = 87001908952247,
 	["img.fx.rays"] = 127919808884928,
 	["img.fx.raysDetail"] = 129278230460109,
 	["img.fx.raysReveal"] = 104783140251190,

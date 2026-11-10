@@ -48,6 +48,9 @@ export type EliminationEffectId =
 	| "cloudburst"
 	| "bubble_burst"
 	| "dragon_blaze"
+	| "cosmo_supernova"
+	| "narwhal_brain_freeze"
+	| "wyvern_sugar_storm"
 
 export type SquishyDef = {
 	id: string,
@@ -56,6 +59,9 @@ export type SquishyDef = {
 	blueprintId: string,
 	icon: string?, -- uploaded image id later; nil = static viewport preview (v1)
 	power: number?, -- optional squishy power; default Economy.SquishyPower[rarity] (spec 2026-10-12 §6)
+	-- Plan "50 squishies" (owner 2026-11-01 "Yes, use 3x"): a zone box's squishies earn and sell for this many times their
+	-- rarity's (Frosty 3, Lava 9, Prism 27, Halo 81); nil = 1 (the Soft and Sweet boxes).
+	boxMult: number?,
 	shopPrice: number?, -- nil = not sold (the starter)
 	robuxOnly: boolean?,
 	equivalentId: string?, -- future Robux-exclusive squishies (§6.12)

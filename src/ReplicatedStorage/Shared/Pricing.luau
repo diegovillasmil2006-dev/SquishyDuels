@@ -13,6 +13,8 @@
 --                                      price (Config.Economy.Pen.welcomePrice[rarity], Commons 3,000) while `owned`
 --                                      (profile.owned) has no entry for it, else the Catalog shopPrice; nil when it is
 --                                      not sold. `owned` that is not a table pays the full price (fail closed).
+--                                      Plan "50 squishies": only a squishy with no boxMult (the Soft Box's Commons) has
+--                                      a Welcome price; a zone box's Common costs its full price from the first one.
 --                                      Config/ValidatePen keeps every Welcome price at or below the shopPrice.
 -- Pens3 phase 5: copies replaced the duplicate refund (Pricing.duplicateRefund is gone).
 --
@@ -55,7 +57,7 @@ function Pricing.shopPrice(id: unknown, owned: unknown): number?
 	if def == nil or price == nil then
 		return nil
 	end
-	local welcome = Config.Economy.Pen.welcomePrice[def.rarity]
+	local welcome = if def.boxMult == nil then Config.Economy.Pen.welcomePrice[def.rarity] else nil
 	if welcome ~= nil and type(owned) == "table" and (owned :: any)[def.id] == nil then
 		return welcome
 	end

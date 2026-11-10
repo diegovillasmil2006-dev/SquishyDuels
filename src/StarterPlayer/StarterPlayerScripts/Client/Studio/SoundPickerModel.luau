@@ -267,6 +267,8 @@ local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } 
 			{ key = "sfx.ultCharge.cloud_bunny", runner = "plain" },
 			{ key = "sfx.ultCharge.cupcake_axolotl", runner = "plain" },
 			{ key = "sfx.ultCharge.cosmo", runner = "plain" }, -- Series 01 (2026-11-10)
+			{ key = "sfx.ultCharge.gelato_narwhal", runner = "plain" }, -- Frosty Box (2026-11-10)
+			{ key = "sfx.ultCharge.parfait_wyvern", runner = "plain" },
 			{ key = "sfx.ultRelease", runner = "plain" },
 			{ key = "sfx.ultRainDrop", runner = "plain" },
 			{ key = "sfx.ultCloudHover", runner = "plain" },

@@ -20,6 +20,15 @@
 --     (UltWellZone, pulsing) until the pop, Cosmo flying to wellHoverStuds over the centre in wellLobSeconds and
 --     spinning there, 6 beads (its colours) spiralling in from the ring to the centre, and at the pop 40 stars, a gold
 --     and a lilac ring and sfx.ultBubblePop.
+--   Geyser Line (Gelato Narwhal, Frosty Box 2026-11-10; design: sd/lab50.js:295-307): a 3-drop rain in a line drawn as
+--     geysers: no zone and no hovering toy; each drop's frost circle (UltGeyserFrost, its dropHitRadius, pulsing) from
+--     shadowAt until it erupts at landAt, then an ice column rising and sinking (geyserColumnSeconds), 18 ice cubes, a
+--     white ring and sfx.ultRainDrop (a stand-in for the design's splat).
+--   Layer Cake Shockwave (Parfait Wyvern; design: sd/lab50.js:309-325): from the telegraph a glowing landing spot at
+--     the caster's feet and the wyvern leaping up from the caster, landing on its spot at the release (26 sugar petals,
+--     sfx.ultBubblePop as the design's boom); then each ring (the release's shots: pink, cream, blueberry) a wall of
+--     shockRingSegments pieces growing from its releaseAt at the ability's speed out to its length; the wyvern flies
+--     back shockReturnAfter after landing. A cancel takes the spot and the wyvern away.
 --   Bubble Pop: the Axolotl in its bubble shell (UltBubbleShell) on the design's 0.9 m arc; at its server end (a hit
 --     or its pop) the pop ring (6 studs), 26 puffs and sfx.ultBubblePop. Bubble Pop bounce (2026-10-16): with the
 --     release's `bounce` the path turns there onto the bounce leg (the Axolotl faces its new way) and the arc spans the
@@ -108,6 +117,7 @@ type Drop = {
 	shadow: BasePart?,
 	drop: BasePart?,
 	landed: boolean,
+	column: BasePart?, -- Geyser Line: its ice column after it erupts
 }
 
 type Rain = {
@@ -130,6 +140,26 @@ type Rain = {
 	zoneSeconds: number,
 	hoverSeconds: number,
 	beads: { BasePart },
+	-- Geyser Line (Frosty Box): no zone and no toy; each drop is a frost circle, then a geyser (dropHitRadius wide).
+	geyser: boolean,
+	geyserRadius: number,
+}
+
+-- Layer Cake Shockwave (Frosty Box, 2026-11-10): the landing spot, the leaping wyvern and the cake rings of one cast.
+type CakeRing = { startAt: number, length: number, color: Color3, parts: { BasePart } }
+type Shock = {
+	casterId: number,
+	center: Vector3, -- the caster's feet (the rings' centre, on the floor)
+	startAt: number, -- server time the wind-up was drawn from
+	landAt: number, -- the release (telegraphEndsAt)
+	speed: number,
+	from: Vector3,
+	spot: BasePart?,
+	toy: Model?,
+	toyHalf: number, -- the toy's half height at its flight size
+	landed: boolean,
+	rings: { CakeRing },
+	endsAt: number,
 }
 
 type Cast = {
@@ -153,6 +183,13 @@ local DROP_NAME = "SD_UltDrop"
 local LANE_THICKNESS = 0.1
 local DISC_THICKNESS = 0.1
 local WELL_ID = "gravity_well" -- Cosmo's (Config.Abilities): a one-drop rain drawn as a well
+local GEYSER_ID = "geyser_line" -- Gelato Narwhal's (Config.Abilities): a rain in a line drawn as geysers
+local COLUMN_NAME = "SD_UltGeyser"
+local SPOT_NAME = "SD_UltCakeSpot"
+local CAKE_NAME = "SD_UltCakeRing"
+local CAKE_COLORS = { Palette.UltCakePink, Palette.UltCakeCream, Palette.UltCakeBlueberry } -- design: sd/lab50.js:310
+local GEYSER_CUBES = { Palette.White, Palette.UltGeyserFrost, Palette.UltGeyserBlue } -- design: sd/lab50.js:302
+local PETAL_COLORS = { Palette.UltCakePink, Palette.UltCakeSpot, Palette.White } -- design: sd/lab50.js:318
 local WELL_RADIUS = Config.Abilities.gravity_well.radius :: number -- set (Config.validate checks it)
 local BEAD_NAME = "SD_UltBead"
 local BEAD_COLORS = {
@@ -190,6 +227,7 @@ local casts: { [number]: Cast } = {}
 local flights: { [number]: Flight } = {}
 local infos: { [number]: ProjInfo } = {}
 local rains: { Rain } = {}
+local shocks: { [number]: Shock } = {} -- Layer Cake Shockwave, by caster
 local lanes: { { part: BasePart, untilClock: number } } = {}
 local deps: Deps? = nil
 
@@ -639,7 +677,13 @@ local function makeDisc(name: string, center: Vector3, radius: number, color: Co
 	return part
 end
 
-local function startRain(event: Types.UltimateEventPayload, ability: any, squishyId: string, well: boolean)
+local function startRain(
+	event: Types.UltimateEventPayload,
+	ability: any,
+	squishyId: string,
+	well: boolean,
+	geyser: boolean
+)
 	local center = event.center
 	local drops = event.drops
 	if center == nil or drops == nil then
@@ -661,14 +705,16 @@ local function startRain(event: Types.UltimateEventPayload, ability: any, squish
 		center = center,
 		floorY = floorY,
 		releaseAt = releaseAt,
-		zone = makeDisc(
-			ZONE_NAME,
-			center + Vector3.new(0, FX.laneLift, 0),
-			ability.radius,
-			if well then Palette.UltWellZone else Palette.UltRainZone,
-			1
-		),
-		bunny = newModel(squishyId, bunnyScale),
+		zone = if geyser
+			then nil
+			else makeDisc(
+				ZONE_NAME,
+				center + Vector3.new(0, FX.laneLift, 0),
+				ability.radius,
+				if well then Palette.UltWellZone else Palette.UltRainZone,
+				1
+			),
+		bunny = if geyser then nil else newModel(squishyId, bunnyScale),
 		bunnyScale = bunnyScale,
 		from = from,
 		lobSeconds = lobSeconds,
@@ -680,7 +726,12 @@ local function startRain(event: Types.UltimateEventPayload, ability: any, squish
 		zoneSeconds = if well then popIn else FX.zoneSeconds,
 		hoverSeconds = if well then math.max(popIn - lobSeconds, 0) else FX.hoverSeconds,
 		beads = {},
+		geyser = geyser,
+		geyserRadius = ability.dropHitRadius or ability.radius,
 	}
+	if geyser then
+		rain.endsAt = releaseAt -- no zone and no toy over it (design: sd/lab50.js:295-307): only circles and geysers
+	end
 	if well then
 		rain.endsAt = releaseAt + popIn + FX.wellRingLilacSeconds
 		for index = 1, FX.wellBeadCount do
@@ -707,7 +758,10 @@ local function startRain(event: Types.UltimateEventPayload, ability: any, squish
 			drop = nil,
 			landed = false,
 		})
-		rain.endsAt = math.max(rain.endsAt, drop.landAt + FX.splashRingSeconds)
+		rain.endsAt = math.max(
+			rain.endsAt,
+			drop.landAt + (if geyser then math.max(FX.geyserColumnSeconds, FX.geyserRingSeconds) else FX.splashRingSeconds)
+		)
 	end
 	local bunny = rain.bunny
 	if bunny then
@@ -787,6 +841,74 @@ local function stepRain(rain: Rain, now: number): boolean
 		end
 	end
 	for _, drop in rain.drops do
+		if rain.geyser then
+			-- design: sd/lab50.js:300-304. The frost circle pulses until the eruption; then the column rises and sinks
+			-- (sin(uπ) of its height over geyserColumnSeconds), the cubes burst, the white ring opens.
+			local floorPoint = Vector3.new(drop.position.X, rain.floorY, drop.position.Z)
+			if not drop.landed and now >= drop.shadowAt and now < drop.landAt then
+				local circle = drop.shadow
+				if circle == nil then
+					circle = makeDisc(
+						SHADOW_NAME,
+						floorPoint + Vector3.new(0, FX.laneLift * 2, 0),
+						rain.geyserRadius,
+						Palette.UltGeyserFrost,
+						1
+					)
+					drop.shadow = circle
+				end
+				local s = if reduced then 0.5 else UltFx.pulse(now - drop.shadowAt, FX.zonePulseHz);
+				(circle :: BasePart).Transparency = 1 - FX.geyserCircleOpacity * FX.zoneFill * 2 * (0.55 + 0.45 * s)
+			elseif not drop.landed and now >= drop.landAt then
+				drop.landed = true
+				local circle = drop.shadow
+				drop.shadow = nil
+				if circle then
+					releasePart(circle)
+				end
+				drop.column = FxPool.default():acquirePart({
+					Name = COLUMN_NAME,
+					Shape = Enum.PartType.Cylinder,
+					Size = Vector3.new(0.05, 2 * rain.geyserRadius * FX.geyserColumnShare, 2 * rain.geyserRadius * FX.geyserColumnShare),
+					CFrame = CFrame.new(floorPoint) * CFrame.Angles(0, 0, math.rad(90)),
+					Color = Palette.UltGeyserColumn,
+					Transparency = 0.15,
+					Material = Enum.Material.Ice,
+				})
+				burst(
+					floorPoint + Vector3.new(0, 0.15 / 0.28, 0),
+					FX.geyserCubes,
+					GEYSER_CUBES,
+					FX.geyserCubeSize,
+					FX.geyserCubeLifetime,
+					FX.geyserCubeSpeed,
+					FX.geyserCubeGravity
+				)
+				FxShapes.ring(
+					floorPoint,
+					Vector3.yAxis,
+					2 * rain.geyserRadius * FX.geyserRingScale,
+					FX.geyserRingSeconds,
+					Palette.White,
+					FX.geyserRingTransparencyFrom
+				)
+				play(SOUND_DROP, floorPoint, rain.casterId)
+			end
+			local column = drop.column
+			if column then
+				local u = (now - drop.landAt) / FX.geyserColumnSeconds
+				if u >= 1 then
+					drop.column = nil
+					releasePart(column)
+				else
+					local h = math.max(0.05, math.sin(math.clamp(u, 0, 1) * math.pi) * FX.geyserColumnHeight)
+					local width = 2 * rain.geyserRadius * FX.geyserColumnShare
+					column.Size = Vector3.new(h, width, width)
+					column.CFrame = CFrame.new(floorPoint + Vector3.new(0, h / 2, 0)) * CFrame.Angles(0, 0, math.rad(90))
+				end
+			end
+			continue
+		end
 		if drop.landed then
 			continue
 		end
@@ -921,6 +1043,163 @@ local function stepRain(rain: Rain, now: number): boolean
 	return now < rain.endsAt + DROP_FADE_SECONDS
 end
 
+-- Layer Cake Shockwave (Frosty Box, 2026-11-10; design: sd/lab50.js:309-325): the cast's spot and wyvern from the wind-up.
+local function startShock(event: Types.UltimateEventPayload, ability: any, squishyId: string): Shock
+	local casterRoot = rootOf(event.casterId)
+	local center = event.origin
+	local def = Catalog.get(squishyId)
+	local toyScale = flightScaleOf(squishyId, if def then def.throw.radius else 1)
+	local toy = newModel(squishyId, toyScale)
+	local toyHalf = 0.5
+	if toy then
+		local _, size = toy:GetBoundingBox()
+		toyHalf = size.Y / 2
+		toy.Parent = fxFolder()
+	end
+	local now = serverNow()
+	local shock: Shock = {
+		casterId = event.casterId,
+		center = center,
+		startAt = math.min(now, event.telegraphEndsAt),
+		landAt = event.telegraphEndsAt,
+		speed = math.max(ability.speed, 1e-3),
+		from = if casterRoot then casterRoot.Position + Vector3.new(0, 1.8, 0) else center + Vector3.new(0, 3, 0),
+		spot = makeDisc(SPOT_NAME, center + Vector3.new(0, FX.laneLift * 2, 0), FX.shockSpotRadius, Palette.UltCakeSpot, 1),
+		toy = toy,
+		toyHalf = toyHalf,
+		landed = false,
+		rings = {},
+		endsAt = event.telegraphEndsAt + FX.shockReturnAfter + FX.shockReturnSeconds,
+	}
+	shocks[event.casterId] = shock
+	return shock
+end
+
+local function endShock(shock: Shock)
+	local spot = shock.spot
+	shock.spot = nil
+	if spot then
+		releasePart(spot)
+	end
+	local toy = shock.toy
+	shock.toy = nil
+	if toy then
+		toy:Destroy()
+	end
+	for _, ring in shock.rings do
+		for _, part in ring.parts do
+			releasePart(part)
+		end
+		table.clear(ring.parts)
+	end
+	if shocks[shock.casterId] == shock then
+		shocks[shock.casterId] = nil
+	end
+end
+
+-- One ring's wall at radius `r` (its pieces made on first use): each piece a chord of the circle facing the centre.
+local function placeRing(shock: Shock, ring: CakeRing, r: number, fade: number)
+	local n = FX.shockRingSegments
+	if #ring.parts == 0 then
+		for _ = 1, n do
+			table.insert(
+				ring.parts,
+				FxPool.default():acquirePart({
+					Name = CAKE_NAME,
+					Size = Vector3.one,
+					CFrame = CFrame.new(shock.center),
+					Color = ring.color,
+					Transparency = 0,
+					Material = Enum.Material.SmoothPlastic,
+				})
+			)
+		end
+	end
+	local chord = 2 * r * math.sin(math.pi / n) * 1.05
+	local middle = shock.center + Vector3.new(0, FX.shockRingHeight / 2, 0)
+	for index, part in ring.parts do
+		local a = (index - 1) / n * 2 * math.pi
+		local p = middle + Vector3.new(math.cos(a) * r, 0, math.sin(a) * r)
+		part.Size = Vector3.new(math.max(chord, 0.05), FX.shockRingHeight, FX.shockRingThickness)
+		part.CFrame = CFrame.lookAt(p, middle)
+		part.Transparency = 1 - fade
+	end
+end
+
+local function stepShock(shock: Shock, now: number): boolean
+	local reduced = isReduced()
+	local spot = shock.spot
+	if spot then
+		if now >= shock.landAt then
+			shock.spot = nil
+			releasePart(spot)
+		else
+			local s = if reduced then 0.5 else UltFx.pulse(now - shock.startAt, FX.zonePulseHz)
+			spot.Transparency = 1 - FX.zoneOpacity * (0.55 + 0.45 * s)
+		end
+	end
+	local toy = shock.toy
+	local land = shock.center + Vector3.new(0, shock.toyHalf, 0)
+	local up = shock.center + Vector3.new(0, FX.shockLeapStuds, 0)
+	if toy then
+		local span = math.max(shock.landAt - shock.startAt, 1e-3)
+		local rise = span * FX.shockRiseShare
+		local t = now - shock.startAt
+		if t < rise then
+			-- design: lab50.js:316 (cos01 ease up, spinning)
+			local k = (1 - math.cos(math.pi * math.clamp(t / rise, 0, 1))) / 2
+			local spin = if reduced then 0 else t * FX.shockSpinRate
+			toy:PivotTo(CFrame.new(shock.from:Lerp(up, k)) * CFrame.Angles(0, spin, 0))
+		elseif now < shock.landAt then
+			local k = math.clamp((t - rise) / math.max(span - rise, 1e-3), 0, 1)
+			toy:PivotTo(CFrame.new(up:Lerp(land, k * k))) -- lab50.js:317 (falls along k²)
+		else
+			local back = now - shock.landAt - FX.shockReturnAfter
+			if back < 0 then
+				toy:PivotTo(CFrame.new(land))
+			else
+				local k = math.clamp(back / FX.shockReturnSeconds, 0, 1)
+				local e = (1 - math.cos(math.pi * k)) / 2
+				toy:PivotTo(CFrame.new(land:Lerp(shock.from, e) + Vector3.new(0, math.sin(math.pi * k) * 0.5 / 0.28, 0)))
+				if k >= 1 then
+					shock.toy = nil
+					toy:Destroy()
+				end
+			end
+		end
+	end
+	if not shock.landed and now >= shock.landAt then
+		shock.landed = true
+		burst(
+			shock.center + Vector3.new(0, 0.2 / 0.28, 0),
+			FX.shockPetals,
+			PETAL_COLORS,
+			FX.shockPetalSize,
+			FX.shockPetalLifetime,
+			FX.shockPetalSpeed,
+			FX.shockPetalGravity
+		)
+		play(SOUND_POP, shock.center, shock.casterId)
+	end
+	for _, ring in shock.rings do
+		local tt = now - ring.startAt
+		if tt < 0 then
+			continue
+		end
+		local r = FX.shockRingStartStuds + shock.speed * tt
+		if r >= ring.length then
+			for _, part in ring.parts do
+				releasePart(part)
+			end
+			table.clear(ring.parts)
+			ring.startAt = math.huge -- done
+		else
+			placeRing(shock, ring, r, math.clamp((ring.length - r) / (ring.length * 0.15), 0, 1))
+		end
+	end
+	return now < shock.endsAt
+end
+
 -- Public -------------------------------------------------------------------------------------------------------------
 
 -- One UltimateEvent of a non-lane ultimate (VfxController has parsed it and found its ability).
@@ -945,6 +1224,13 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 				priority = if own then BIG_PRIORITY else OTHER_PRIORITY,
 			}),
 		}
+		if ability.kind == "shockwave" then
+			local old = shocks[casterId]
+			if old then
+				endShock(old)
+			end
+			startShock(event, ability, squishyId) -- the leap and the landing spot show through the wind-up
+		end
 		return
 	end
 	local cast = casts[casterId]
@@ -952,6 +1238,10 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 	if event.phase == "cancel" then
 		if cast and cast.stopCharge then
 			cast.stopCharge(Config.Audio.trackedStopFadeMs)
+		end
+		local shock = shocks[casterId]
+		if shock then
+			endShock(shock)
 		end
 		return
 	end
@@ -965,7 +1255,7 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			squishyId = squishyId,
 			ultimateId = ultimateId,
 			knockbackMultiplier = ability.knockbackMultiplier,
-			flyOn = kind == "roller",
+			flyOn = kind == "roller" or kind == "shockwave", -- the cake rings grow on past a hit too
 			untilAt = untilAt + FORGET_AFTER_SECONDS,
 		}
 	end
@@ -1032,10 +1322,25 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			table.insert(lanes, { part = part, untilClock = os.clock() + FX.laneSeconds })
 		end
 	elseif kind == "rain" then
-		startRain(event, ability, squishyId, ultimateId == WELL_ID)
+		startRain(event, ability, squishyId, ultimateId == WELL_ID, ultimateId == GEYSER_ID)
 		local drops: { Types.UltimateDrop } = event.drops or {}
 		for _, drop in drops do
 			remember(drop.projId, drop.landAt)
+		end
+	elseif kind == "shockwave" then
+		-- Layer Cake Shockwave: the wind-up's shock (or a new one when the telegraph was missed) and its rings.
+		local shock = shocks[casterId] or startShock(event, ability, squishyId)
+		local shots: { Types.UltimateShot } = event.shots or {}
+		for index, shot in shots do
+			table.insert(shock.rings, {
+				startAt = shot.releaseAt,
+				length = shot.length,
+				color = CAKE_COLORS[(index - 1) % #CAKE_COLORS + 1],
+				parts = {},
+			})
+			local ends = shot.releaseAt + shot.length / shock.speed
+			shock.endsAt = math.max(shock.endsAt, ends)
+			remember(shot.projId, ends)
 		end
 	end
 end
@@ -1092,6 +1397,18 @@ function UltFx.step(now: number)
 				releasePart(bead)
 			end
 			table.clear(rain.beads)
+			for _, drop in rain.drops do
+				if drop.column then
+					releasePart(drop.column)
+					drop.column = nil
+				end
+			end
+		end
+	end
+	for _, shock in table.clone(shocks) do
+		local ok, keep = pcall(stepShock, shock, now)
+		if not ok or not keep then
+			endShock(shock)
 		end
 	end
 	local clock = os.clock()
@@ -1130,7 +1447,11 @@ function UltFx.counts(): { [string]: number }
 	for _ in flights do
 		n += 1
 	end
-	return { flights = n, rains = #rains, lanes = #lanes }
+	local cakes = 0
+	for _ in shocks do
+		cakes += 1
+	end
+	return { flights = n, rains = #rains, lanes = #lanes, shocks = cakes }
 end
 
 return UltFx

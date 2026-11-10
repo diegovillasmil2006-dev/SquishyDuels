@@ -1,6 +1,6 @@
 --!strict
--- Catalog: the 20 squishy definitions (DESIGN §4.1, §4.2; the 6 after Dragon from the squishy overhaul spec
--- 2026-10-09 §3.3; the 6 Series 01 at the end, 2026-11-10), in catalog order. Shared (server and client).
+-- Catalog: the 27 squishy definitions (DESIGN §4.1, §4.2; the 6 after Dragon from the squishy overhaul spec
+-- 2026-10-09 §3.3; the 6 Series 01, then the 7 of the Frosty Box at the end, 2026-11-10), in catalog order. Shared (server and client).
 -- Every system (inventory, shop, squeeze rewards, Inspect, combat, quests) reads these fields; no stat is copied
 -- anywhere else. All numbers are [P]. Box membership and odds live in Boxes.luau, prices are checked against box
 -- odds by Pricing.luau, the throw power budget is checked by server Logic/PowerBudget (§5.8), and the cross-checks
@@ -16,7 +16,8 @@
 --   Catalog.starterId()          -> "kitty_bread" (the free starter: Common, not in boxes, not sold)
 --   Catalog.byRarity(r)          -> { SquishyDef } of that rarity in catalog order (empty for a non-rarity)
 --   Catalog.getPower(id)         -> squishy power (spec 2026-10-12 §3, §6): def.power, else
---                                   Config.Economy.SquishyPower[rarity] (1 / 4 / 16 / 64); 0 for an unknown id
+--                                   Config.Economy.SquishyPower[rarity] (1 / 2 / 4 / 16 / 256) × def.boxMult (a zone
+--                                   box's squishies, plan "50 squishies": Frosty 3); 0 for an unknown id
 --
 -- Field notes (§4.1, §4.2):
 --   blueprintId  key in Art/SquishyBlueprints; the same as the id for all 14.
@@ -318,6 +319,112 @@ local DEFS: { SquishyDef } = {
 		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
 		inspect = { yaw = 25, pitch = 12 },
 	},
+	-- Frosty Box (owner 2026-11-10 "lets build everything", box by box; plan "50 squishies" step 4; looks from Claude
+	-- Design's "Squishies 50 Lineup", sd/toys2.js:168-330, CATALOG2 round 2): the first zone box, opened once the player
+	-- reaches Frozen Dessert Peaks (Boxes zone 4). boxMult 3: they earn and sell for 3x their rarity (plan, "Yes, use
+	-- 3x"). Prices: the Frosty ceilings (Pricing.ceiling, 20B box), the Uncommons half theirs like the Soft ones; no
+	-- Welcome price (Soft Box Commons only). Each throw copies a same-rarity sibling (no new balance point); accents are
+	-- colours from the design (its trail or body).
+	{
+		id = "cone_cub",
+		nameKey = "squishy.coneCub.name",
+		rarity = "Common",
+		blueprintId = "cone_cub",
+		boxMult = 3,
+		shopPrice = 66_000_000_000,
+		throw = { speed = 95, gravity = 35, radius = 1.0, cooldown = 1.00, windup = 0.18 }, -- = kitty_bread
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#E9B46C" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.34 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "slushy_seal",
+		nameKey = "squishy.slushySeal.name",
+		rarity = "Common",
+		blueprintId = "slushy_seal",
+		boxMult = 3,
+		shopPrice = 66_000_000_000,
+		throw = { speed = 105, gravity = 25, radius = 0.8, cooldown = 1.05, windup = 0.18 }, -- = toast
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#8ED3FA" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.30 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "ice_pop_beaver",
+		nameKey = "squishy.icePopBeaver.name",
+		rarity = "Uncommon",
+		blueprintId = "ice_pop_beaver",
+		boxMult = 3,
+		shopPrice = 76_900_000_000,
+		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 }, -- = butter
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#A0623A" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
+		hold = { grip = Vector3.new(0, -0.50, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "mint_chip_mouse",
+		nameKey = "squishy.mintChipMouse.name",
+		rarity = "Uncommon",
+		blueprintId = "mint_chip_mouse",
+		boxMult = 3,
+		shopPrice = 76_900_000_000,
+		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = chocolate
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#9AE4C2" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.34 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "sundae_manatee",
+		nameKey = "squishy.sundaeManatee.name",
+		rarity = "Rare",
+		blueprintId = "sundae_manatee",
+		boxMult = 3,
+		shopPrice = 200_000_000_000,
+		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 }, -- = mochi_fox
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#B0AAE6" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.40 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "gelato_narwhal",
+		nameKey = "squishy.gelatoNarwhal.name",
+		rarity = "Epic",
+		blueprintId = "gelato_narwhal",
+		boxMult = 3,
+		shopPrice = 512_000_000_000,
+		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 }, -- = cloud_bunny
+		ultimateId = "geyser_line", -- the design's own (sd/ults2.js:5), paid for out of the power budget (§5.8)
+		eliminationEffectId = "narwhal_brain_freeze", -- the design's kill set (sd/ults2.js:57, Art/KillStyle),
+		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#8CCDEB" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "parfait_wyvern",
+		nameKey = "squishy.parfaitWyvern.name",
+		rarity = "Exclusive", -- the design's Legendary (Strings show Exclusive as "Legendary")
+		blueprintId = "parfait_wyvern",
+		boxMult = 3,
+		shopPrice = 20_000_000_000_000,
+		throw = { speed = 92, gravity = 35, radius = 1.0, cooldown = 1.05, windup = 0.19 }, -- = dragon
+		ultimateId = "layer_cake_shockwave", -- the design's own (sd/ults2.js:6), paid for out of the power budget (§5.8)
+		eliminationEffectId = "wyvern_sugar_storm", -- the design's kill set (sd/ults2.js:69, Art/KillStyle),
+		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#FF8FAE" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
+		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
 }
 
 local BY_ID: { [string]: SquishyDef } = {}
@@ -373,7 +480,7 @@ function Catalog.getPower(id: unknown): number
 	if def.power ~= nil then
 		return def.power
 	end
-	return Config.Economy.SquishyPower[def.rarity] or 0
+	return (Config.Economy.SquishyPower[def.rarity] or 0) * (def.boxMult or 1)
 end
 
 return table.freeze(Catalog)

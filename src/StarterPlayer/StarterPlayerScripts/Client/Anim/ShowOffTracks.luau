@@ -364,6 +364,214 @@ local LOOPS: { [string]: Loop } = {
 			{ prop = "rotZ", keys = { { 0, 0, "-" }, { 1, 12, "Sine InOut" }, { 3, 12, "Sine InOut" }, { 4, 0, "Sine InOut" } } },
 		},
 	},
+	-- Frosty Box (2026-11-10): Claude Design's SHOWOFF2 (sd/anims2.js:176-198), the same way as Series 01's (each ease on
+	-- the key that ends its segment).
+	-- ConeCub: Cone Peek. Pops up out of the cone with an overshoot, sways, settles back in.
+	cone_cub = {
+		length = 2.4,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.4, 0.3, "Back Out" },
+					{ 1.2, 0.3, "Sine InOut" },
+					{ 1.5, 0, "Quad In" },
+					{ 2.4, 0, "-" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.4, 0, "-" },
+					{ 0.7, 8, "Sine InOut" },
+					{ 1, -8, "Sine InOut" },
+					{ 1.2, 0, "Sine InOut" },
+					{ 2.4, 0, "-" },
+				},
+			},
+		},
+	},
+	-- SlushySeal: Flipper Wave. Rocks side to side like a waving seal, then a happy hop.
+	slushy_seal = {
+		length = 2.4,
+		tracks = {
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.4, 10, "Sine InOut" },
+					{ 0.8, -10, "Sine InOut" },
+					{ 1.2, 6, "Sine InOut" },
+					{ 1.6, 0, "Sine InOut" },
+					{ 2.4, 0, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.6, 0, "-" },
+					{ 1.85, 0.3, "Quad Out" },
+					{ 2.1, 0, "Quad In" },
+					{ 2.4, 0, "-" },
+				},
+			},
+		},
+	},
+	-- IcePopBeaver: Pop Wiggle. Twists left and right like a shaken ice pop, then a hop.
+	ice_pop_beaver = {
+		length = 2.2,
+		tracks = {
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.5, 25, "Sine InOut" },
+					{ 1, -25, "Sine InOut" },
+					{ 1.5, 0, "Sine InOut" },
+					{ 2.2, 0, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.5, 0, "-" },
+					{ 1.8, 0.35, "Quad Out" },
+					{ 2.1, 0, "Quad In" },
+					{ 2.2, 0, "-" },
+				},
+			},
+		},
+	},
+	-- MintChipMouse: Scoop Spin. Hop-spin all the way round, then a second little hop.
+	mint_chip_mouse = {
+		length = 2.4,
+		tracks = {
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.2, 360, "Quad InOut" },
+					{ 2.4, 360, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.3, 0.25, "Quad Out" },
+					{ 0.6, 0, "Quad In" },
+					{ 1.2, 0, "-" },
+					{ 1.5, 0.2, "Quad Out" },
+					{ 1.8, 0, "Quad In" },
+					{ 2.4, 0, "-" },
+				},
+			},
+		},
+	},
+	-- SundaeManatee: Sundae Float. Floats up like it is swimming, rocks gently, turns to show the tail.
+	sundae_manatee = {
+		length = 3,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.5, 0.4, "Sine InOut" },
+					{ 3, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotX",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.75, -5, "Sine InOut" },
+					{ 2.25, 5, "Sine InOut" },
+					{ 3, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.5, 30, "Sine InOut" },
+					{ 3, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- GelatoNarwhal: Horn Salute. Leaps up, points the waffle horn at the sky, lands and spins once.
+	gelato_narwhal = {
+		length = 3,
+		tracks = {
+			{
+				prop = "rotX",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.5, -20, "Back Out" },
+					{ 1.3, -20, "Sine InOut" },
+					{ 1.7, 0, "Quad InOut" },
+					{ 3, 0, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.5, 0.4, "Sine InOut" },
+					{ 1.3, 0.4, "Sine InOut" },
+					{ 1.7, 0, "Quad In" },
+					{ 3, 0, "-" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.7, 0, "-" },
+					{ 2.7, 360, "Cubic InOut" },
+					{ 3, 360, "-" },
+				},
+			},
+		},
+	},
+	-- ParfaitWyvern: Sugar Hover. Hovers on sugar wings with a slow figure-eight sway.
+	parfait_wyvern = {
+		length = 3.2,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.8, 1, "Sine InOut" },
+					{ 1.6, 0.8, "Sine InOut" },
+					{ 2.4, 1, "Sine InOut" },
+					{ 3.2, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.8, -6, "Sine InOut" },
+					{ 1.6, 6, "Sine InOut" },
+					{ 2.4, -6, "Sine InOut" },
+					{ 3.2, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.6, 40, "Sine InOut" },
+					{ 3.2, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
 }
 
 -- qb1: the posY / rot stand-ins of the scale-only loops (same length and key times as K, the same eases).

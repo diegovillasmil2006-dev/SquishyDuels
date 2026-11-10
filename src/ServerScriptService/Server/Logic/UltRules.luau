@@ -18,7 +18,17 @@
 --                                                              capsule, or nil (the roller's lane test)
 --   UltRules.rainCenter(target, fallback, zone, floorY)      -> Vector3: the target's (else fallback's) floor point,
 --                                                              clamped into the zone box on X and Z
---   UltRules.rainDrops(center, ability, releaseAt, targets)  -> { Drop } (design: fp.js:352-357, 371)
+--   UltRules.rainDrops(center, ability, releaseAt, targets, toward?) -> { Drop } (design: fp.js:352-357, 371).
+--                                                              Geyser Line (Frosty Box, 2026-11-10; design: lab50.js:295-307):
+--                                                              with dropSpacing and `toward` (the flat unit from the
+--                                                              caster to the centre) the drops stand in a line ending at
+--                                                              the centre, dropSpacing apart, the nearest one first
+--   UltRules.ringTouches(center, r0, r1, width, rootPosition, hitbox?) -> boolean: Layer Cake Shockwave (2026-11-10;
+--                                                              design: lab50.js:309-325): a ring wall of half-thickness
+--                                                              `width` about `center`, grown from radius r0 to r1 in
+--                                                              this step, met the capsule (horizontal distances only)
+--   UltRules.ringReachTime(startAt, speed, width, d, hitbox?) -> number: when a ring started at startAt (radius 0,
+--                                                              `speed` studs/s) first touches a capsule d studs away
 --   UltRules.practiceCenter(origin, dir, targets, maxLength) -> Vector3?: the practice target nearest the aim within
 --                                                              the practice cone and maxLength (nil = none)
 --   UltRules.bounceDir(dir, normal, maxNormalY)              -> Vector3?: Bubble Pop bounce (2026-10-16): the flat
@@ -53,6 +63,7 @@ export type RainSpec = {
 	dropRadii: { number }?,
 	dropAngleStep: number?,
 	targetRadius: number?,
+	dropSpacing: number?, -- Geyser Line: the drops stand in a line this far apart (with rainDrops' `toward`)
 }
 
 -- Constants
@@ -135,7 +146,13 @@ function UltRules.rainCenter(target: Vector3?, fallback: Vector3, zone: Zone?, f
 	return Vector3.new(world.X, floorY, world.Z)
 end
 
-function UltRules.rainDrops(center: Vector3, ability: RainSpec, releaseAt: number, targets: { Vector3 }): { Drop }
+function UltRules.rainDrops(
+	center: Vector3,
+	ability: RainSpec,
+	releaseAt: number,
+	targets: { Vector3 },
+	toward: Vector3?
+): { Drop }
 	local count = math.max(0, math.floor(ability.drops or 0))
 	local radii = ability.dropRadii or { 0 }
 	local step = ability.dropAngleStep or 0
@@ -143,10 +160,16 @@ function UltRules.rainDrops(center: Vector3, ability: RainSpec, releaseAt: numbe
 	local every = ability.dropStepSeconds or 0
 	local warn = (ability.shadowSeconds or 0) + (ability.fallSeconds or 0)
 	local positions: { Vector3 } = {}
+	local spacing = ability.dropSpacing
+	local line = if spacing ~= nil and toward ~= nil then flat(toward) else nil
 	for k = 0, count - 1 do
-		local angle = k * step
-		local r = radii[(k % #radii) + 1]
-		positions[k + 1] = center + Vector3.new(math.cos(angle) * r, 0, math.sin(angle) * r)
+		if line ~= nil then
+			positions[k + 1] = center + line * ((k - (count - 1)) * (spacing :: number))
+		else
+			local angle = k * step
+			local r = radii[(k % #radii) + 1]
+			positions[k + 1] = center + Vector3.new(math.cos(angle) * r, 0, math.sin(angle) * r)
+		end
 	end
 	-- A target close to the centre gets a drop at its own spot, from the last drop back (design: fp.js:353).
 	local reach = ability.targetRadius or 0
@@ -163,6 +186,24 @@ function UltRules.rainDrops(center: Vector3, ability: RainSpec, releaseAt: numbe
 		drops[k + 1] = { position = positions[k + 1], shadowAt = shadowAt, landAt = shadowAt + warn }
 	end
 	return drops
+end
+
+function UltRules.ringTouches(
+	center: Vector3,
+	r0: number,
+	r1: number,
+	width: number,
+	rootPosition: Vector3,
+	hitbox: Hitbox?
+): boolean
+	local box = hitboxOf(hitbox)
+	local d = Vector3.new(rootPosition.X - center.X, 0, rootPosition.Z - center.Z).Magnitude
+	return d + box.radius >= r0 - width and d - box.radius <= r1 + width
+end
+
+function UltRules.ringReachTime(startAt: number, speed: number, width: number, d: number, hitbox: Hitbox?): number
+	local box = hitboxOf(hitbox)
+	return startAt + math.max(0, d - box.radius - width) / math.max(speed, EPSILON)
 end
 
 function UltRules.practiceCenter(origin: Vector3, dir: Vector3, targets: { Vector3 }, maxLength: number): Vector3?

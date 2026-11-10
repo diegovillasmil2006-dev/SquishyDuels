@@ -1986,7 +1986,7 @@ local function rememberOwnUlt(event: UltimateEvent, ability: any)
 	for _, shot in shots do
 		ownProjectiles[shot.projId] = {
 			untilAt = shot.releaseAt + math.max(shot.length, 0) / speed + OWN_PROJECTILE_SECONDS,
-			lane = false,
+			lane = ability.kind == "shockwave", -- Layer Cake Shockwave (2026-11-10): its rings fly on too
 		}
 	end
 	local drops: { Types.UltimateDrop } = event.drops or {}

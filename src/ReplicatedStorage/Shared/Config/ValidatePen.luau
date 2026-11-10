@@ -140,7 +140,7 @@ return function(config: any): { string }
 		for rarity, price in welcome do
 			local lowest = math.huge -- stays huge for a rarity nobody sells
 			for _, def in Catalog.byRarity(rarity) do
-				if def.shopPrice ~= nil then
+				if def.shopPrice ~= nil and def.boxMult == nil then -- plan "50 squishies": Soft Box Commons only
 					lowest = math.min(lowest, def.shopPrice)
 				end
 			end
@@ -191,7 +191,8 @@ return function(config: any): { string }
 			local lowest = if type(welcome) == "table" and isNumber(welcome[rarity]) then welcome[rarity] else math.huge
 			for _, def in Catalog.byRarity(rarity) do
 				if def.shopPrice ~= nil then
-					lowest = math.min(lowest, def.shopPrice)
+					-- Plan "50 squishies": it sells for boxMult times the price, so compare per one of its rarity.
+					lowest = math.min(lowest, def.shopPrice / (def.boxMult or 1))
 				end
 			end
 			expect(

@@ -5,6 +5,8 @@
 --   1. profile READY, else data.notReady;
 --   2. boxLog.req == requestId -> the stored BoxResult (a replay: no charge, no new draw);
 --   3. Boxes.paidById[boxId] (a paid box that passed the boot check), else net.invalid (unknown, free-only, disabled);
+--      plan "50 squishies" (zone boxes): a box with a zone the player has not reached yet (Boxes.isOpenFor over
+--      profile.highway.biome, which only HighwayService raises) -> box.zoneLocked;
 --   4. (pens3 phase 5: no refusal here any more) PolicyGateService.canBuyPaidRandom (eligible ONLY) picks how step 10
 --      draws: an eligible account at random, every other one (restricted, checking, unknown: fail closed, §6.10) in the
 --      box's fixed order, Boxes.fixedItem(box, profile.boxOrder[box]) (D1:235: the box card shows it before the open,
@@ -125,6 +127,7 @@ local CODE_FULL = "inventory.full" -- pens3 phase 5: the Toy Box is full
 local CODE_LOCKED = "inventory.lockedInDuel"
 local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
 local CODE_GENERIC = "error.generic"
+local CODE_ZONE = "box.zoneLocked" -- plan "50 squishies": the box's zone is not reached yet
 
 -- Module table
 
@@ -302,6 +305,10 @@ local function openLocked(player: any, boxId: unknown, requestId: unknown): any
 	local box: BoxDef? = if type(boxId) == "string" then Boxes.paidById[boxId] else nil
 	if box == nil or disabled[box.id] ~= nil then
 		return refuse(CODE_INVALID)
+	end
+	local highway = profile.highway
+	if not Boxes.isOpenFor(box.id, if type(highway) == "table" then highway.biome else nil) then
+		return refuse(CODE_ZONE)
 	end
 	local fixed = not d.canBuyPaidRandom(player) -- pens3 phase 5: never refused, never random (step 4)
 	if d.isClosing() or d.isRestartPending() then

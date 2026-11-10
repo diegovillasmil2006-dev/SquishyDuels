@@ -4,11 +4,11 @@
 -- here (exact part counts and rigidities are pinned again after the Studio tuning pass), so the geometry lanes can
 -- replace any blueprint and keep this test green.
 -- Server only (ServerStorage.UnitTest). Edit-mode safe: builds unparented models, no Play-only APIs.
--- Contract: the 22 blueprints (20 squishies + gift_box, dragon_head_vfx; the 3 giant pads' went with the pads, build
+-- Contract: the 29 blueprints (27 squishies + gift_box, dragon_head_vfx; the 3 giant pads' went with the pads, build
 -- plan Phase 6) build in every mode; the part
 -- budget (<= 31 visible + Root in every face state, <= 6 hidden squish-face parts, <= 12 hinged parts in <= 6
 -- sections); the longest bound 1-4 studs and, for redesigned squishies, 1.5-1.7 studs in
--- hand (Dragon, Cloud Bunny 1.8); no lights/GUIs/scripts/decals/sounds; every part non-colliding/non-query/non-touch/
+-- hand (Dragon, Cloud Bunny, Cosmo, Parfait Wyvern 1.8); no lights/GUIs/scripts/decals/sounds; every part non-colliding/non-query/non-touch/
 -- massless; face parts (embed >= 0.5) centred inside a body part and looking out of their side; look parts without
 -- shadows and the squish set hidden; section pivots inside a body part and the section's first part; contact points
 -- inside their holder at rest; SD_HalfExtents = half the body bounds; the flight model's body silhouette = the throw
@@ -36,7 +36,8 @@ local MAX_HIDDEN = 6 -- the hidden squish-face set
 local MAX_HINGED, MAX_SECTIONS = 12, 6
 local MIN_BOUND, MAX_BOUND = 1, 4
 local FIT_MIN, FIT_MAX, FIT_MAX_LARGE = 1.5, 1.7, 1.8 -- longest side in hand, redesigned squishies (§3.1)
-local FIT_LARGE: { [string]: boolean } = { dragon = true, cloud_bunny = true, cosmo = true } -- horns, ears, ring
+-- horns, ears, ring; the Frosty Box's Legendary (its glass and sugar wings, 2026-11-10)
+local FIT_LARGE: { [string]: boolean } = { dragon = true, cloud_bunny = true, cosmo = true, parfait_wyvern = true }
 local EMBED_MIN = 0.5
 local RB_SPHERE_RADIUS = 1.375
 local EPS = 1e-4
@@ -46,7 +47,7 @@ local FORBIDDEN_CLASSES = { "Light", "GuiBase", "LuaSourceContainer", "Decal", "
 local COSMETIC_GROUP = "SD_Cosmetic"
 local BACK_POINT = Vector3.new(0, 0, 1)
 
--- The 20 squishies (§3.3 order, then Series 01 2026-11-10) and the 8 that keep face kit v1 while their blueprint is
+-- The 27 squishies (§3.3 order, then Series 01 and the Frosty Box, 2026-11-10) and the 8 that keep face kit v1 while their blueprint is
 -- version 1.
 local SQUISHY_IDS = {
 	"kitty_bread",
@@ -69,6 +70,13 @@ local SQUISHY_IDS = {
 	"bao_buddy",
 	"pando",
 	"cosmo",
+	"cone_cub",
+	"slushy_seal",
+	"ice_pop_beaver",
+	"mint_chip_mouse",
+	"sundae_manatee",
+	"gelato_narwhal",
+	"parfait_wyvern",
 }
 local FACE_KIT_V1: { [string]: boolean } = {
 	kitty_bread = true,
@@ -380,7 +388,7 @@ return function(t: Context)
 
 	-- Data -----------------------------------------------------------------------------------------------------------
 
-	t.test("the 22 blueprints: 20 squishies, gift_box and dragon_head_vfx (no giant pads since Phase 6)", function()
+	t.test("the 29 blueprints: 27 squishies, gift_box and dragon_head_vfx (no giant pads since Phase 6)", function()
 		local expected = table.clone(SQUISHY_IDS)
 		for _, id in { "gift_box", DRAGON_HEAD_ID } do
 			table.insert(expected, id)
@@ -394,7 +402,7 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("the 20 squishies carry a §4 motion row inside the §6 ranges; the others have none", function()
+	t.test("the 27 squishies carry a §4 motion row inside the §6 ranges; the others have none", function()
 		local problems: { string } = {}
 		local isSquishy: { [string]: boolean } = {}
 		for _, id in SQUISHY_IDS do
@@ -550,7 +558,7 @@ return function(t: Context)
 	end)
 
 	t.test(
-		"redesigned squishies fit the hand: the longest shown side is 1.5-1.7 studs (Dragon, Cloud Bunny 1.8)",
+		"redesigned squishies fit the hand: the longest shown side is 1.5-1.7 studs (Dragon, Cloud Bunny, Cosmo, Parfait Wyvern 1.8)",
 		function()
 			local problems: { string } = {}
 			for _, id in SQUISHY_IDS do
@@ -633,7 +641,7 @@ return function(t: Context)
 		failIfAny(problems)
 	end)
 
-	t.test("the flight model's body silhouette matches the throw radius (all 20; §8.1 #9, §3.3)", function()
+	t.test("the flight model's body silhouette matches the throw radius (all 27; §8.1 #9, §3.3)", function()
 		local Catalog = t.requireShared("Catalog")
 		local Config = t.requireShared("Config")
 		local tolerance = Config.Vfx.Projectile.flightRadiusTolerance
@@ -645,7 +653,7 @@ return function(t: Context)
 		end
 		for _, def in Catalog.list() do
 			if not isSquishy[def.blueprintId] then
-				table.insert(problems, `{def.id}: blueprint {def.blueprintId} is not one of the 20 squishies`)
+				table.insert(problems, `{def.id}: blueprint {def.blueprintId} is not one of the 27 squishies`)
 			end
 			radiusOf[def.blueprintId] = def.throw.radius
 		end

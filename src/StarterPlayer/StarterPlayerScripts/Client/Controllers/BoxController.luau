@@ -285,6 +285,12 @@ local function coins(): number
 	return StateController.coins() or 0
 end
 
+-- The highest highway biome reached (StateDelta.highway; plan "50 squishies"), nil while it is not known.
+local function highwayBiome(): number?
+	local highway = StateController.get("highway")
+	return if type(highway) == "table" and type(highway.biome) == "number" then highway.biome else nil
+end
+
 -- The Open area's view of `boxId` (default the selected box).
 local function currentView(boxId: string?): BoxFormat.OpenView
 	local status = StateController.dataStatus()
@@ -300,6 +306,7 @@ local function currentView(boxId: string?): BoxFormat.OpenView
 		retryWaitSeconds = retryWait(),
 		pen = StateController.get("pen"), -- pens3 phase 5: the Toy Box full block
 		boxOrder = StateController.get("boxOrder"), -- pens3 phase 5: a restricted account's next squishy
+		biome = highwayBiome(), -- plan "50 squishies": a zone box's lock
 	})
 end
 
@@ -1702,7 +1709,8 @@ function BoxController.init()
 		end
 	end))
 
-	for _, field in { "coins", "owned", "dataStatus", "pen", "boxOrder" } do -- pens3 phase 5: pen, boxOrder
+	-- pens3 phase 5: pen, boxOrder; plan "50 squishies": highway (a zone box unlocks)
+	for _, field in { "coins", "owned", "dataStatus", "pen", "boxOrder", "highway" } do
 		c:add(StateController.changed(field):connect(function()
 			refresh()
 		end))

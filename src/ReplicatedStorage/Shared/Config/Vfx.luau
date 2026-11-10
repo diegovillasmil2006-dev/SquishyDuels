@@ -384,6 +384,39 @@ local Vfx = {
 		wellRingLilacTo = 2 * 7 * 1.35, -- diameter: the lilac ring to 1.35 R in 0.6 s (lab50.js:290)
 		wellRingLilacSeconds = 0.6,
 		wellRingTransparencyFrom = 1 - 0.95,
+		-- Geyser Line (Gelato Narwhal, Frosty Box 2026-11-10; design: sd/lab50.js:295-307, metres / 0.28 = studs): each
+		-- drop is a pulsing frost circle (its dropHitRadius) until it erupts, then an ice geyser column rises and sinks,
+		-- 18 ice cubes burst and a white ring opens.
+		geyserCircleOpacity = 0.85, -- lab50.js:301
+		geyserColumnHeight = 1.4 / 0.28, -- lab50.js:304 (sin(uπ)·1.4)
+		geyserColumnSeconds = 0.6, -- lab50.js:304
+		geyserColumnShare = 0.6, -- the column's width / the circle's (lab50.js:298: radii 0.5r .. 0.7r)
+		geyserCubes = 18, -- lab50.js:302
+		geyserCubeSpeed = 3.2 / 0.28,
+		geyserCubeSize = 0.05 / 0.28,
+		geyserCubeLifetime = 0.7,
+		geyserCubeGravity = -6 / 0.28,
+		geyserRingScale = 1.2, -- the white ring opens to 1.2 × the circle (lab50.js:302)
+		geyserRingSeconds = 0.35,
+		geyserRingTransparencyFrom = 1 - 0.9,
+		-- Layer Cake Shockwave (Parfait Wyvern; design: sd/lab50.js:309-325): the glowing landing spot during the wind-up,
+		-- the wyvern leaping up from the caster and landing on its spot at the release (26 sugar petals), then each cake
+		-- ring a wall of segments growing at the ability's speed out to its maxLength; the wyvern flies back after.
+		shockSpotRadius = 0.45 / 0.28, -- lab50.js:311
+		shockLeapStuds = 1.4 / 0.28, -- lab50.js:313 (up y 1.4)
+		shockRiseShare = 0.55 / 0.7, -- the rise's share of the wind-up (lab50.js:316-317: up 0.55 s, down 0.15 s)
+		shockSpinRate = 8, -- rad/s while it rises (lab50.js:316)
+		shockPetals = 26, -- lab50.js:318
+		shockPetalSpeed = 3 / 0.28,
+		shockPetalSize = 0.05 / 0.28,
+		shockPetalLifetime = 0.8,
+		shockPetalGravity = -3 / 0.28,
+		shockRingHeight = 1.2, -- the ring's height in studs (lab50.js:313: 1.2·S)
+		shockRingThickness = 0.3, -- reading: the design's ring is a thin open cylinder
+		shockRingSegments = 32, -- reading: an open cylinder drawn as this many wall pieces
+		shockRingStartStuds = 0.15 / 0.28, -- lab50.js:322
+		shockReturnAfter = 1.7, -- the wyvern flies back this long after landing (lab50.js:323: t 2.4 - 0.7)
+		shockReturnSeconds = 0.6, -- lab50.js:323
 		-- Batch B (owner 2026-10-17: "the Frog's bounce look from the design"): where Bubble Pop bounces, the Strawberry
 		-- Frog's bounce pass (design: fp.js:239): 6 hearts (Art/Palette UltBounceHeart*), a white ring, sfx.pop.
 		bounceHearts = 6,

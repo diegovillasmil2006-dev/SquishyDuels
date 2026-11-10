@@ -211,10 +211,58 @@ local STYLES: { [string]: Style } = {
 		-- shortcut: no sound sheet of its own yet; it plays Cloudburst's (the airiest set) until one is made.
 		sound = "sfx.kill.cosmo_supernova",
 	},
+	-- Frosty Box (2026-11-10; design: sd/ults2.js:57-71, KILLSETS2: disc, ring, glow, shards).
+	narwhal_brain_freeze = {
+		id = "narwhal_brain_freeze",
+		nameKey = "elimination.narwhal_brain_freeze",
+		emblem = "img.kill.emblem.narwhal_brain_freeze",
+		emblemWhite = "img.kill.emblem.narwhal_brain_freeze.white",
+		shards = { "White", "UltGeyserBlue", "KillNarwhalWaffle", "UltGeyserFrost" },
+		squishyId = "gelato_narwhal",
+		disc = "UltGeyserBlue",
+		ring = "White",
+		glow = "UltGeyserFrost",
+		frame = { image = "img.kill.frameSegments", tint = "UltGeyserFrost", size = 1.55, spin = 20 },
+		crownFrame = { image = "img.fx.rays", tint = "UltGeyserBlue", size = 2.2, spin = 14 },
+		ornament = { image = "img.icon.star", size = 0.34 },
+		crown = { image = "img.icon.star", size = 0.4, count = 3, fan = 20 },
+		bannerVfx = "Banner/narwhal_brain_freeze",
+		killVfx = "Kill/narwhal_brain_freeze",
+		-- shortcut: no sound sheet of its own yet; it plays Cloudburst's (wind, rain) until one is made.
+		sound = "sfx.kill.narwhal_brain_freeze",
+	},
+	wyvern_sugar_storm = {
+		id = "wyvern_sugar_storm",
+		nameKey = "elimination.wyvern_sugar_storm",
+		emblem = "img.kill.emblem.wyvern_sugar_storm",
+		emblemWhite = "img.kill.emblem.wyvern_sugar_storm.white",
+		shards = { "UltCakePink", "UltCakeSpot", "UltCakeBlueberry", "White" },
+		squishyId = "parfait_wyvern",
+		disc = "UltCakePink",
+		ring = "UltCakeSpot",
+		glow = "UltCakeCream",
+		frame = { image = "img.kill.frameOrnate", tint = "UltCakeSpot", size = 1.6, spin = 14 },
+		crownFrame = { image = "img.kill.frameSun", tint = "UltCakePink", size = 2.1, spin = 10 },
+		ornament = { image = "img.icon.star", size = 0.34 },
+		crown = { image = "img.kill.dragonWing", tint = "UltCakeSpot", outline = true, size = 0.56, turn = 0, count = 1 },
+		bannerVfx = "Banner/wyvern_sugar_storm",
+		killVfx = "Kill/wyvern_sugar_storm",
+		-- shortcut: no sound sheet of its own yet; it plays Sprinkle Blast's (sprinkle tinkles) until one is made.
+		sound = "sfx.kill.wyvern_sugar_storm",
+	},
 }
 
-local IDS: { string } =
-	{ "standard", "feather_storm", "sprinkle_blast", "cloudburst", "bubble_burst", "dragon_blaze", "cosmo_supernova" }
+local IDS: { string } = {
+	"standard",
+	"feather_storm",
+	"sprinkle_blast",
+	"cloudburst",
+	"bubble_burst",
+	"dragon_blaze",
+	"cosmo_supernova",
+	"narwhal_brain_freeze",
+	"wyvern_sugar_storm",
+}
 
 for _, style in STYLES do
 	table.freeze(style.frame)

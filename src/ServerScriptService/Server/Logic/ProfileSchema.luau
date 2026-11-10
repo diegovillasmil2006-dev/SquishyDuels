@@ -45,7 +45,8 @@
 -- `giftQueue = {}` (free squishies waiting for room in the Toy Box, kind ids oldest first; none is owned yet): not a
 -- table -> {}, only Catalog kinds kept in order (each drop logged), more than Pen.giftQueueMax all kept and logged
 -- (only a bug gets there); `boxOrder = {snack = 0, sweet = 0}` (one count per paid box: the fixed-order opens of a
--- restricted account): each a whole number in [0, 2^53] (non-finite -> 0), other keys kept; `gifts = {frog = false}`
+-- restricted account): each a whole number in [0, 2^53] (non-finite -> 0; a paid box added since the save, such as the
+-- Frosty Box on 2026-11-10, starts at 0 unlogged), other keys kept; `gifts = {frog = false}`
 -- (the once-per-account gifts given): fails closed, a non-boolean flag or a gifts value that is not a table counts
 -- every gift as given (never twice). Pens3 phase 6 (the pen screen) joined the same way: every pen item has `slot` (0 =
 -- the Toy Box, 1..spots the pen) and `locked` (the default Kitty Bread: slot 1, unlocked). fixPen, after the ids and
@@ -648,7 +649,11 @@ local function fixGifts(d: any, catalog: CatalogLike, fresh: any, problems: { st
 		return {}
 	end, "boxOrder", problems)
 	for _, id in PAID_BOX_IDS do
-		fixInt(order, id, 0, MAX_COUNTER, 0, `boxOrder.{id}`, problems)
+		if order[id] == nil then
+			order[id] = 0 -- a paid box added after this profile was saved: nothing is broken
+		else
+			fixInt(order, id, 0, MAX_COUNTER, 0, `boxOrder.{id}`, problems)
+		end
 	end
 
 	local gifts = ensureTable(d, "gifts", function()

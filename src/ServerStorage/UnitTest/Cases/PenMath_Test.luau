@@ -487,6 +487,9 @@ return function(t: Context)
 			expect.equal(PenMath.sellPrice(item("unicorn")), 0)
 			expect.equal(PenMath.sellPrice(item("toast", 3)), 0)
 			expect.equal(PenMath.sellPrice(nil), 0)
+			-- Plan "50 squishies": a zone box's squishy sells for its boxMult (Frosty 3) times its rarity's price.
+			expect.equal(PenMath.sellPrice(item("cone_cub")), 2_700)
+			expect.equal(PenMath.sellPrice(item("parfait_wyvern", 1)), 225_000_000_000 * 3 * 3)
 		end
 	)
 

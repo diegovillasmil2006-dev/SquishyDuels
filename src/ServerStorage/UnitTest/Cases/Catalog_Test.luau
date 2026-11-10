@@ -309,6 +309,98 @@ local EXPECTED: { Expected } = {
 		elimination = "cosmo_supernova",
 		shopPrice = 1_100_000_000_000,
 	},
+	-- Frosty Box (2026-11-10): the Frosty ceilings (20B box), the Uncommons half theirs; throws = their siblings'.
+	{
+		id = "cone_cub",
+		name = "Cone Cub",
+		rarity = "Common",
+		speed = 95,
+		gravity = 35,
+		radius = 1.0,
+		cooldown = 1.00,
+		windup = 0.18,
+		elimination = "standard",
+		shopPrice = 66_000_000_000,
+	},
+	{
+		id = "slushy_seal",
+		name = "Slushy Seal",
+		rarity = "Common",
+		speed = 105,
+		gravity = 25,
+		radius = 0.8,
+		cooldown = 1.05,
+		windup = 0.18,
+		elimination = "standard",
+		shopPrice = 66_000_000_000,
+	},
+	{
+		id = "ice_pop_beaver",
+		name = "Ice Pop Beaver",
+		rarity = "Uncommon",
+		speed = 95,
+		gravity = 30,
+		radius = 0.9,
+		cooldown = 1.05,
+		windup = 0.15,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 76_900_000_000,
+	},
+	{
+		id = "mint_chip_mouse",
+		name = "Mint Chip Mouse",
+		rarity = "Uncommon",
+		speed = 90,
+		gravity = 40,
+		radius = 1.4,
+		cooldown = 1.00,
+		windup = 0.18,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 76_900_000_000,
+	},
+	{
+		id = "sundae_manatee",
+		name = "Sundae Manatee",
+		rarity = "Rare",
+		speed = 95,
+		gravity = 30,
+		radius = 0.9,
+		cooldown = 1.05,
+		windup = 0.15,
+		trail = "ribbon",
+		elimination = "standard",
+		shopPrice = 200_000_000_000,
+	},
+	{
+		id = "gelato_narwhal",
+		name = "Gelato Narwhal",
+		rarity = "Epic",
+		speed = 110,
+		gravity = 20,
+		radius = 0.9,
+		cooldown = 1.10,
+		windup = 0.18,
+		trail = "twinRibbon",
+		ultimate = "geyser_line",
+		elimination = "narwhal_brain_freeze",
+		shopPrice = 512_000_000_000,
+	},
+	{
+		id = "parfait_wyvern",
+		name = "Parfait Wyvern",
+		rarity = "Exclusive",
+		speed = 92,
+		gravity = 35,
+		radius = 1.0,
+		cooldown = 1.05,
+		windup = 0.19,
+		trail = "twinRibbon",
+		ultimate = "layer_cake_shockwave",
+		elimination = "wyvern_sugar_storm",
+		shopPrice = 20_000_000_000_000,
+	},
 }
 
 -- Spec 2026-10-09 §3.3: each new squishy plays exactly like this same-rarity sibling.
@@ -326,6 +418,14 @@ local SIBLING: { [string]: string } = {
 	bao_buddy = "mochi_fox",
 	pando = "strawberry_frog",
 	cosmo = "dragon",
+	-- Frosty Box (2026-11-10)
+	cone_cub = "kitty_bread",
+	slushy_seal = "toast",
+	ice_pop_beaver = "butter",
+	mint_chip_mouse = "chocolate",
+	sundae_manatee = "mochi_fox",
+	gelato_narwhal = "cloud_bunny",
+	parfait_wyvern = "dragon",
 }
 
 -- DESIGN §4.2 presentation table. The "ears/wings rigidity" notes are blueprint part rigidities (§8.2), not hooks.
@@ -534,6 +634,76 @@ local PRESENTATION: { [string]: Presentation } = {
 		accent = "#C7A0FF",
 		spin = "wobble",
 	},
+	cone_cub = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.34,
+		accent = "#E9B46C",
+		spin = "wobble",
+	},
+	slushy_seal = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.30,
+		accent = "#8ED3FA",
+		spin = "wobble",
+	},
+	ice_pop_beaver = {
+		grip = Vector3.new(0, -0.50, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.32,
+		accent = "#A0623A",
+		spin = "wobble",
+	},
+	mint_chip_mouse = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.34,
+		accent = "#9AE4C2",
+		spin = "wobble",
+	},
+	sundae_manatee = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.40,
+		accent = "#B0AAE6",
+		spin = "wobble",
+	},
+	gelato_narwhal = {
+		grip = Vector3.new(0, -0.45, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.32,
+		accent = "#8CCDEB",
+		spin = "wobble",
+	},
+	parfait_wyvern = {
+		grip = Vector3.new(0, -0.55, 0.10),
+		heldYaw = 35,
+		yaw = 25,
+		pitch = 12,
+		axis = "Y",
+		foamT = 0.32,
+		accent = "#FF8FAE",
+		spin = "wobble",
+	},
 }
 
 local RARITY_ORDER = { "Common", "Uncommon", "Rare", "Epic", "Exclusive" } -- Rare: 2026-11-01
@@ -645,9 +815,9 @@ return function(t: Context)
 
 	-- Catalog: content (§4.2) ---------------------------------------------------------------------------------------
 
-	t.test("list returns the 8 squishies of DESIGN §4.2 in table order, then the 6 new ones, then Series 01", function()
+	t.test("list returns the 8 squishies of DESIGN §4.2 in table order, then the 6 new ones, Series 01, the Frosty Box", function()
 		local list = Catalog.list()
-		expect.equal(#list, 20)
+		expect.equal(#list, 27)
 		expect.equal(#list, #EXPECTED)
 		expect.equal(ids(list), ids(EXPECTED))
 	end)
@@ -782,7 +952,7 @@ return function(t: Context)
 
 	-- Spec phase 5 (user decision 2026-10-11): "Ultimates are reserved for Epic and Exclusive squishies" (design:
 	-- fp.js:576); Dragon keeps Dragon Rush and the four Epics get the design's ultimates (ults.js:3-6).
-	t.test("Dragon, Cosmo and the four Epics have ultimates, each in Config.Abilities; only Epics and Exclusives", function()
+	t.test("Dragon, Cosmo, Parfait Wyvern and the five Epics have ultimates, each in Config.Abilities; only Epics and Exclusives", function()
 		local count = 0
 		for _, row in EXPECTED do
 			local def = Catalog.get(row.id)
@@ -793,7 +963,7 @@ return function(t: Context)
 				expect.truthy(def.rarity == "Epic" or def.rarity == "Exclusive")
 			end
 		end
-		expect.equal(count, 6) -- + Cosmo (Exclusive, Series 01)
+		expect.equal(count, 8) -- + Cosmo (Exclusive, Series 01), Gelato Narwhal and Parfait Wyvern (Frosty Box)
 		for _, def in Catalog.byRarity("Epic") do
 			expect.truthy(def.ultimateId ~= nil)
 		end
@@ -934,13 +1104,17 @@ return function(t: Context)
 		expect.equal(#Catalog.byRarity(nil), 0)
 	end)
 
-	t.test("getPower follows Config.Economy.SquishyPower (1 / 2 / 4 / 16 / 256) unless overridden", function()
-		-- spec 2026-10-12 §6; 2026-11-01 the owner's ladder "1 · 2 · 4 · 16 · 256"
+	t.test("getPower follows Config.Economy.SquishyPower (1 / 2 / 4 / 16 / 256) × boxMult unless overridden", function()
+		-- spec 2026-10-12 §6; 2026-11-01 the owner's ladder "1 · 2 · 4 · 16 · 256"; plan "50 squishies": a zone box's
+		-- squishies earn boxMult times (Frosty 3: 3 / 6 / 12 / 48 / 768)
 		local byRarity = { Common = 1, Uncommon = 2, Rare = 4, Epic = 16, Exclusive = 256 }
 		for _, row in EXPECTED do
 			local def = Catalog.get(row.id)
-			expect.equal(Catalog.getPower(row.id), if def.power ~= nil then def.power else byRarity[row.rarity])
+			local wanted = if def.power ~= nil then def.power else byRarity[row.rarity] * (def.boxMult or 1)
+			expect.equal(Catalog.getPower(row.id), wanted)
 		end
+		expect.equal(Catalog.getPower("cone_cub"), 3)
+		expect.equal(Catalog.getPower("parfait_wyvern"), 768)
 		expect.equal(Catalog.getPower("unknown"), 0)
 		expect.equal(Catalog.getPower(nil), 0)
 	end)
@@ -962,7 +1136,7 @@ return function(t: Context)
 		expect.equal(#Catalog.list(), #EXPECTED)
 		local commons = Catalog.byRarity("Common")
 		table.clear(commons)
-		expect.equal(#Catalog.byRarity("Common"), 7) -- 5 + Series 01's Berry Jelly and Peachy
+		expect.equal(#Catalog.byRarity("Common"), 9) -- 5 + Series 01's Berry Jelly and Peachy, the Frosty Box's 2
 	end)
 
 	-- Rarity (§2.2, §4.3, §6.5) --------------------------------------------------------------------------------------

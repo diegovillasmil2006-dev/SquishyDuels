@@ -78,12 +78,18 @@ return function(t: Context)
 
 	-- 2026-11-01: Butter and Chocolate cost half (937.5K: Uncommon power 4 -> 2). Series 01 (2026-11-10): 2 Commons, an
 	-- Uncommon, 2 Rares and Cosmo at their siblings' prices.
-	t.test("the whole collection through the shop costs 2,207,222,546,500 Coins at full price (V3:163)", function()
+	-- Frosty Box (2026-11-10): its 7 at the Frosty ceilings (Commons 66B, Uncommons half theirs 76.9B, Rare 200B, Epic
+	-- 512B, Parfait Wyvern 20T).
+	t.test("the whole collection through the shop costs 23,205,022,546,500 Coins at full price (V3:163)", function()
 		local total = 0
 		for _, def in Catalog.list() do
 			total += def.shopPrice or 0
 		end
-		expect.equal(total, 6 * 789_000 + 3 * 937_500 + 4 * 3_750_000 + 4 * 1_800_000_000 + 2 * 1_100_000_000_000)
+		local frosty = 2 * 66_000_000_000 + 2 * 76_900_000_000 + 200_000_000_000 + 512_000_000_000 + 20_000_000_000_000
+		expect.equal(
+			total,
+			6 * 789_000 + 3 * 937_500 + 4 * 3_750_000 + 4 * 1_800_000_000 + 2 * 1_100_000_000_000 + frosty
+		)
 	end)
 
 	t.test("copies replaced the duplicate refund (pens3 phase 5)", function()
@@ -96,7 +102,7 @@ return function(t: Context)
 		expect.equal(welcome, 1_000) -- D1:202 said 3K; owner 2026-10-31: "Cheaper first + tip order"
 		local owned: { [string]: any } = { kitty_bread = { at = 1, src = "starter" } }
 		for _, def in Catalog.byRarity("Common") do
-			if def.shopPrice ~= nil then
+			if def.shopPrice ~= nil and def.boxMult == nil then -- the Soft Box's Commons (plan "50 squishies")
 				expect.equal(Pricing.shopPrice(def.id, owned), welcome)
 			end
 		end
@@ -112,6 +118,16 @@ return function(t: Context)
 		expect.equal(Pricing.shopPrice("nope", owned), nil)
 		expect.equal(Pricing.shopPrice("toast", nil), 789_000)
 		expect.equal(Pricing.shopPrice("toast", "owned" :: any), 789_000)
+	end)
+
+	-- Plan "50 squishies" (Frosty Box, 2026-11-10): the Welcome price is for the Soft Box's Commons only; a zone box's
+	-- Common costs its full price from the first one.
+	t.test("a zone box's Common has no Welcome price", function()
+		local owned: { [string]: any } = {}
+		for _, id in { "cone_cub", "slushy_seal" } do
+			expect.equal(Pricing.shopPrice(id, owned), Catalog.get(id).shopPrice)
+		end
+		expect.equal(Pricing.shopPrice("toast", owned), Config.Economy.Pen.welcomePrice.Common)
 	end)
 
 	t.test("the Welcome price is under the ceiling of every Common it applies to", function()

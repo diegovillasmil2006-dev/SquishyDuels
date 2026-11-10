@@ -220,7 +220,22 @@ return function(t: Context)
 			local fallback = Format.squishyTitle("not_a_squishy")
 			expect.equal(fallback, "Squishy Slinger")
 			-- Series 01 (2026-11-10): the design names no titles for these yet, so they show the fallback.
-			local untitled = { berry_jelly = true, peachy = true, grapey = true, bao_buddy = true, pando = true, cosmo = true }
+			-- The Frosty Box's 7 (2026-11-10) too.
+			local untitled = {
+				berry_jelly = true,
+				peachy = true,
+				grapey = true,
+				bao_buddy = true,
+				pando = true,
+				cosmo = true,
+				cone_cub = true,
+				slushy_seal = true,
+				ice_pop_beaver = true,
+				mint_chip_mouse = true,
+				sundae_manatee = true,
+				gelato_narwhal = true,
+				parfait_wyvern = true,
+			}
 			for _, def in Catalog.list() do
 				if untitled[def.id] then
 					expect.equal(Format.squishyTitle(def.id), fallback)

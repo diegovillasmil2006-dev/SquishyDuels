@@ -1771,6 +1771,12 @@ function BoxReveal.start(spec: Spec): Run
 			motion.hinge = CFrame.new(fly.pos) * CFrame.Angles(fly.rx, fly.ry, 0)
 		elseif kind == "sweet" then
 			motion.hinge = CFrame.new(0, -lid * A.sweetRise, 0) * CFrame.Angles(lid, 0, 0)
+		elseif kind == "frosty" then
+			-- the igloo's scoop pops up and spins (BOXES3 frosty open.lid), as far as the lid spring is open
+			local pop = A.frostyLid
+			local u = lid / A.lid.open
+			motion.hinge = CFrame.new(0, u * pop.rise, 0)
+				* CFrame.Angles(math.rad(u * pop.tiltDeg), math.rad(u * pop.spinDeg), 0)
 		else
 			motion.hinge = CFrame.Angles(lid, 0, 0)
 		end

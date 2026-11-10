@@ -91,18 +91,19 @@ return function(t: Context)
 		expect.equal(#list, #Catalog.list())
 		expect.equal(list[1].id, "toast")
 		expect.equal(list[1].equipped, true)
-		-- Exclusive by name, unowned: Cosmo (Series 01), Dragon
+		-- Exclusive by name, unowned: Cosmo (Series 01), Dragon, Parfait Wyvern (Frosty Box)
 		expect.equal(list[2].id, "cosmo")
 		expect.equal(list[3].id, "dragon")
 		expect.equal(list[3].owned, false)
-		-- Epic by name: Birdie, Cloud Bunny, Cupcake Axolotl, Donut
+		expect.equal(list[4].id, "parfait_wyvern")
+		-- Epic by name: Birdie, Cloud Bunny, Cupcake Axolotl, Donut, Gelato Narwhal
 		expect.deepEqual(
-			ids({ list[4], list[5], list[6], list[7] }),
-			{ "bird", "cloud_bunny", "cupcake_axolotl", "donut" }
+			ids({ list[5], list[6], list[7], list[8], list[9] }),
+			{ "bird", "cloud_bunny", "cupcake_axolotl", "donut", "gelato_narwhal" }
 		)
-		-- Commons last, by name (... Boba Bear, Kitty Bread, Pancake Pup, Peachy; Toast is equipped, so first)
+		-- Commons last, by name (... Kitty Bread, Pancake Pup, Peachy, Slushy Seal; Toast is equipped, so first)
 		local tail = ids({ list[#list - 3], list[#list - 2], list[#list - 1], list[#list] })
-		expect.deepEqual(tail, { "boba_bear", "kitty_bread", "pancake_pup", "peachy" })
+		expect.deepEqual(tail, { "kitty_bread", "pancake_pup", "peachy", "slushy_seal" })
 		for _, entry in list do
 			if not entry.owned then
 				expect.equal(entry.equipped, false)
@@ -137,11 +138,12 @@ return function(t: Context)
 		-- UI FINAL R5 (H:927): the tab counts are the catalogue totals, owned or not.
 		expect.deepEqual(
 			InventoryFormat.tabCounts(list),
-			{ All = 20, Common = 7, Uncommon = 3, Rare = 4, Epic = 4, Exclusive = 2 } -- Rare since 2026-11-01, Series 01
+			-- Rare since 2026-11-01, Series 01, the Frosty Box
+			{ All = 27, Common = 9, Uncommon = 5, Rare = 5, Epic = 5, Exclusive = 3 }
 		)
 		local n, total = InventoryFormat.collected(list)
 		expect.equal(n, 2)
-		expect.equal(total, 20)
+		expect.equal(total, 27)
 	end)
 
 	t.test("chips and empty state: texts from Strings", function()

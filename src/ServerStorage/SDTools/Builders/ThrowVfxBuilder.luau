@@ -696,6 +696,60 @@ local TRAILS: { TrailSpec } = {
 			sparkles("Sparkle", C.White, 8, 0.35),
 		},
 	},
+	-- Frosty Box (2026-11-10): Claude Design's CATALOG2 round 2 trails (sd/toys2.js:868-874). Built and copied in alone,
+	-- like Series 01's.
+	{
+		id = "cone_cub",
+		theme = "Cone Cub: a cream-to-waffle ribbon and waffle crumbs",
+		ribbons = { ribbonOf({ hex("#FFF1DC"), hex("#F7D2A2"), hex("#E9B46C") }, 0.9, 0.34), core({ C.White, hex("#FFF1DC") }) },
+		emitters = { dots("WaffleCrumbs", { hex("#E9B46C"), hex("#F7D2A2"), C.White }, 8, 0.16, 20, -0.4) },
+	},
+	{
+		id = "slushy_seal",
+		theme = "Slushy Seal: a frost-to-slush blue ribbon and slush bits",
+		ribbons = { ribbonOf({ hex("#DDF4FF"), hex("#8ED3FA"), hex("#7CC8F2") }, 0.95, 0.36), core({ C.White, hex("#DDF4FF") }) },
+		emitters = { dots("Slush", { hex("#8ED3FA"), C.White, hex("#7CC8F2") }, 8, 0.16, 20, -0.4) },
+	},
+	{
+		id = "ice_pop_beaver",
+		theme = "Ice Pop Beaver: a cream-to-chocolate ribbon, chocolate drips and a leaf",
+		ribbons = { ribbonOf({ hex("#F6CFA0"), hex("#A0623A") }, 0.9, 0.32), core({ C.White, hex("#F6CFA0") }) },
+		emitters = { dots("ChocolateDrips", { hex("#A0623A"), hex("#F6CFA0"), hex("#6CC56A") }, 8, 0.16, 20, -0.4) },
+	},
+	{
+		id = "mint_chip_mouse",
+		theme = "Mint Chip Mouse: a mint ribbon and chocolate chips",
+		ribbons = { ribbonOf({ hex("#D6F8E7"), hex("#9AE4C2") }, 0.95, 0.36), core({ C.White, hex("#D6F8E7") }) },
+		emitters = { dots("Chips", { hex("#5A3A2E"), hex("#9AE4C2"), C.White }, 8, 0.16, 20, -0.4) },
+	},
+	{
+		id = "sundae_manatee",
+		theme = "Sundae Manatee: a lavender-to-syrup ribbon, syrup drops, cherries and cream",
+		ribbons = { ribbonOf({ hex("#E8E4FC"), hex("#8A4F3A") }, 1.1, 0.4), core({ C.White, hex("#E8E4FC") }) },
+		emitters = { dots("SyrupDrops", { hex("#8A4F3A"), hex("#F0445E"), hex("#FFF8F0") }, 8, 0.16, 20, -0.4) },
+	},
+	{
+		id = "gelato_narwhal",
+		theme = "Gelato Narwhal: a frost-blue ribbon, ice cubes and white sparkles",
+		ribbons = { ribbonOf({ hex("#E8F8FF"), hex("#8CCDEB") }, 1.1, 0.44), core({ C.White, hex("#E8F8FF") }) },
+		emitters = {
+			dots("IceCubes", { C.White, hex("#8CCDEB"), hex("#E9B46C") }, 10, 0.16, 20, -0.4),
+			sparkles("Sparkle", C.White, 8, 0.35),
+		},
+	},
+	{
+		id = "parfait_wyvern",
+		theme = "Parfait Wyvern: twin cream-to-pink layer streams, sugar petals and gold sparkles",
+		ribbons = {
+			ribbonOf({ hex("#FFF3E6"), hex("#FF8FAE") }, 0.65, 0.5, 0.45, "LayerL"),
+			ribbonOf({ hex("#FF8FAE"), hex("#FFF3E6") }, 0.65, 0.5, -0.45, "LayerR"),
+			core({ C.White, hex("#FFF3E6") }, 0.32, 0.22),
+		},
+		emitters = {
+			dots("Petals", { hex("#FF8FAE"), hex("#FFDD88"), hex("#A8A2F2"), C.White }, 12, 0.16, 6, 0.5, { 0.6, 1.0 }),
+			sparkles("Sugar", hex("#FFDD88"), 8, 0.35),
+		},
+	},
 }
 ThrowVfxBuilder.TRAILS = TRAILS
 

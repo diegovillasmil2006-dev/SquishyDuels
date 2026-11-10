@@ -273,6 +273,14 @@ local STYLE_OF: { [string]: string } = {
 	bao_buddy = "skip", -- BaoBuddy
 	pando = "bounce", -- Pando
 	cosmo = "spiral", -- Cosmo
+	-- Frosty Box (2026-11-10, THROW_STYLE2, sd/anims2.js:106-107)
+	cone_cub = "spiral", -- ConeCub
+	slushy_seal = "skip", -- SlushySeal
+	ice_pop_beaver = "sidearm", -- IcePopBeaver
+	mint_chip_mouse = "overhand", -- MintChipMouse
+	sundae_manatee = "lob", -- SundaeManatee
+	gelato_narwhal = "shove", -- GelatoNarwhal
+	parfait_wyvern = "glide", -- ParfaitWyvern
 }
 
 local STYLE_NAMES: { string } = {}

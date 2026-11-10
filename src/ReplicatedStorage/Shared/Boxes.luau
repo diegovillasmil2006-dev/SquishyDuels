@@ -1,5 +1,5 @@
 --!strict
--- Boxes: the three box definitions and their odds (DESIGN §6.4, §6.10). Shared (server and client): BoxService and
+-- Boxes: the box definitions and their odds (DESIGN §6.4, §6.10). Shared (server and client): BoxService and
 -- Logic/BoxDraw draw from the same data the odds panel and the in-world board show, so the display always equals the
 -- draw. Data only plus pure helpers; no instances, no yields.
 --
@@ -17,8 +17,11 @@
 --
 -- API:
 --   Boxes.WeightTotal                -> 10000
---   Boxes.List                       -> { BoxDef } (frozen, §6.4 order: snack, sweet, treat)
+--   Boxes.List                       -> { BoxDef } (frozen, §6.4 order: snack, sweet, frosty, treat)
 --   Boxes.get(id)                    -> BoxDef? (nil for an unknown id or a non-string)
+--   Boxes.isOpenFor(boxId, biome)    -> boolean: the box has no zone, or `biome` (profile.highway.biome, the highest
+--                                       highway biome reached) is at least its zone; false for an unknown box, and a
+--                                       biome that is not a number counts as 1 (fail closed)
 --   Boxes.list()                     -> { BoxDef } in list order (a new array each call; the defs are frozen)
 --   Boxes.paidById                   -> { [boxId]: BoxDef } of the paid boxes only (frozen; BoxService opens only these)
 --   Boxes.percentText(weight)        -> "32.00": weight / 100 with two decimals, integer math (no float rounding)
@@ -55,6 +58,9 @@ export type BoxDef = {
 	paid: boolean, -- a paid random item (§6.10): opened with Coins through BoxOpen
 	freeOnly: boolean?, -- only granted for free (the day-7 Treat Box); never sold
 	fixedCycle: number?, -- pens3 phase 5, paid boxes: the length of the fixed order restricted accounts open
+	-- Plan "50 squishies" (zone boxes): opens once the player has reached this highway biome (profile.highway.biome,
+	-- WorldLayout.Highway.biomes' order: 4 = Frozen Dessert Peaks); nil = always open.
+	zone: number?,
 	items: { BoxItem }, -- ordered; weights sum to WeightTotal
 }
 
@@ -121,6 +127,26 @@ local LIST: { BoxDef } = {
 			item("cupcake_axolotl", 2498),
 			item("cosmo", 4),
 			item("dragon", 4),
+		},
+	},
+	-- Frosty Box (owner 2026-11-10 "lets build everything"; plan "50 squishies" step 4, money check 2026-11-01): the
+	-- first zone box, 20B, opened once the player reaches Frozen Dessert Peaks (zone 4). 2 Commons 30% each, 2 Uncommons
+	-- 13% each, the Rare 10%, the Epic 3.9%, the Legendary (Exclusive) 0.1%.
+	{
+		id = "frosty",
+		nameKey = "box.frosty.name",
+		cost = 20_000_000_000,
+		paid = true,
+		zone = 4,
+		fixedCycle = 1000, -- each Common 300 times, each Uncommon 130, the Rare 100, the Epic 39, Parfait Wyvern once
+		items = {
+			item("cone_cub", 3000),
+			item("slushy_seal", 3000),
+			item("ice_pop_beaver", 1300),
+			item("mint_chip_mouse", 1300),
+			item("sundae_manatee", 1000),
+			item("gelato_narwhal", 390),
+			item("parfait_wyvern", 10),
 		},
 	},
 	{
@@ -220,6 +246,15 @@ end
 
 function Boxes.list(): { BoxDef }
 	return table.clone(LIST)
+end
+
+function Boxes.isOpenFor(boxId: unknown, biome: unknown): boolean
+	local box = Boxes.get(boxId)
+	if box == nil then
+		return false
+	end
+	local zone = box.zone
+	return zone == nil or (if type(biome) == "number" and biome == biome then biome else 1) >= zone
 end
 
 -- weight / 100 with exactly two decimals, from integers only: 3200 -> "32.00", 300 -> "3.00", 10000 -> "100.00",
