@@ -235,6 +235,13 @@ return function(t: Context)
 				sundae_manatee = true,
 				gelato_narwhal = true,
 				parfait_wyvern = true,
+				cocoa_quokka = true,
+				cinder_bun = true,
+				smore_skunk = true,
+				cayenne_kiwi = true,
+				pizza_pangolin = true,
+				lava_cake_hippo = true,
+				mallow_behemoth = true,
 			}
 			for _, def in Catalog.list() do
 				if untitled[def.id] then

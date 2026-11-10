@@ -105,25 +105,32 @@ return function(t: Context)
 			"toast",
 			"cone_cub", -- Frosty Box (2026-11-10): full price from the first one, after the Welcome-priced Commons
 			"slushy_seal",
+			"cinder_bun", -- Lava Box (2026-11-10): each one its rarity's dearest
+			"cocoa_quokka",
 			"kitty_bread",
 			"butter",
 			"chocolate",
 			"grapey",
 			"ice_pop_beaver",
 			"mint_chip_mouse",
+			"cayenne_kiwi",
+			"smore_skunk",
 			"bao_buddy",
 			"mochi_fox",
 			"pando",
 			"strawberry_frog",
 			"sundae_manatee",
+			"pizza_pangolin",
 			"bird",
 			"cloud_bunny",
 			"cupcake_axolotl",
 			"donut",
 			"gelato_narwhal",
+			"lava_cake_hippo",
 			"cosmo",
 			"dragon",
 			"parfait_wyvern",
+			"mallow_behemoth",
 		})
 		local byId: { [string]: any } = {}
 		for _, e in list do

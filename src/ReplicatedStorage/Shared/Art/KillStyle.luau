@@ -250,6 +250,45 @@ local STYLES: { [string]: Style } = {
 		-- shortcut: no sound sheet of its own yet; it plays Sprinkle Blast's (sprinkle tinkles) until one is made.
 		sound = "sfx.kill.wyvern_sugar_storm",
 	},
+	-- Lava Box (2026-11-10; design: KILLSETS2.LavaCakeHippo / MallowBehemoth: disc, ring, glow, shards).
+	hippo_meltdown = {
+		id = "hippo_meltdown",
+		nameKey = "elimination.hippo_meltdown",
+		emblem = "img.kill.emblem.hippo_meltdown",
+		emblemWhite = "img.kill.emblem.hippo_meltdown.white",
+		shards = { "UltFlameHot", "UltFondueGlow", "UltFondue", "KillHippoCream" },
+		squishyId = "lava_cake_hippo",
+		disc = "UltFondue",
+		ring = "UltFlameHot",
+		glow = "UltFondueGlow",
+		frame = { image = "img.kill.frameSegments", tint = "UltFondueGlow", size = 1.55, spin = 20 },
+		crownFrame = { image = "img.fx.rays", tint = "UltFlameHot", size = 2.2, spin = 14 },
+		ornament = { image = "img.icon.flame", size = 0.34 },
+		crown = { image = "img.icon.star", size = 0.4, count = 3, fan = 20 },
+		bannerVfx = "Banner/hippo_meltdown",
+		killVfx = "Kill/hippo_meltdown",
+		-- shortcut: no sound sheet of its own yet; it plays Sprinkle Blast's until one is made.
+		sound = "sfx.kill.hippo_meltdown",
+	},
+	behemoth_bonfire = {
+		id = "behemoth_bonfire",
+		nameKey = "elimination.behemoth_bonfire",
+		emblem = "img.kill.emblem.behemoth_bonfire",
+		emblemWhite = "img.kill.emblem.behemoth_bonfire.white",
+		shards = { "UltFlame", "UltFlameHot", "KillMallowDisc", "KillMallowToast" },
+		squishyId = "mallow_behemoth",
+		disc = "KillMallowDisc",
+		ring = "UltFlame",
+		glow = "UltFlameHot",
+		frame = { image = "img.kill.frameOrnate", tint = "UltFlame", size = 1.6, spin = 14 },
+		crownFrame = { image = "img.kill.frameSun", tint = "UltFlameHot", size = 2.1, spin = 10 },
+		ornament = { image = "img.icon.flame", size = 0.34 },
+		crown = { image = "img.icon.flame", size = 0.5, count = 3, fan = 22 },
+		bannerVfx = "Banner/behemoth_bonfire",
+		killVfx = "Kill/behemoth_bonfire",
+		-- shortcut: no sound sheet of its own yet; it plays Dragon's Blaze's (fire) until one is made.
+		sound = "sfx.kill.behemoth_bonfire",
+	},
 }
 
 local IDS: { string } = {
@@ -262,6 +301,8 @@ local IDS: { string } = {
 	"cosmo_supernova",
 	"narwhal_brain_freeze",
 	"wyvern_sugar_storm",
+	"hippo_meltdown",
+	"behemoth_bonfire",
 }
 
 for _, style in STYLES do

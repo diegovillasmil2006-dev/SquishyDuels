@@ -29,6 +29,12 @@
 --     sfx.ultBubblePop as the design's boom); then each ring (the release's shots: pink, cream, blueberry) a wall of
 --     shockRingSegments pieces growing from its releaseAt at the ability's speed out to its length; the wyvern flies
 --     back shockReturnAfter after landing. A cancel takes the spot and the wyvern away.
+--   Fondue Flood (Lava Cake Hippo, Lava Box 2026-11-10; design: sd/lab50.js:324-339): a shockwave that fills a fan:
+--     through the wind-up the fan outline (UltFanTelegraph, pulsing, with a bright rim); at the release the molten flood
+--     (UltFondue) fills it at the ability's speed with glowing drops at its front, holds, then sinks and fades.
+--   Campfire Ring (Mallow Behemoth; design: sd/lab50.js:340-357): a 6-drop rain around the caster drawn as flames: the
+--     slam's ring out to the flames' ring, each drop's ember glow (UltFlameHot, its dropHitRadius, pulsing) until it
+--     lights, then a flame (UltFlame, a bright tip) rising and falling with embers.
 --   Bubble Pop: the Axolotl in its bubble shell (UltBubbleShell) on the design's 0.9 m arc; at its server end (a hit
 --     or its pop) the pop ring (6 studs), 26 puffs and sfx.ultBubblePop. Bubble Pop bounce (2026-10-16): with the
 --     release's `bounce` the path turns there onto the bounce leg (the Axolotl faces its new way) and the arc spans the
@@ -118,6 +124,8 @@ type Drop = {
 	drop: BasePart?,
 	landed: boolean,
 	column: BasePart?, -- Geyser Line: its ice column after it erupts
+	flame: BasePart?, -- Campfire Ring: its flame after it lights
+	flameCore: BasePart?,
 }
 
 type Rain = {
@@ -143,6 +151,9 @@ type Rain = {
 	-- Geyser Line (Frosty Box): no zone and no toy; each drop is a frost circle, then a geyser (dropHitRadius wide).
 	geyser: boolean,
 	geyserRadius: number,
+	-- Campfire Ring (Lava Box): no zone and no toy; the slam ring, then each drop an ember glow and a flame.
+	campfire: boolean,
+	slammed: boolean,
 }
 
 -- Layer Cake Shockwave (Frosty Box, 2026-11-10): the landing spot, the leaping wyvern and the cake rings of one cast.
@@ -160,6 +171,15 @@ type Shock = {
 	landed: boolean,
 	rings: { CakeRing },
 	endsAt: number,
+	-- Fondue Flood (Lava Box): a fan instead of rings (no toy, no spot).
+	fan: boolean,
+	dir: Vector3,
+	halfAngle: number,
+	length: number,
+	tele: { BasePart },
+	rim: { BasePart },
+	flood: { BasePart },
+	lastDrip: number,
 }
 
 type Cast = {
@@ -185,6 +205,11 @@ local DISC_THICKNESS = 0.1
 local WELL_ID = "gravity_well" -- Cosmo's (Config.Abilities): a one-drop rain drawn as a well
 local GEYSER_ID = "geyser_line" -- Gelato Narwhal's (Config.Abilities): a rain in a line drawn as geysers
 local COLUMN_NAME = "SD_UltGeyser"
+local CAMPFIRE_ID = "campfire_ring" -- Mallow Behemoth's (Config.Abilities): a rain on a ring drawn as flames
+local FLAME_NAME = "SD_UltFlame"
+local FAN_NAME = "SD_UltFondue"
+local FLAME_COLORS = { Palette.UltFlame, Palette.UltFlameHot, Palette.UltFlameCore } -- design: sd/lab50.js:355
+local DRIP_COLORS = { Palette.UltFanTelegraph, Palette.UltFondueGlow, Palette.UltFondue } -- design: sd/lab50.js:335
 local SPOT_NAME = "SD_UltCakeSpot"
 local CAKE_NAME = "SD_UltCakeRing"
 local CAKE_COLORS = { Palette.UltCakePink, Palette.UltCakeCream, Palette.UltCakeBlueberry } -- design: sd/lab50.js:310
@@ -682,7 +707,8 @@ local function startRain(
 	ability: any,
 	squishyId: string,
 	well: boolean,
-	geyser: boolean
+	geyser: boolean,
+	campfire: boolean
 )
 	local center = event.center
 	local drops = event.drops
@@ -705,7 +731,7 @@ local function startRain(
 		center = center,
 		floorY = floorY,
 		releaseAt = releaseAt,
-		zone = if geyser
+		zone = if geyser or campfire
 			then nil
 			else makeDisc(
 				ZONE_NAME,
@@ -714,7 +740,7 @@ local function startRain(
 				if well then Palette.UltWellZone else Palette.UltRainZone,
 				1
 			),
-		bunny = if geyser then nil else newModel(squishyId, bunnyScale),
+		bunny = if geyser or campfire then nil else newModel(squishyId, bunnyScale),
 		bunnyScale = bunnyScale,
 		from = from,
 		lobSeconds = lobSeconds,
@@ -728,8 +754,10 @@ local function startRain(
 		beads = {},
 		geyser = geyser,
 		geyserRadius = ability.dropHitRadius or ability.radius,
+		campfire = campfire,
+		slammed = false,
 	}
-	if geyser then
+	if geyser or campfire then
 		rain.endsAt = releaseAt -- no zone and no toy over it (design: sd/lab50.js:295-307): only circles and geysers
 	end
 	if well then
@@ -760,7 +788,13 @@ local function startRain(
 		})
 		rain.endsAt = math.max(
 			rain.endsAt,
-			drop.landAt + (if geyser then math.max(FX.geyserColumnSeconds, FX.geyserRingSeconds) else FX.splashRingSeconds)
+			drop.landAt
+				+ (
+					if geyser
+						then math.max(FX.geyserColumnSeconds, FX.geyserRingSeconds)
+						elseif campfire then FX.campfireFlameSeconds
+						else FX.splashRingSeconds
+				)
 		)
 	end
 	local bunny = rain.bunny
@@ -840,7 +874,96 @@ local function stepRain(rain: Rain, now: number): boolean
 			end
 		end
 	end
+	if rain.campfire and not rain.slammed and now >= rain.releaseAt + FX.campfireSlamAt then
+		-- design: sd/lab50.js:349. The slam: a ring from the caster out to the flames' ring.
+		rain.slammed = true
+		local first = rain.drops[1]
+		local reach = if first then Vector3.new(first.position.X - rain.center.X, 0, first.position.Z - rain.center.Z).Magnitude else 1
+		FxShapes.ring(
+			Vector3.new(rain.center.X, rain.floorY, rain.center.Z),
+			Vector3.yAxis,
+			2 * reach,
+			FX.campfireSlamSeconds,
+			Palette.UltFlame,
+			FX.campfireSlamTransparencyFrom
+		)
+		play(SOUND_POP, rain.center, rain.casterId)
+	end
 	for _, drop in rain.drops do
+		if rain.campfire then
+			-- design: sd/lab50.js:351-355. The ember glow pulses from shadowAt until the flame lights at landAt; the flame then
+			-- rises and falls (sin(uπ) of its size over campfireFlameSeconds) and the embers burst.
+			local floorPoint = Vector3.new(drop.position.X, rain.floorY, drop.position.Z)
+			if not drop.landed and now >= drop.shadowAt and now < drop.landAt then
+				local glow = drop.shadow
+				if glow == nil then
+					glow = makeDisc(
+						SHADOW_NAME,
+						floorPoint + Vector3.new(0, FX.laneLift * 2, 0),
+						rain.geyserRadius,
+						Palette.UltFlameHot,
+						1
+					)
+					drop.shadow = glow
+				end
+				local s = if reduced then 0.5 else UltFx.pulse(now - drop.shadowAt, FX.campfireGlowHz);
+				(glow :: BasePart).Transparency = 1 - FX.campfireGlowOpacity * (0.55 + 0.45 * s)
+			elseif not drop.landed and now >= drop.landAt then
+				drop.landed = true
+				local glow = drop.shadow
+				drop.shadow = nil
+				if glow then
+					releasePart(glow)
+				end
+				drop.flame = FxPool.default():acquirePart({
+					Name = FLAME_NAME,
+					Shape = Enum.PartType.Ball,
+					Size = Vector3.one * 0.05,
+					CFrame = CFrame.new(floorPoint),
+					Color = Palette.UltFlame,
+					Transparency = 0,
+					Material = Enum.Material.Neon,
+				})
+				drop.flameCore = FxPool.default():acquirePart({
+					Name = FLAME_NAME,
+					Shape = Enum.PartType.Ball,
+					Size = Vector3.one * 0.05,
+					CFrame = CFrame.new(floorPoint),
+					Color = Palette.UltFlameCore,
+					Transparency = 0,
+					Material = Enum.Material.Neon,
+				})
+				burst(
+					floorPoint + Vector3.new(0, 0.2 / 0.28, 0),
+					FX.campfireEmbers,
+					FLAME_COLORS,
+					FX.campfireEmberSize,
+					FX.campfireEmberLifetime,
+					FX.campfireEmberSpeed,
+					FX.campfireEmberGravity
+				)
+				play(SOUND_DROP, floorPoint, rain.casterId)
+			end
+			local flame, core = drop.flame, drop.flameCore
+			if flame and core then
+				local u = (now - drop.landAt) / FX.campfireFlameSeconds
+				if u >= 1 then
+					drop.flame = nil
+					drop.flameCore = nil
+					releasePart(flame)
+					releasePart(core)
+				else
+					local s = math.sin(math.clamp(u, 0, 1) * math.pi)
+					local w = math.max(0.05, 2 * rain.geyserRadius * FX.campfireFlameWidthShare * s)
+					flame.Size = Vector3.one * w
+					flame.CFrame = CFrame.new(floorPoint + Vector3.new(0, w / 2, 0))
+					local c = math.max(0.05, w * FX.campfireCoreShare)
+					core.Size = Vector3.one * c
+					core.CFrame = CFrame.new(floorPoint + Vector3.new(0, w * 0.8 + c * 0.35, 0)) -- the flame's bright tip
+				end
+			end
+			continue
+		end
 		if rain.geyser then
 			-- design: sd/lab50.js:300-304. The frost circle pulses until the eruption; then the column rises and sinks
 			-- (sin(uπ) of its height over geyserColumnSeconds), the cubes burst, the white ring opens.
@@ -1047,6 +1170,34 @@ end
 local function startShock(event: Types.UltimateEventPayload, ability: any, squishyId: string): Shock
 	local casterRoot = rootOf(event.casterId)
 	local center = event.origin
+	if ability.fill then
+		-- Fondue Flood: no toy and no spot; the fan outline shows through the wind-up (design: sd/lab50.js:326-332).
+		local aim = Vector3.new(event.dir.X, 0, event.dir.Z)
+		local fanShock: Shock = {
+			casterId = event.casterId,
+			center = center,
+			startAt = math.min(serverNow(), event.telegraphEndsAt),
+			landAt = event.telegraphEndsAt,
+			speed = math.max(ability.speed, 1e-3),
+			from = center,
+			spot = nil,
+			toy = nil,
+			toyHalf = 0,
+			landed = false,
+			rings = {},
+			endsAt = event.telegraphEndsAt + FX.fanSinkFrom + FX.fanSinkSeconds,
+			fan = true,
+			dir = if aim.Magnitude > 1e-6 then aim.Unit else Vector3.zAxis,
+			halfAngle = math.rad((ability.fanDeg or 120) / 2),
+			length = ability.maxLength,
+			tele = {},
+			rim = {},
+			flood = {},
+			lastDrip = 0,
+		}
+		shocks[event.casterId] = fanShock
+		return fanShock
+	end
 	local def = Catalog.get(squishyId)
 	local toyScale = flightScaleOf(squishyId, if def then def.throw.radius else 1)
 	local toy = newModel(squishyId, toyScale)
@@ -1070,6 +1221,14 @@ local function startShock(event: Types.UltimateEventPayload, ability: any, squis
 		landed = false,
 		rings = {},
 		endsAt = event.telegraphEndsAt + FX.shockReturnAfter + FX.shockReturnSeconds,
+		fan = false,
+		dir = Vector3.zAxis,
+		halfAngle = 0,
+		length = 0,
+		tele = {},
+		rim = {},
+		flood = {},
+		lastDrip = 0,
 	}
 	shocks[event.casterId] = shock
 	return shock
@@ -1091,6 +1250,12 @@ local function endShock(shock: Shock)
 			releasePart(part)
 		end
 		table.clear(ring.parts)
+	end
+	for _, list in { shock.tele, shock.rim, shock.flood } do
+		for _, part in list do
+			releasePart(part)
+		end
+		table.clear(list)
 	end
 	if shocks[shock.casterId] == shock then
 		shocks[shock.casterId] = nil
@@ -1126,7 +1291,115 @@ local function placeRing(shock: Shock, ring: CakeRing, r: number, fade: number)
 	end
 end
 
+-- The fan's slices at radius `r` (made on first use): each a flat slice from the centre along its bisector.
+local function placeFan(shock: Shock, parts: { BasePart }, r: number, color: Color3, transparency: number, lift: number)
+	local n = FX.fanSlices
+	if #parts == 0 then
+		for _ = 1, n do
+			table.insert(
+				parts,
+				FxPool.default():acquirePart({
+					Name = FAN_NAME,
+					Size = Vector3.one,
+					CFrame = CFrame.new(shock.center),
+					Color = color,
+					Transparency = 1,
+					Material = Enum.Material.SmoothPlastic,
+				})
+			)
+		end
+	end
+	local a0 = math.atan2(shock.dir.Z, shock.dir.X)
+	local step = 2 * shock.halfAngle / n
+	local width = math.max(2 * r * math.sin(step / 2) * 1.08, 0.05)
+	for index, part in parts do
+		local a = a0 - shock.halfAngle + (index - 0.5) * step
+		local along = Vector3.new(math.cos(a), 0, math.sin(a))
+		local p = shock.center + along * (r / 2) + Vector3.new(0, lift, 0)
+		part.Size = Vector3.new(width, FX.fanThickness, math.max(r, 0.05))
+		part.CFrame = CFrame.lookAt(p, p + along)
+		part.Transparency = transparency
+	end
+end
+
+-- The fan's bright rim at its edge (the two sides and the arc), as thin pieces (vault: a warning reads with a rim).
+local function placeRim(shock: Shock, transparency: number)
+	local n = FX.fanSlices
+	if #shock.rim == 0 then
+		for _ = 1, n + 2 do
+			table.insert(
+				shock.rim,
+				FxPool.default():acquirePart({
+					Name = FAN_NAME,
+					Size = Vector3.one,
+					CFrame = CFrame.new(shock.center),
+					Color = Palette.White,
+					Transparency = 1,
+					Material = Enum.Material.Neon,
+				})
+			)
+		end
+	end
+	local r = shock.length
+	local a0 = math.atan2(shock.dir.Z, shock.dir.X)
+	local step = 2 * shock.halfAngle / n
+	local lift = Vector3.new(0, FX.laneLift * 3, 0)
+	for index = 1, n do
+		local a = a0 - shock.halfAngle + (index - 0.5) * step
+		local p = shock.center + Vector3.new(math.cos(a), 0, math.sin(a)) * r + lift
+		local part = shock.rim[index]
+		part.Size = Vector3.new(2 * r * math.sin(step / 2) * 1.05, FX.fanThickness, FX.fanRimStuds)
+		part.CFrame = CFrame.lookAt(p, shock.center + lift)
+		part.Transparency = transparency
+	end
+	for side = 0, 1 do
+		local a = a0 + (if side == 0 then -shock.halfAngle else shock.halfAngle)
+		local along = Vector3.new(math.cos(a), 0, math.sin(a))
+		local p = shock.center + along * (r / 2) + lift
+		local part = shock.rim[n + 1 + side]
+		part.Size = Vector3.new(FX.fanRimStuds, FX.fanThickness, r)
+		part.CFrame = CFrame.lookAt(p, p + along)
+		part.Transparency = transparency
+	end
+end
+
+-- Fondue Flood: the outline through the wind-up, then the flood (design: sd/lab50.js:330-338).
+local function stepFan(shock: Shock, now: number): boolean
+	local reduced = isReduced()
+	if now < shock.landAt then
+		local s = if reduced then 0.5 else UltFx.pulse(now - shock.startAt, FX.fanTelePulseHz)
+		local opacity = FX.fanTeleOpacity * (0.75 + 0.25 * s)
+		placeFan(shock, shock.tele, shock.length, Palette.UltFanTelegraph, 1 - opacity, FX.laneLift * 2)
+		placeRim(shock, 1 - math.min(1, opacity * 2.5))
+		return true
+	end
+	if not shock.landed then
+		shock.landed = true
+		for _, list in { shock.tele, shock.rim } do
+			for _, part in list do
+				releasePart(part)
+			end
+			table.clear(list)
+		end
+		play(SOUND_DROP, shock.center, shock.casterId)
+	end
+	local t = now - shock.landAt
+	local r = math.min(math.max(shock.speed * t, 0.05), shock.length)
+	local k = math.clamp((t - FX.fanSinkFrom) / FX.fanSinkSeconds, 0, 1)
+	placeFan(shock, shock.flood, r * (1 - FX.fanShrink * k), Palette.UltFondue, k, FX.laneLift * 2 - FX.fanSinkStuds * k)
+	if r < shock.length and not reduced and now - shock.lastDrip >= FX.fanDripEvery then
+		shock.lastDrip = now
+		local a = math.atan2(shock.dir.Z, shock.dir.X) + (math.random() * 2 - 1) * shock.halfAngle
+		local at = shock.center + Vector3.new(math.cos(a), 0, math.sin(a)) * r + Vector3.new(0, 0.05 / 0.28, 0)
+		burst(at, 2, DRIP_COLORS, FX.fanDripSize, FX.fanDripLifetime, FX.fanDripSpeed, FX.fanDripGravity)
+	end
+	return now < shock.endsAt
+end
+
 local function stepShock(shock: Shock, now: number): boolean
+	if shock.fan then
+		return stepFan(shock, now)
+	end
 	local reduced = isReduced()
 	local spot = shock.spot
 	if spot then
@@ -1322,7 +1595,7 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 			table.insert(lanes, { part = part, untilClock = os.clock() + FX.laneSeconds })
 		end
 	elseif kind == "rain" then
-		startRain(event, ability, squishyId, ultimateId == WELL_ID, ultimateId == GEYSER_ID)
+		startRain(event, ability, squishyId, ultimateId == WELL_ID, ultimateId == GEYSER_ID, ultimateId == CAMPFIRE_ID)
 		local drops: { Types.UltimateDrop } = event.drops or {}
 		for _, drop in drops do
 			remember(drop.projId, drop.landAt)
@@ -1401,6 +1674,14 @@ function UltFx.step(now: number)
 				if drop.column then
 					releasePart(drop.column)
 					drop.column = nil
+				end
+				if drop.flame then
+					releasePart(drop.flame)
+					drop.flame = nil
+				end
+				if drop.flameCore then
+					releasePart(drop.flameCore)
+					drop.flameCore = nil
 				end
 			end
 		end

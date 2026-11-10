@@ -750,6 +750,60 @@ local TRAILS: { TrailSpec } = {
 			sparkles("Sugar", hex("#FFDD88"), 8, 0.35),
 		},
 	},
+	-- Lava Box (2026-11-10): Claude Design's CATALOG2 round 3 trails (sd/toys2.js). Built and copied in alone, like
+	-- the Frosty Box's.
+	{
+		id = "cocoa_quokka",
+		theme = "Cocoa Quokka: a milk-to-cocoa ribbon, cocoa drops and mini marshmallows",
+		ribbons = { ribbonOf({ hex("#FFE6D0"), hex("#7A4A32") }, 0.9, 0.34), core({ C.White, hex("#FFE6D0") }) },
+		emitters = { dots("CocoaDrops", { hex("#7A4A32"), C.White, hex("#F0786A") }, 8, 0.16, 18, -0.4) },
+	},
+	{
+		id = "cinder_bun",
+		theme = "Cinder Bun: a dough-to-crust ribbon, toast crumbs and a little smoke",
+		ribbons = { ribbonOf({ hex("#F6CE94"), hex("#A2603A") }, 0.95, 0.34), core({ C.White, hex("#F6CE94") }) },
+		emitters = { dots("Crumbs", { hex("#DB9852"), hex("#FFB35A"), hex("#E9E4EE") }, 8, 0.16, 20, -0.4) },
+	},
+	{
+		id = "smore_skunk",
+		theme = "S'more Skunk: a mallow-to-chocolate ribbon and graham crumbs",
+		ribbons = { ribbonOf({ hex("#FFF6EC"), hex("#8E5E48") }, 1.0, 0.38), core({ C.White, hex("#FFF6EC") }) },
+		emitters = { dots("Graham", { hex("#DCA466"), hex("#FFF6EC"), hex("#8E5E48") }, 8, 0.16, 22, -0.4) },
+	},
+	{
+		id = "cayenne_kiwi",
+		theme = "Cayenne Kiwi: a hot orange ribbon and rising embers",
+		ribbons = { ribbonOf({ hex("#FFD08A"), hex("#FF8A3C") }, 0.9, 0.36), core({ C.White, hex("#FFD08A") }) },
+		emitters = { dots("Embers", { hex("#FF8A3C"), hex("#FFC24A"), hex("#FFD08A") }, 8, 0.16, 24, 0.5) },
+	},
+	{
+		id = "pizza_pangolin",
+		theme = "Pizza Pangolin: a cheese-to-crust ribbon, cheese bits and pepperoni",
+		ribbons = { ribbonOf({ hex("#FFE2A0"), hex("#E39B52") }, 1.1, 0.4), core({ C.White, hex("#FFE2A0") }) },
+		emitters = { dots("Toppings", { hex("#FFC94A"), hex("#E39B52"), hex("#C8503F") }, 8, 0.16, 24, -0.4) },
+	},
+	{
+		id = "lava_cake_hippo",
+		theme = "Lava Cake Hippo: a molten ribbon, glowing drops and embers",
+		ribbons = { ribbonOf({ hex("#FFC46B"), hex("#9C5E40") }, 1.1, 0.44), core({ C.White, hex("#FFC46B") }) },
+		emitters = {
+			dots("GlowDrops", { hex("#FF9A3C"), hex("#FFC46B"), hex("#9C5E40") }, 10, 0.16, 20, -0.4),
+			sparkles("Embers", hex("#FFC46B"), 8, 0.35),
+		},
+	},
+	{
+		id = "mallow_behemoth",
+		theme = "Mallow Behemoth: twin mallow-to-toast streams, embers and gold sparkles",
+		ribbons = {
+			ribbonOf({ hex("#FFF1E0"), hex("#EDB06A") }, 0.65, 0.5, 0.45, "ToastL"),
+			ribbonOf({ hex("#EDB06A"), hex("#FFF1E0") }, 0.65, 0.5, -0.45, "ToastR"),
+			core({ C.White, hex("#FFF1E0") }, 0.32, 0.22),
+		},
+		emitters = {
+			dots("Embers", { hex("#FFB347"), hex("#FF8A3C"), hex("#FFF1E0") }, 12, 0.16, 6, 0.5, { 0.6, 1.0 }),
+			sparkles("Gold", hex("#FFE7A0"), 8, 0.35),
+		},
+	},
 }
 ThrowVfxBuilder.TRAILS = TRAILS
 

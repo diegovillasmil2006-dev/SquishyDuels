@@ -324,6 +324,9 @@ export type RingSpec = {
 	maxRadius: number,
 	width: number, -- the ring wall's half-thickness
 	clearHeight: number, -- feet higher than this above the floor jump it
+	dir: Vector3?, -- Fondue Flood (2026-11-10): the fan's flat aim (nil: the whole ring)
+	halfAngle: number?, -- the fan's half angle (radians)
+	fill: boolean?, -- the area behind the front is in too (a flood)
 	floorY: number,
 }
 
@@ -390,7 +393,17 @@ type Area = {
 }
 
 -- Layer Cake Shockwave: a ring's own numbers (RingSpec; maxT = maxRadius / speed seconds of growth).
-type Ring = { center: Vector3, startAt: number, speed: number, maxT: number, width: number, clearHeight: number }
+type Ring = {
+	center: Vector3,
+	startAt: number,
+	speed: number,
+	maxT: number,
+	width: number,
+	clearHeight: number,
+	dir: Vector3?, -- Fondue Flood (2026-11-10)
+	halfAngle: number?,
+	fill: boolean?,
+}
 
 -- What this module needs from the outside world (useDeps). `send` fires a server -> client remote to a list of
 -- recipients (non-players are skipped by NetService).
@@ -1065,6 +1078,16 @@ local function ringStep(proj: Projectile, ring: Ring, now: number): Candidate?
 	local t0, t1 = proj.lastT, math.min(now - ring.startAt, ring.maxT)
 	local r0, r1 = ring.speed * t0, ring.speed * t1
 	local floorY = proj.floorY or ring.center.Y
+	-- Fondue Flood (2026-11-10): a flood is in from its centre out to its front (no wall width), only in its fan.
+	local fill = ring.fill == true
+	local width = if fill then 0 else ring.width
+	local function touches(position: Vector3, box: any?): boolean
+		if not UltRules.ringTouches(ring.center, if fill then 0 else r0, r1, width, position, box) then
+			return false
+		end
+		local dir = ring.dir
+		return dir == nil or UltRules.inFan(ring.center, dir, ring.halfAngle or math.pi, position, box)
+	end
 	local function candidateFor(position: Vector3, at: number): Candidate
 		local away = flatUnit(position - ring.center)
 		return {
@@ -1087,10 +1110,10 @@ local function ringStep(proj: Projectile, ring: Ring, now: number): Candidate?
 			if
 				root
 				and not UltRules.feetAbove(root.Position, floorY, ring.clearHeight)
-				and UltRules.ringTouches(ring.center, r0, r1, ring.width, root.Position)
+				and touches(root.Position)
 			then
 				local d = Vector3.new(root.Position.X - ring.center.X, 0, root.Position.Z - ring.center.Z).Magnitude
-				local candidate = candidateFor(root.Position, UltRules.ringReachTime(ring.startAt, ring.speed, ring.width, d))
+				local candidate = candidateFor(root.Position, UltRules.ringReachTime(ring.startAt, ring.speed, width, d))
 				if canDamage(port, attacker, victim, root.Position, candidate.time) then
 					candidate.victim = victim
 					return candidate
@@ -1105,7 +1128,7 @@ local function ringStep(proj: Projectile, ring: Ring, now: number): Candidate?
 				local box = { bottomOffset = 0, topOffset = 0, radius = radius }
 				if
 					bottom.Y - radius - floorY <= ring.clearHeight
-					and UltRules.ringTouches(ring.center, r0, r1, ring.width, bottom, box)
+					and touches(bottom, box)
 				then
 					local candidate = candidateFor(bottom, at)
 					candidate.kind = "target"
@@ -2194,6 +2217,9 @@ function CombatService.launchRing(spec: RingSpec): number
 			maxT = growth,
 			width = spec.width,
 			clearHeight = spec.clearHeight,
+			dir = spec.dir,
+			halfAngle = spec.halfAngle,
+			fill = spec.fill,
 		},
 		areaHits = 0,
 	}

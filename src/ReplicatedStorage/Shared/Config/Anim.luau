@@ -844,6 +844,7 @@ local Anim = {
 		-- The Frosty igloo's scoop (Claude Design BOXES zip 2026-11-10, BOXES3 frosty open.lid at its peak, t 0.8 s): at the
 		-- open lid angle it is up `rise` studs, turned spinDeg about Y and tipped tiltDeg; in between in step with the lid.
 		frostyLid = { rise = 1.95, spinDeg = 260, tiltDeg = -16 },
+		lavaLid = { rise = 2.35, spinDeg = 290, tiltDeg = -14 }, -- the volcano's plug (BOXES3 lava open.lid at t 0.84 s)
 		hop = { gravity = 22, kick = 3.2, kickPerTap = 0.6, hardBelow = -2, landSquash = 1.2, landSquashMax = 10 },
 		idle = { bobY = 0.04, bobRate = 2.2, roll = 0.025, rollPerTap = 0.03, rollRate = 5, rollRatePerTap = 5 },
 		idleYaw = { amp = 0.15, rate = 1.1 }, -- stage:308

@@ -77,6 +77,8 @@ local SOUND_KEYS = {
 	"sfx.ultCharge.cosmo", -- Series 01 (2026-11-10): Gravity Well's wind-up
 	"sfx.ultCharge.gelato_narwhal", -- Frosty Box (2026-11-10): Geyser Line's and Layer Cake Shockwave's wind-ups
 	"sfx.ultCharge.parfait_wyvern",
+	"sfx.ultCharge.lava_cake_hippo", -- Lava Box (2026-11-10): Fondue Flood's and Campfire Ring's wind-ups
+	"sfx.ultCharge.mallow_behemoth",
 	"sfx.ultRelease",
 	"sfx.ultRainDrop",
 	"sfx.ultCloudHover",
@@ -302,7 +304,7 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 73) -- + Series 01's sfx.ultCharge.cosmo, the Frosty Box's 2
+		expect.equal(#keys, 75) -- + Series 01's sfx.ultCharge.cosmo, the Frosty and Lava Boxes' 2 each
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
 	end)
 
@@ -482,7 +484,8 @@ return function(t: Context)
 				"img.icon.match",
 				"img.box.sweet",
 				"img.box.treat",
-				"img.box.frosty", -- Frosty Box (2026-11-10): waits for Claude Design's box look
+				"img.box.frosty", -- Frosty Box (2026-11-10): Claude Design's Sundae Igloo
+				"img.box.lava", -- Lava Box (2026-11-10): Claude Design's Cocoa Volcano
 				"img.fx.rays",
 				"img.fx.raysDetail",
 				"img.fx.raysReveal",
@@ -543,6 +546,20 @@ return function(t: Context)
 				"img.squishy.sundae_manatee.white",
 				"img.squishy.gelato_narwhal.white",
 				"img.squishy.parfait_wyvern.white",
+				"img.squishy.cocoa_quokka", -- Lava Box (2026-11-10)
+				"img.squishy.cinder_bun",
+				"img.squishy.smore_skunk",
+				"img.squishy.cayenne_kiwi",
+				"img.squishy.pizza_pangolin",
+				"img.squishy.lava_cake_hippo",
+				"img.squishy.mallow_behemoth",
+				"img.squishy.cocoa_quokka.white",
+				"img.squishy.cinder_bun.white",
+				"img.squishy.smore_skunk.white",
+				"img.squishy.cayenne_kiwi.white",
+				"img.squishy.pizza_pangolin.white",
+				"img.squishy.lava_cake_hippo.white",
+				"img.squishy.mallow_behemoth.white",
 				"img.nav.squishies.white",
 				"img.nav.boxes.white",
 				"img.nav.shop.white",

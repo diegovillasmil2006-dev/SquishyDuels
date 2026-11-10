@@ -886,6 +886,18 @@ local Strings = {
 		},
 		-- Design: sd/ults2.js:6 ("Each ring is short: jump it as it reaches you, or stay more than 14 st from the landing
 		-- spot.")
+		fondueFlood = {
+			name = "Fondue Flood",
+			incoming = "Fondue Flood incoming!",
+			ready = "Fondue Flood ready",
+			description = "Opens wide and floods a big fan of molten chocolate in front of it. Being in the fan as it fills takes a life. Step behind the hippo or out past the fan's edge while its outline shows.",
+		},
+		campfireRing = {
+			name = "Campfire Ring",
+			incoming = "Campfire Ring incoming!",
+			ready = "Campfire Ring ready",
+			description = "Lights 6 campfire flames in a ring around it, one after another. Touching a flame takes a life. Each spot glows before it lights: step inside the ring or back off past it.",
+		},
 		layerCakeShockwave = {
 			name = "Layer Cake Shockwave",
 			incoming = "Layer Cake Shockwave incoming!",
@@ -950,6 +962,14 @@ local Strings = {
 		sundaeManatee = { name = "Sundae Manatee" },
 		gelatoNarwhal = { name = "Gelato Narwhal" },
 		parfaitWyvern = { name = "Parfait Wyvern" },
+		-- Lava Box (2026-11-10)
+		cocoaQuokka = { name = "Cocoa Quokka" },
+		cinderBun = { name = "Cinder Bun" },
+		smoreSkunk = { name = "S'more Skunk" },
+		cayenneKiwi = { name = "Cayenne Kiwi" },
+		pizzaPangolin = { name = "Pizza Pangolin" },
+		lavaCakeHippo = { name = "Lava Cake Hippo" },
+		mallowBehemoth = { name = "Mallow Behemoth" },
 		-- Squishies, Shop and Inspect: what a squishy multiplies (progression spec §3, §6; pens3 phase 1: in the pen).
 		-- {n} = its power (Catalog.getPower).
 		power = "x{n} power",
@@ -979,6 +999,8 @@ local Strings = {
 		cosmo_supernova = "Cosmo's Supernova", -- design: sd/ults2.js:44
 		narwhal_brain_freeze = "Narwhal's Brain Freeze", -- design: sd/ults2.js:58
 		wyvern_sugar_storm = "Wyvern's Sugar Storm", -- design: sd/ults2.js:70
+		hippo_meltdown = "Hippo's Meltdown", -- design: KILLSETS2.LavaCakeHippo
+		behemoth_bonfire = "Behemoth's Bonfire", -- design: KILLSETS2.MallowBehemoth
 	},
 
 	-- Inspect (§10.7, §10.8, §10.9, §10.6).
@@ -1123,6 +1145,14 @@ local Strings = {
 			sundae_manatee = "Careful sundae lob",
 			gelato_narwhal = "Two-hand horn lance",
 			parfait_wyvern = "Two-hand sugar glide",
+			-- Lava Box (the design's THROW_STYLE2 labels)
+			cocoa_quokka = "No-spill mug lob",
+			cinder_bun = "Hot-potato fastball",
+			smore_skunk = "Sandwich frisbee",
+			cayenne_kiwi = "Hot bounce pass",
+			pizza_pangolin = "Rolling pizza skip",
+			lava_cake_hippo = "Two-hand cake shove",
+			mallow_behemoth = "Heavy two-hand heave",
 		},
 	},
 
@@ -1137,6 +1167,7 @@ local Strings = {
 		snack = { name = "Soft Box" }, -- owner 2026-10-15 "Keep all": Soft / Sweet / Royal (ids kept)
 		sweet = { name = "Sweet Box" },
 		frosty = { name = "Frosty Box" }, -- plan "50 squishies" step 4 (the plan's name)
+		lava = { name = "Lava Box" }, -- plan "50 squishies" step 5
 		treat = { name = "Royal Box" },
 		-- Readings (Part 7; DESIGN implies these texts but never words them): the Boxes screen title; the Treat Box
 		-- row's note in place of Open (day = Config.Economy.Daily.freeBoxDay, worded like box.restrictedNote; Strings_Test

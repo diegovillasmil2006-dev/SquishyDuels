@@ -54,6 +54,14 @@ local SquishyBlueprints: { [string]: Blueprint } = {
 	sundae_manatee = require(script.sundae_manatee),
 	gelato_narwhal = require(script.gelato_narwhal),
 	parfait_wyvern = require(script.parfait_wyvern),
+	-- Lava Box (2026-11-10)
+	cocoa_quokka = require(script.cocoa_quokka),
+	cinder_bun = require(script.cinder_bun),
+	smore_skunk = require(script.smore_skunk),
+	cayenne_kiwi = require(script.cayenne_kiwi),
+	pizza_pangolin = require(script.pizza_pangolin),
+	lava_cake_hippo = require(script.lava_cake_hippo),
+	mallow_behemoth = require(script.mallow_behemoth),
 	gift_box = require(script.gift_box),
 	dragon_head_vfx = require(script.dragon_head_vfx),
 }

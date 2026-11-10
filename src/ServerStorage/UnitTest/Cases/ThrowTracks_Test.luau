@@ -196,6 +196,14 @@ local STYLE_OF = {
 	sundae_manatee = "lob",
 	gelato_narwhal = "shove",
 	parfait_wyvern = "glide",
+	-- Lava Box (2026-11-10, THROW_STYLE2)
+	cocoa_quokka = "lob",
+	cinder_bun = "overhand",
+	smore_skunk = "sidearm",
+	cayenne_kiwi = "bounce",
+	pizza_pangolin = "skip",
+	lava_cake_hippo = "shove",
+	mallow_behemoth = "lob",
 }
 
 return function(t: Context)
@@ -249,13 +257,13 @@ return function(t: Context)
 		end
 	end)
 
-	t.test("the toy -> style map is THROW_STYLE for all 27 Catalog toys", function()
+	t.test("the toy -> style map is THROW_STYLE for all 34 Catalog toys", function()
 		local count = 0
 		for _, def in Catalog.list() do
 			count += 1
 			expect.equal(ThrowTracks.styleOf(def.id), STYLE_OF[def.id])
 		end
-		expect.equal(count, 27)
+		expect.equal(count, 34)
 		expect.equal(ThrowTracks.styleOf("no_such_toy"), "overhand") -- anything else throws overhand
 	end)
 

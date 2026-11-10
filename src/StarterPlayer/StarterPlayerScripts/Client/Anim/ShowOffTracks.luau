@@ -572,6 +572,205 @@ local LOOPS: { [string]: Loop } = {
 			},
 		},
 	},
+	-- Lava Box (2026-11-10): Claude Design's SHOWOFF2 (sd/anims2.js), the same way as Series 01's (each ease on
+	-- the key that ends its segment).
+	-- CocoaQuokka: Cocoa Bob. Bobs in its mug like a floating marshmallow and peeks round the handle.
+	cocoa_quokka = {
+		length = 2.4,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.6, 0.18, "Sine InOut" },
+					{ 1.2, 0, "Sine InOut" },
+					{ 1.8, 0.18, "Sine InOut" },
+					{ 2.4, 0, "Sine InOut" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.2, -30, "Sine InOut" },
+					{ 2.4, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
+	-- CinderBun: Nervous Hop. Two quick nervous hops and a little shiver.
+	cinder_bun = {
+		length = 2,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.18, 0.22, "Quad Out" },
+					{ 0.36, 0, "Quad In" },
+					{ 0.54, 0.22, "Quad Out" },
+					{ 0.72, 0, "Quad In" },
+					{ 2, 0, "-" },
+				},
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.8, 0, "-" },
+					{ 0.9, 4, "Sine InOut" },
+					{ 1, -4, "Sine InOut" },
+					{ 1.1, 4, "Sine InOut" },
+					{ 1.2, -4, "Sine InOut" },
+					{ 1.3, 0, "Sine InOut" },
+					{ 2, 0, "-" },
+				},
+			},
+		},
+	},
+	-- SmoreSkunk: Tail Flaunt. Turns away to show off the big mallow tail, hops, turns back.
+	smore_skunk = {
+		length = 3,
+		tracks = {
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.9, 150, "Cubic InOut" },
+					{ 1.6, 150, "Sine InOut" },
+					{ 2.5, 0, "Cubic InOut" },
+					{ 3, 0, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.9, 0, "-" },
+					{ 1.1, 0.2, "Quad Out" },
+					{ 1.3, 0, "Quad In" },
+					{ 3, 0, "-" },
+				},
+			},
+		},
+	},
+	-- CayenneKiwi: Hot Hop. Three hot-footed hops, a third of a turn each.
+	cayenne_kiwi = {
+		length = 1.8,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.2, 0.35, "Quad Out" },
+					{ 0.4, 0, "Quad In" },
+					{ 0.6, 0.35, "Quad Out" },
+					{ 0.8, 0, "Quad In" },
+					{ 1, 0.35, "Quad Out" },
+					{ 1.2, 0, "Quad In" },
+					{ 1.8, 0, "-" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.4, 120, "-" },
+					{ 0.8, 240, "-" },
+					{ 1.2, 360, "-" },
+					{ 1.8, 360, "-" },
+				},
+			},
+		},
+	},
+	-- PizzaPangolin: Pizza Spin. Lifts and spins twice like tossed pizza dough.
+	pizza_pangolin = {
+		length = 2.4,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.5, 0.4, "Sine InOut" },
+					{ 1.5, 0.4, "Sine InOut" },
+					{ 2, 0, "Sine InOut" },
+					{ 2.4, 0, "-" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.5, 180, "Quad In" },
+					{ 1.5, 540, "-" },
+					{ 2, 720, "Quad Out" },
+					{ 2.4, 720, "-" },
+				},
+			},
+		},
+	},
+	-- LavaCakeHippo: Molten Wobble. Heavy cake wobbles side to side, then a small hop.
+	lava_cake_hippo = {
+		length = 2.6,
+		tracks = {
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.5, 7, "Sine InOut" },
+					{ 1, -7, "Sine InOut" },
+					{ 1.5, 4, "Sine InOut" },
+					{ 2, 0, "Sine InOut" },
+					{ 2.6, 0, "-" },
+				},
+			},
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 2, 0, "-" },
+					{ 2.2, 0.15, "Quad Out" },
+					{ 2.4, 0, "Quad In" },
+					{ 2.6, 0, "-" },
+				},
+			},
+		},
+	},
+	-- MallowBehemoth: Behemoth Stomp. Big slow hop and stomp, leans back proudly, glances round.
+	mallow_behemoth = {
+		length = 3.2,
+		tracks = {
+			{
+				prop = "posY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.5, 0.6, "Quad Out" },
+					{ 0.8, 0, "Quad In" },
+					{ 3.2, 0, "-" },
+				},
+			},
+			{
+				prop = "rotX",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.8, 0, "-" },
+					{ 1.1, -8, "Back Out" },
+					{ 1.8, -8, "Sine InOut" },
+					{ 2.3, 0, "Sine InOut" },
+					{ 3.2, 0, "-" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = {
+					{ 0, 0, "-" },
+					{ 2.3, 0, "-" },
+					{ 2.8, 20, "Sine InOut" },
+					{ 3.2, 0, "Sine InOut" },
+				},
+			},
+		},
+	},
 }
 
 -- qb1: the posY / rot stand-ins of the scale-only loops (same length and key times as K, the same eases).

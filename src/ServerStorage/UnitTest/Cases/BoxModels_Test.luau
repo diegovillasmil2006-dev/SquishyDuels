@@ -23,7 +23,7 @@ return function(t: Context)
 	local Palette = t.requireShared("Art/Palette")
 
 	-- frosty (2026-11-10): the igloo's imported meshes (ReplicatedStorage.SD_Models.box_frosty) must be in the place.
-	local KINDS = { snack = "soft", sweet = "sweet", treat = "royal", frosty = "frosty" }
+	local KINDS = { snack = "soft", sweet = "sweet", treat = "royal", frosty = "frosty", lava = "lava" }
 
 	local function lidNodes(bp: any): { [string]: boolean }
 		local under: { [string]: boolean } = { hinge = true }
@@ -170,6 +170,28 @@ return function(t: Context)
 		expect.near(built.named.BaseOutline.Size.X, 3.76 + 2 * 0.0414, 0.02)
 		local top = built.named.LidOutline.Position.Y + built.named.LidOutline.Size.Y / 2
 		expect.near(top, 2.49, 0.05)
+		built.model:Destroy()
+	end)
+
+	-- The Lava Box's Cocoa Volcano (2026-11-10): the design's own meshes, the lid's flames moving with the lid.
+	t.test("the Lava volcano: the imported meshes, the flames on the lid", function()
+		local bp = BoxBuilder.blueprint("lava")
+		expect.truthy(bp ~= nil)
+		expect.equal(bp.meshModel, "box_lava")
+		local lidParts: { [string]: boolean } = {}
+		for _, spec in bp.parts do
+			if spec.node == "lid" then
+				lidParts[spec.name] = true
+			end
+		end
+		expect.deepEqual(lidParts, { Lid = true, LidGlow = true, LidOutline = true })
+		local built = BoxBuilder.build(bp, 1)
+		local source = game:GetService("ReplicatedStorage").SD_Models.box_lava
+		for _, name in { "Base", "BaseOutline", "Glow", "Lid", "LidGlow", "LidOutline" } do
+			local part = built.named[name]
+			expect.truthy(part ~= nil and part:IsA("MeshPart"))
+			expect.equal((part :: MeshPart).MeshId, (source[name] :: MeshPart).MeshId)
+		end
 		built.model:Destroy()
 	end)
 

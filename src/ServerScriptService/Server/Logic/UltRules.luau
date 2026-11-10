@@ -64,6 +64,7 @@ export type RainSpec = {
 	dropAngleStep: number?,
 	targetRadius: number?,
 	dropSpacing: number?, -- Geyser Line: the drops stand in a line this far apart (with rainDrops' `toward`)
+	ringAroundCaster: boolean?, -- Campfire Ring: the ring starts at `toward`'s angle and goes clockwise by dropAngleStep
 }
 
 -- Constants
@@ -162,11 +163,13 @@ function UltRules.rainDrops(
 	local positions: { Vector3 } = {}
 	local spacing = ability.dropSpacing
 	local line = if spacing ~= nil and toward ~= nil then flat(toward) else nil
+	local ringDir = if ability.ringAroundCaster and toward ~= nil then flat(toward) else nil
+	local angle0 = if ringDir ~= nil then math.atan2(ringDir.Z, ringDir.X) else 0
 	for k = 0, count - 1 do
 		if line ~= nil then
 			positions[k + 1] = center + line * ((k - (count - 1)) * (spacing :: number))
 		else
-			local angle = k * step
+			local angle = if ringDir ~= nil then angle0 - k * step else k * step
 			local r = radii[(k % #radii) + 1]
 			positions[k + 1] = center + Vector3.new(math.cos(angle) * r, 0, math.sin(angle) * r)
 		end
@@ -199,6 +202,23 @@ function UltRules.ringTouches(
 	local box = hitboxOf(hitbox)
 	local d = Vector3.new(rootPosition.X - center.X, 0, rootPosition.Z - center.Z).Magnitude
 	return d + box.radius >= r0 - width and d - box.radius <= r1 + width
+end
+
+-- Fondue Flood (Lava Box, 2026-11-10): whether a body (its flat circle) reaches into the fan of halfAngle (radians) around
+-- the flat `dir` from `center`; a body over the centre is in.
+function UltRules.inFan(center: Vector3, dir: Vector3, halfAngle: number, rootPosition: Vector3, hitbox: Hitbox?): boolean
+	local box = hitboxOf(hitbox)
+	local away = Vector3.new(rootPosition.X - center.X, 0, rootPosition.Z - center.Z)
+	local d = away.Magnitude
+	if d <= box.radius then
+		return true
+	end
+	local f = flat(dir)
+	if f == nil then
+		return false
+	end
+	local angle = math.acos(math.clamp(away.Unit:Dot(f), -1, 1))
+	return angle <= halfAngle + math.asin(math.min(1, box.radius / d))
 end
 
 function UltRules.ringReachTime(startAt: number, speed: number, width: number, d: number, hitbox: Hitbox?): number

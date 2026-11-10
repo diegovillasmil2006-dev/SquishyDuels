@@ -136,6 +136,8 @@ export type AbilityDef = {
 	dropAngleStep: number?,
 	targetRadius: number?,
 	dropSpacing: number?, -- Geyser Line (2026-11-10): rain drops in a line this far apart
+	ringAroundCaster: boolean?, -- Campfire Ring (2026-11-10): rain drops on a ring around the caster
+	fill: boolean?, -- Fondue Flood (2026-11-10): a shockwave that fills behind its front
 }
 
 type CasterPhase = "idle" | "telegraph" | "recovery"
@@ -613,6 +615,11 @@ local function rainDrops(caster: Caster, event: Types.UltimateEventPayload): (Ve
 	local ability = caster.ability
 	local floorY = caster.floorY
 	local releaseAt = event.telegraphEndsAt
+	if ability.ringAroundCaster then
+		-- Campfire Ring (Lava Box, 2026-11-10): the flames stand on a ring around the caster's own feet, from the aim.
+		local center = Vector3.new(event.origin.X, floorY, event.origin.Z)
+		return center, UltRules.rainDrops(center, ability, releaseAt, {}, event.dir)
+	end
 	local fallback = event.origin + event.dir * RAIN_FALLBACK_STUDS
 	local openPort, openFighter = caster.port, caster.fighter
 	if openPort and openPort.ffa and openFighter then
@@ -786,6 +793,9 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 			local ability = caster.ability
 			local out = released(event)
 			local shots: { Types.UltimateShot } = {}
+			-- Fondue Flood (Lava Box, 2026-11-10): a fan (fanDeg around the flat aim) that fills behind its front.
+			local flatAim = Vector3.new(event.dir.X, 0, event.dir.Z)
+			local fanDir = if ability.fanDeg ~= nil and flatAim.Magnitude > 1e-6 then flatAim.Unit else nil
 			for index = 1, math.max(1, math.floor(ability.count or 1)) do
 				local startAt = event.telegraphEndsAt + (ability.staggerSeconds or 0) * (index - 1)
 				local projId = CombatService.launchRing({
@@ -799,11 +809,14 @@ local BEHAVIOURS: { [string]: Behaviour } = {
 					width = ability.radius,
 					clearHeight = ability.clearHeight or 0,
 					floorY = caster.floorY,
+					dir = fanDir,
+					halfAngle = if fanDir then math.rad((ability.fanDeg or 360) / 2) else nil,
+					fill = ability.fill == true,
 				})
 				table.insert(shots, {
 					projId = projId,
 					origin = event.origin,
-					dir = Vector3.zero,
+					dir = fanDir or Vector3.zero,
 					length = ability.maxLength,
 					releaseAt = startAt,
 				})

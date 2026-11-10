@@ -148,6 +148,36 @@ return function(t: Context)
 		expect.near(UltRules.ringReachTime(10, 12, 0.5, 0.2), 10, 1e-9) -- at the centre: at once
 	end)
 
+	-- Lava Box (2026-11-10): Campfire Ring's 6 flames on the 8-stud ring, the first toward the aim, then clockwise a sixth
+	-- each (design: lab50.js:345, a0 - i/6 TAU), 0.22 s apart after the 0.45 s slam, each lighting 0.5 s after its glow.
+	t.test("rainDrops ringAroundCaster: Campfire Ring's flames on its ring from the aim, clockwise", function()
+		local CAMPFIRE = Config.Abilities.campfire_ring
+		local center = Vector3.new(0, 0, 0)
+		local drops = UltRules.rainDrops(center, CAMPFIRE, 10, {}, Vector3.new(1, 0, 0))
+		expect.equal(#drops, 6)
+		near(drops[1].position, Vector3.new(8, 0, 0))
+		local a = -math.pi / 3
+		near(drops[2].position, Vector3.new(math.cos(a) * 8, 0, math.sin(a) * 8))
+		for _, drop in drops do
+			expect.near(Vector3.new(drop.position.X, 0, drop.position.Z).Magnitude, 8, 1e-6)
+		end
+		expect.near(drops[1].shadowAt, 10.45, 1e-9)
+		expect.near(drops[6].shadowAt, 10.45 + 5 * 0.22, 1e-9)
+		expect.near(drops[1].landAt - drops[1].shadowAt, 0.51, 1e-9)
+	end)
+
+	-- Lava Box (2026-11-10): Fondue Flood's 120° fan around the aim; a body reaching into its edge counts.
+	t.test("inFan: inside the 120° fan, at its edge by the body's radius, behind it no", function()
+		local center = Vector3.new(0, 0, 0)
+		local dir = Vector3.new(0, 0, 1)
+		local half = math.rad(60)
+		expect.truthy(UltRules.inFan(center, dir, half, Vector3.new(0, STAND, 6)))
+		expect.truthy(UltRules.inFan(center, dir, half, Vector3.new(6 * math.sin(math.rad(55)), STAND, 6 * math.cos(math.rad(55)))))
+		expect.falsy(UltRules.inFan(center, dir, half, Vector3.new(8 * math.sin(math.rad(80)), STAND, 8 * math.cos(math.rad(80)))))
+		expect.falsy(UltRules.inFan(center, dir, half, Vector3.new(0, STAND, -6))) -- behind the hippo
+		expect.truthy(UltRules.inFan(center, dir, half, Vector3.new(0.5, STAND, -0.5))) -- on top of it
+	end)
+
 	t.test("practiceCenter: the target nearest the aim within range; none in front gives nil", function()
 		local origin = Vector3.new(-20, 3, -37)
 		local aim = Vector3.new(-1, 0, 0)

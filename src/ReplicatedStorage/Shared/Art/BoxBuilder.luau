@@ -45,7 +45,7 @@ export type BoxPart = {
 	material: string?,
 }
 export type BoxBlueprint = {
-	kind: "soft" | "sweet" | "royal" | "frosty",
+	kind: "soft" | "sweet" | "royal" | "frosty" | "lava",
 	meshModel: string?, -- the ReplicatedStorage.SD_Models model holding the Mesh parts
 	nodes: { [string]: BoxNode },
 	order: { string },
@@ -75,7 +75,13 @@ export type Built = {
 local CYLINDER_FIX = CFrame.Angles(0, 0, math.pi / 2) -- a Roblox cylinder lies on X; the blueprints stand it on Y
 local TRI_HALF_YAW = math.rad(90) -- SquishyBuilder's TRI_HALF_YAW_DEG: the two halves make a "Λ"
 local SQUASH_EPSILON = 1e-4
-local MODELS = { snack = "BoxSoft", sweet = "BoxSweet", treat = "BoxRoyal", frosty = "BoxFrosty" } :: { [string]: string }
+local MODELS = {
+	snack = "BoxSoft",
+	sweet = "BoxSweet",
+	treat = "BoxRoyal",
+	frosty = "BoxFrosty",
+	lava = "BoxLava",
+} :: { [string]: string }
 local MESH_FOLDER = "SD_Models"
 
 -- Module table

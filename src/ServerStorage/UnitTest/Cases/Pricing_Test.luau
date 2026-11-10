@@ -79,16 +79,21 @@ return function(t: Context)
 	-- 2026-11-01: Butter and Chocolate cost half (937.5K: Uncommon power 4 -> 2). Series 01 (2026-11-10): 2 Commons, an
 	-- Uncommon, 2 Rares and Cosmo at their siblings' prices.
 	-- Frosty Box (2026-11-10): its 7 at the Frosty ceilings (Commons 66B, Uncommons half theirs 76.9B, Rare 200B, Epic
-	-- 512B, Parfait Wyvern 20T).
-	t.test("the whole collection through the shop costs 23,205,022,546,500 Coins at full price (V3:163)", function()
+	-- 512B, Parfait Wyvern 20T). Lava Box (2026-11-10): Commons 2T, Uncommons 2.3T, Rare 6T, Epic 15.3T, Mallow Behemoth 600T.
+	t.test("the whole collection through the shop costs 653,105,022,546,500 Coins at full price (V3:163)", function()
 		local total = 0
 		for _, def in Catalog.list() do
 			total += def.shopPrice or 0
 		end
 		local frosty = 2 * 66_000_000_000 + 2 * 76_900_000_000 + 200_000_000_000 + 512_000_000_000 + 20_000_000_000_000
+		local lava = 2 * 2_000_000_000_000
+			+ 2 * 2_300_000_000_000
+			+ 6_000_000_000_000
+			+ 15_300_000_000_000
+			+ 600_000_000_000_000
 		expect.equal(
 			total,
-			6 * 789_000 + 3 * 937_500 + 4 * 3_750_000 + 4 * 1_800_000_000 + 2 * 1_100_000_000_000 + frosty
+			6 * 789_000 + 3 * 937_500 + 4 * 3_750_000 + 4 * 1_800_000_000 + 2 * 1_100_000_000_000 + frosty + lava
 		)
 	end)
 

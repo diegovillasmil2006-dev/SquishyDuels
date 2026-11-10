@@ -425,6 +425,108 @@ local DEFS: { SquishyDef } = {
 		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
 		inspect = { yaw = 25, pitch = 12 },
 	},
+	-- Lava Box (2026-11-10, plan "50 squishies" step 5): the Lava ceilings (600B box: cost x 10,000 / weight), the
+	-- Uncommons half theirs; throws = their siblings'; power and sell x9 (boxMult).
+	{
+		id = "cocoa_quokka",
+		nameKey = "squishy.cocoaQuokka.name",
+		rarity = "Common",
+		blueprintId = "cocoa_quokka",
+		boxMult = 9,
+		shopPrice = 2_000_000_000_000,
+		throw = { speed = 95, gravity = 35, radius = 1.0, cooldown = 1.00, windup = 0.18 }, -- = kitty_bread
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#C2915F" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.34 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "cinder_bun",
+		nameKey = "squishy.cinderBun.name",
+		rarity = "Common",
+		blueprintId = "cinder_bun",
+		boxMult = 9,
+		shopPrice = 2_000_000_000_000,
+		throw = { speed = 105, gravity = 25, radius = 0.8, cooldown = 1.05, windup = 0.18 }, -- = toast
+		eliminationEffectId = "standard",
+		visuals = { flightSpin = "wobble", accent = "#DB9852" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "smore_skunk",
+		nameKey = "squishy.smoreSkunk.name",
+		rarity = "Uncommon",
+		blueprintId = "smore_skunk",
+		boxMult = 9,
+		shopPrice = 2_300_000_000_000,
+		throw = { speed = 95, gravity = 30, radius = 0.9, cooldown = 1.05, windup = 0.15 }, -- = butter
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#8E5E48" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.32 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "cayenne_kiwi",
+		nameKey = "squishy.cayenneKiwi.name",
+		rarity = "Uncommon",
+		blueprintId = "cayenne_kiwi",
+		boxMult = 9,
+		shopPrice = 2_300_000_000_000,
+		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = chocolate
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#FF8A3C" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.34 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "pizza_pangolin",
+		nameKey = "squishy.pizzaPangolin.name",
+		rarity = "Rare",
+		blueprintId = "pizza_pangolin",
+		boxMult = 9,
+		shopPrice = 6_000_000_000_000,
+		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = strawberry_frog
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#FFC94A" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "lava_cake_hippo",
+		nameKey = "squishy.lavaCakeHippo.name",
+		rarity = "Epic",
+		blueprintId = "lava_cake_hippo",
+		boxMult = 9,
+		shopPrice = 15_300_000_000_000,
+		throw = { speed = 92, gravity = 38, radius = 1.3, cooldown = 1.00, windup = 0.19 }, -- = donut
+		ultimateId = "fondue_flood", -- the design's own (sd/ults2.js: Fondue Flood), paid for out of the power budget (§5.8)
+		eliminationEffectId = "hippo_meltdown", -- the design's kill set (sd/ults2.js KILLSETS2.LavaCakeHippo, Art/KillStyle)
+		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#FFA040" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
+		hold = { grip = Vector3.new(0, -0.45, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "mallow_behemoth",
+		nameKey = "squishy.mallowBehemoth.name",
+		rarity = "Exclusive", -- the design's Legendary (Strings show Exclusive as "Legendary")
+		blueprintId = "mallow_behemoth",
+		boxMult = 9,
+		shopPrice = 600_000_000_000_000,
+		throw = { speed = 92, gravity = 35, radius = 1.0, cooldown = 1.05, windup = 0.19 }, -- = dragon
+		ultimateId = "campfire_ring", -- the design's own (sd/ults2.js: Campfire Ring), paid for out of the power budget (§5.8)
+		eliminationEffectId = "behemoth_bonfire", -- the design's kill set (sd/ults2.js KILLSETS2.MallowBehemoth, Art/KillStyle)
+		visuals = { trail = "twinRibbon", flightSpin = "wobble", accent = "#EDB06A" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.40 },
+		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
 }
 
 local BY_ID: { [string]: SquishyDef } = {}

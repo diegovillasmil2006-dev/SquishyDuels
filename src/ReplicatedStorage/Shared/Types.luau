@@ -51,6 +51,8 @@ export type EliminationEffectId =
 	| "cosmo_supernova"
 	| "narwhal_brain_freeze"
 	| "wyvern_sugar_storm"
+	| "hippo_meltdown"
+	| "behemoth_bonfire"
 
 export type SquishyDef = {
 	id: string,

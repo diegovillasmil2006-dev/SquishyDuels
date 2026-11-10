@@ -680,7 +680,7 @@ return function(t: Context)
 		function()
 			local pedestals = WorldLayout.Collection.pedestals
 			expect.equal(#pedestals, 14)
-			expect.equal(#Catalog.list(), 27) -- Series 01 and the Frosty Box (2026-11-10): the 13 new ones have no pedestal yet
+			expect.equal(#Catalog.list(), 34) -- Series 01, the Frosty and Lava Boxes (2026-11-10): the 20 new ones have no pedestal yet
 
 			-- Diego's IndexShelf (315°, r 41): 3 units, slot tiles 1.8 x 0.25 x 1.6 with tops at 7.65 (top row) and
 			-- 4.65; read from the hub, top row first, left to right (owner 2026-10-23: "Small squishies on slots").

@@ -57,6 +57,16 @@ local EXPECTED_ITEMS: { [string]: { { any } } } = {
 		{ "gelato_narwhal", 390 },
 		{ "parfait_wyvern", 10 },
 	},
+	-- Plan "50 squishies" step 5 (Lava Box, 2026-11-10): the same weights.
+	lava = {
+		{ "cocoa_quokka", 3000 },
+		{ "cinder_bun", 3000 },
+		{ "smore_skunk", 1300 },
+		{ "cayenne_kiwi", 1300 },
+		{ "pizza_pangolin", 1000 },
+		{ "lava_cake_hippo", 390 },
+		{ "mallow_behemoth", 10 },
+	},
 	treat = {
 		{ "toast", 1400 },
 		{ "banana", 1400 },
@@ -96,7 +106,12 @@ return function(t: Context)
 		for _, box in Boxes.list() do
 			table.insert(ids, box.id)
 		end
-		expect.deepEqual(ids, { "snack", "sweet", "frosty", "treat" })
+		expect.deepEqual(ids, { "snack", "sweet", "frosty", "lava", "treat" })
+		local lava = Boxes.get("lava")
+		expect.equal(lava.cost, 600_000_000_000)
+		expect.equal(lava.paid, true)
+		expect.equal(lava.zone, 5)
+		expect.equal(lava.fixedCycle, 1000)
 		local frosty = Boxes.get("frosty")
 		expect.equal(frosty.cost, 20_000_000_000)
 		expect.equal(frosty.paid, true)
@@ -338,7 +353,7 @@ return function(t: Context)
 			table.insert(paid, id)
 		end
 		table.sort(paid)
-		expect.deepEqual(paid, { "frosty", "snack", "sweet" })
+		expect.deepEqual(paid, { "frosty", "lava", "snack", "sweet" })
 		expect.equal(Boxes.paidById.treat, nil)
 		expect.equal(Boxes.get("nope"), nil)
 		expect.equal(Boxes.get(nil), nil)
@@ -355,7 +370,7 @@ return function(t: Context)
 		end
 		local list = Boxes.list()
 		table.remove(list)
-		expect.equal(#Boxes.list(), 4)
+		expect.equal(#Boxes.list(), 5)
 	end)
 
 	-- Plan "50 squishies": a zone box opens from its zone on (profile.highway.biome), every other box always.
@@ -366,6 +381,8 @@ return function(t: Context)
 		expect.truthy(Boxes.isOpenFor("frosty", 8)) -- the Golden Gates
 		expect.falsy(Boxes.isOpenFor("frosty", nil)) -- not known: biome 1
 		expect.falsy(Boxes.isOpenFor("frosty", 0 / 0))
+		expect.falsy(Boxes.isOpenFor("lava", 4)) -- the Lava Box from Lava Volcano (biome 5)
+		expect.truthy(Boxes.isOpenFor("lava", 5))
 		expect.truthy(Boxes.isOpenFor("snack", nil))
 		expect.truthy(Boxes.isOpenFor("sweet", 1))
 		expect.falsy(Boxes.isOpenFor("nope", 9))

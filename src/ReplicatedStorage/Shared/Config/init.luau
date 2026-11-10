@@ -962,6 +962,10 @@ local function checkAbilities(problems: Problems)
 			if ability.dropSpacing ~= nil then
 				expectPositive(problems, `{p}.dropSpacing`, ability.dropSpacing) -- Geyser Line (2026-11-10)
 			end
+			if ability.ringAroundCaster ~= nil then
+				-- Campfire Ring (2026-11-10)
+				expect(problems, type(ability.ringAroundCaster) == "boolean", `{p}.ringAroundCaster must be a boolean`)
+			end
 		elseif kind == "shockwave" then
 			-- Layer Cake Shockwave (2026-11-10): its rings.
 			expectCount(problems, `{p}.count`, ability.count, 1)
@@ -969,6 +973,17 @@ local function checkAbilities(problems: Problems)
 			expectPositive(problems, `{p}.clearHeight`, ability.clearHeight)
 			expectPositive(problems, `{p}.speed`, ability.speed)
 			expectPositive(problems, `{p}.maxLength`, ability.maxLength)
+			-- Fondue Flood (2026-11-10): a filling fan.
+			if ability.fill ~= nil then
+				expect(problems, type(ability.fill) == "boolean", `{p}.fill must be a boolean`)
+			end
+			if ability.fanDeg ~= nil then
+				expect(
+					problems,
+					isNumber(ability.fanDeg) and ability.fanDeg > 0 and ability.fanDeg <= 360,
+					`{p}.fanDeg must be in (0, 360]`
+				)
+			end
 		end
 	end
 end

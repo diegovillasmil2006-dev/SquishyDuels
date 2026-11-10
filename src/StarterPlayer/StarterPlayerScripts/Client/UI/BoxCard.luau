@@ -100,14 +100,21 @@ local ART_KEYS = {
 	sweet = "img.box.sweet",
 	treat = "img.box.treat",
 	frosty = "img.box.frosty", -- plan "50 squishies": no id yet, so the tinted gift
+	lava = "img.box.lava", -- the BOXES zip's Cocoa Volcano picture
 } :: { [string]: string }
 local PLATES = {
 	snack = { Palette.StickerBoxSnackTop, Palette.StickerBoxSnackEnd },
 	sweet = { Palette.StickerBoxSweetTop, Palette.StickerBoxSweetEnd },
 	treat = { Palette.StickerFeaturedTop, Palette.StickerBoxTreatEnd },
 	frosty = { Palette.StickerBoxFrostyTop, Palette.StickerBoxFrostyEnd },
+	lava = { Palette.StickerBoxLavaTop, Palette.StickerBoxLavaEnd },
 } :: { [string]: { Color3 } }
-local TINTS = { sweet = Palette.BoxTintSweet, treat = Palette.BoxTintTreat, frosty = Palette.BoxTintFrosty } :: {
+local TINTS = {
+	sweet = Palette.BoxTintSweet,
+	treat = Palette.BoxTintTreat,
+	frosty = Palette.BoxTintFrosty,
+	lava = Palette.BoxTintLava,
+} :: {
 	[string]: Color3,
 }
 local GIFT_BOX = "gift_box"

@@ -281,6 +281,14 @@ local STYLE_OF: { [string]: string } = {
 	sundae_manatee = "lob", -- SundaeManatee
 	gelato_narwhal = "shove", -- GelatoNarwhal
 	parfait_wyvern = "glide", -- ParfaitWyvern
+	-- Lava Box (2026-11-10, THROW_STYLE2)
+	cocoa_quokka = "lob", -- CocoaQuokka
+	cinder_bun = "overhand", -- CinderBun
+	smore_skunk = "sidearm", -- SmoreSkunk
+	cayenne_kiwi = "bounce", -- CayenneKiwi
+	pizza_pangolin = "skip", -- PizzaPangolin
+	lava_cake_hippo = "shove", -- LavaCakeHippo
+	mallow_behemoth = "lob", -- MallowBehemoth
 }
 
 local STYLE_NAMES: { string } = {}

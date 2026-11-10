@@ -90,6 +90,9 @@ export type Ability = {
 	dropAngleStep: number?,
 	targetRadius: number?,
 	dropSpacing: number?, -- Geyser Line (2026-11-10): the drops in a line this far apart
+	ringAroundCaster: boolean?, -- Campfire Ring (2026-11-10): the drops on a ring around the caster, from the aim
+	-- shockwave
+	fill: boolean?, -- Fondue Flood (2026-11-10): the area behind the front is in too (a flood, not a wall)
 }
 
 local Abilities = {
@@ -390,6 +393,81 @@ local Abilities = {
 		count = 3, -- design: ults2.js:6 ("3 layers")
 		staggerSeconds = 0.4, -- design: ults2.js:6 ("0.4 s apart")
 		clearHeight = 1.2, -- design: ults2.js:6 ("touch a ring = out (1.2 st tall)"): feet above it jump the ring
+	},
+	-- Lava Cake Hippo (Lava Box, 2026-11-10; design: ults2.js "Fondue Flood", lab50.js:324-339): after the 0.6 s fan
+	-- outline, a molten flood fills a 120° fan out to 10 st in 0.5 s; anyone in the fan as the flood reaches them is hit.
+	fondue_flood = {
+		kind = "shockwave",
+		nameKey = "ability.fondueFlood.name",
+		descriptionKey = "ability.fondueFlood.description",
+		incomingKey = "ability.fondueFlood.incoming",
+		readyKey = "ability.fondueFlood.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 40, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 40,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 40, -- design: ults2.js (cooldown 40 s)
+		telegraphSeconds = 0.6, -- design: ults2.js (charge 0.6 s): the fan outline
+		radius = 0.5, -- unused by a filling flood (its front is its edge)
+		laneHeightAboveFloor = 0.6, -- as Layer Cake Shockwave; it does not fly
+		speed = 20, -- design: ults2.js ("floods the fan in 0.5 s"): 10 st in 0.5 s
+		maxLength = 10, -- design: ults2.js ("120° fan, 10 st long")
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 0.69, -- the hippo throws exactly like Donut, so it pays the Sprinkle Roller's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 0, -- the fan opens at the caster's feet
+		count = 1, -- one flood
+		staggerSeconds = 0,
+		clearHeight = 4, -- a flood, not a wall: no jump clears it (design: "inside the fan as it fills = out")
+		fanDeg = 120, -- design: ults2.js ("120° fan"), lab50.js:326
+		fill = true, -- the flood fills behind its front: in the fan and inside the front = hit
+	},
+	-- Mallow Behemoth (Lava Box, 2026-11-10; design: ults2.js "Campfire Ring", lab50.js:340-357): it hops and slams; then 6
+	-- flames on an 8-stud ring around it each glow 0.5 s and light, one after another, clockwise from the aim.
+	campfire_ring = {
+		kind = "rain",
+		nameKey = "ability.campfireRing.name",
+		descriptionKey = "ability.campfireRing.description",
+		incomingKey = "ability.campfireRing.incoming",
+		readyKey = "ability.campfireRing.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 42, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 42,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 42, -- design: ults2.js (cooldown 42 s)
+		telegraphSeconds = 0.75, -- design: ults2.js (charge 0.75 s): the wind-up
+		radius = 8, -- design: ults2.js ("6 flames on an 8 st ring around it"): the ring's radius
+		laneHeightAboveFloor = 13, -- as Rain Check (unused by the flames' look; the rain kind needs it)
+		speed = 9 / 0.28, -- as Rain Check (cosmetic)
+		maxLength = 110, -- as Rain Check
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 2.0, -- the Behemoth throws exactly like the Dragon, so it pays Dragon Rush's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 0, -- the ring is around the caster's feet
+		drops = 6, -- design: ults2.js ("6 flames")
+		firstShadowSeconds = 0.45, -- the hop and the slam first (design: lab50.js:348-350)
+		dropStepSeconds = 0.22, -- design: lab50.js:352
+		shadowSeconds = 0.5, -- design: ults2.js ("0.5 s ember glow each"), lab50.js:352
+		fallSeconds = 0.01, -- a flame lights at once (the rain kind wants it above 0)
+		dropHitRadius = 2, -- design: ults2.js ("safe inside 6 st or outside 10 st"): 8 ± 2
+		dropRadii = { 8 }, -- every flame on the 8-stud ring
+		dropAngleStep = math.pi / 3, -- a sixth of the ring each, clockwise from the aim (design: lab50.js:345, a0 - i/6 TAU)
+		targetRadius = 0.5, -- unused: no flame moves onto a player
+		ringAroundCaster = true,
 	},
 } :: { [string]: Ability }
 

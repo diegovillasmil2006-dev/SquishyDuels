@@ -84,6 +84,8 @@ local SETS = {
 	"cosmo_supernova",
 	"narwhal_brain_freeze",
 	"wyvern_sugar_storm",
+	"hippo_meltdown",
+	"behemoth_bonfire",
 }
 
 local ENGINE = {
@@ -137,6 +139,15 @@ local C = {
 	WyvernGold = hex("#FFDD88"),
 	WyvernCream = hex("#FFF3E6"),
 	WyvernBlueberry = hex("#A8A2F2"),
+	-- Lava Box (2026-11-10; design: KILLSETS2.LavaCakeHippo / MallowBehemoth disc, ring, glow and shards)
+	HippoCake = hex("#9C5E40"),
+	HippoMolten = hex("#FF9A3C"),
+	HippoGlow = hex("#FFC46B"),
+	HippoCream = hex("#F6E8DC"),
+	BehemothMallow = hex("#FFF1E0"),
+	BehemothFlame = hex("#FFB347"),
+	BehemothEmber = hex("#FF8A3C"),
+	BehemothToast = hex("#EDB06A"),
 }
 
 -- Module table
@@ -1236,6 +1247,105 @@ local function killWyvern(): Part
 	return part
 end
 
+-- Hippo's Meltdown (Lava Cake Hippo, Lava Box 2026-11-10; design: KILLSETS2.LavaCakeHippo, "The hippo yawns wide, molten
+-- chocolate geysers up from its middle and caramel drops splash out around it"): the design's disc, ring, glow and shards.
+local HIPPO_SHARDS = { C.HippoMolten, C.HippoGlow, C.HippoCake, C.HippoCream }
+
+local function bannerHippo(): Part
+	local part = carrier("hippo_meltdown", "Hippo's Meltdown (Lava Cake Hippo): a molten flash, caramel drops, a cake ring from 5k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.HippoGlow),
+		bannerBits("Drops", tex("sparkle"), HIPPO_SHARDS, 10, { 5, 9 }, 0.45, { 0.5, 0.8 }, { light = 0.4 }),
+		bannerBits("Glow", tex("twinkle"), C.HippoGlow, 6, { 2, 4 }, 0.35, { 0.6, 0.9 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "CakeRing",
+			texture = tex("softRing"),
+			color = C.HippoMolten,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.HippoGlow, 6, 6),
+	}, true)
+	return part
+end
+
+local function killHippo(): Part
+	local part = carrier("hippo_meltdown", "Hippo's Meltdown (Lava Cake Hippo): molten chocolate geysers up, caramel drops splash out")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local column = attachment(part, "Pillar", Vector3.new(0, 4, 0))
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		coreFlash(C.HippoGlow, 6, nil),
+		worldBits("Caramel", tex("sparkle"), HIPPO_SHARDS, 20, { 14, 24 }, 1.3, { 0.8, 1.1 }, { drag = 2, light = 0.4, delay = 0.1 }),
+		airRing("MoltenRing", C.HippoMolten, 3, 17, 0.35, 0.1),
+		coreFlash(C.HippoMolten, 3.5, FINISH),
+		worldBits("FinishDrops", tex("sparkle"), HIPPO_SHARDS, 8, { 8, 14 }, 1.0, { 0.7, 1.0 }, { drag = 2, light = 0.4, delay = FINISH }),
+	}, false)
+	addAll(column, { upStreaks("ChocolateGeyser", { C.HippoMolten, C.HippoGlow }, 8, { 28, 40 }, 0.1) }, false)
+	addAll(floor, {
+		floorRing("CakeShock", tex("softRing"), C.HippoCake, 1, 15, 0.55, 0.1),
+		floorRing("MoltenShock", tex("shockRing"), C.HippoMolten, 1, 11, 0.5, 0.15),
+	}, false)
+	return part
+end
+
+-- Behemoth's Bonfire (Mallow Behemoth, Lava Box 2026-11-10; design: KILLSETS2.MallowBehemoth, "The Behemoth slams its
+-- roasting stick down, its cracks flare gold and a column of embers rises around it"): the design's colours.
+local BEHEMOTH_SHARDS = { C.BehemothFlame, C.BehemothEmber, C.BehemothMallow, C.BehemothToast }
+
+local function bannerBehemoth(): Part
+	local part = carrier("behemoth_bonfire", "Behemoth's Bonfire (Mallow Behemoth): a gold flash, embers, a flame ring from 5k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.BehemothFlame),
+		bannerBits("Embers", tex("sparkle"), BEHEMOTH_SHARDS, 10, { 5, 9 }, 0.45, { 0.5, 0.8 }, { light = 0.5 }),
+		bannerBits("Sparks", tex("twinkle"), C.BehemothFlame, 6, { 3, 6 }, 0.35, { 0.4, 0.6 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "FlameRing",
+			texture = tex("softRing"),
+			color = C.BehemothEmber,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.BehemothFlame, 6, 6),
+	}, true)
+	return part
+end
+
+local function killBehemoth(): Part
+	local part = carrier("behemoth_bonfire", "Behemoth's Bonfire (Mallow Behemoth): the cracks flare gold, a column of embers rises")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local column = attachment(part, "Pillar", Vector3.new(0, 4, 0))
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		coreFlash(C.BehemothFlame, 6, nil),
+		worldBits("Embers", tex("sparkle"), BEHEMOTH_SHARDS, 20, { 14, 24 }, 1.3, { 0.8, 1.1 }, { drag = 2, light = 0.5, delay = 0.1 }),
+		worldBits("Sparks", tex("twinkle"), C.BehemothFlame, 10, { 6, 12 }, 0.9, { 0.6, 0.9 }, { drag = 2, light = 0.5, delay = 0.15 }),
+		airRing("GoldRing", C.BehemothFlame, 3, 17, 0.35, 0.1),
+		coreFlash(C.BehemothEmber, 3.5, FINISH),
+		worldBits("FinishEmbers", tex("sparkle"), BEHEMOTH_SHARDS, 8, { 8, 14 }, 1.0, { 0.7, 1.0 }, { drag = 2, light = 0.5, delay = FINISH }),
+	}, false)
+	addAll(column, { upStreaks("EmberColumn", { C.BehemothFlame, C.BehemothEmber }, 8, { 28, 40 }, 0.1) }, false)
+	addAll(floor, {
+		floorRing("FlameShock", tex("softRing"), C.BehemothFlame, 1, 15, 0.55, 0.1),
+		floorRing("EmberShock", tex("shockRing"), C.BehemothEmber, 1, 11, 0.5, 0.15),
+	}, false)
+	return part
+end
+
 -- Public
 
 local BANNERS: { [string]: () -> Part } = {
@@ -1248,6 +1358,8 @@ local BANNERS: { [string]: () -> Part } = {
 	cosmo_supernova = bannerCosmo,
 	narwhal_brain_freeze = bannerNarwhal,
 	wyvern_sugar_storm = bannerWyvern,
+	hippo_meltdown = bannerHippo,
+	behemoth_bonfire = bannerBehemoth,
 }
 
 local KILLS: { [string]: () -> Part } = {
@@ -1260,6 +1372,8 @@ local KILLS: { [string]: () -> Part } = {
 	cosmo_supernova = killCosmo,
 	narwhal_brain_freeze = killNarwhal,
 	wyvern_sugar_storm = killWyvern,
+	hippo_meltdown = killHippo,
+	behemoth_bonfire = killBehemoth,
 }
 
 -- The library as a new, UNPARENTED Folder (marked when `Generated`, SDTools' root marker module, is given). `AssetTable`

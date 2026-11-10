@@ -337,6 +337,17 @@ local Palette = {
 	UltCakeCream = Color3.fromHex("#FFF3E6"),
 	UltCakeBlueberry = Color3.fromHex("#A8A2F2"),
 	KillNarwhalWaffle = Color3.fromHex("#E9B46C"), -- Narwhal's Brain Freeze's waffle shard (design: sd/ults2.js:57)
+	-- Lava Box (2026-11-10): Fondue Flood and Campfire Ring (design: sd/lab50.js:324-357), the two kill sets
+	-- (KILLSETS2.LavaCakeHippo / MallowBehemoth).
+	UltFanTelegraph = Color3.fromHex("#FF9A3C"), -- lab50.js:327 (the fan outline)
+	UltFondue = Color3.fromHex("#9C5E40"), -- lab50.js:328 (the flood)
+	UltFondueGlow = Color3.fromHex("#FFC46B"), -- lab50.js:335 (the glowing drops)
+	UltFlame = Color3.fromHex("#FFB347"), -- lab50.js:344 (the flames)
+	UltFlameHot = Color3.fromHex("#FF8A3C"), -- lab50.js:351 (the ember glow)
+	UltFlameCore = Color3.fromHex("#FFE7A0"), -- lab50.js:355 (the embers)
+	KillHippoCream = Color3.fromHex("#F6E8DC"), -- Hippo's Meltdown shard
+	KillMallowDisc = Color3.fromHex("#FFF1E0"), -- Behemoth's Bonfire disc
+	KillMallowToast = Color3.fromHex("#EDB06A"), -- Behemoth's Bonfire shard
 	InspectEmberOrange = Color3.fromHex("#FF9A4D"), -- design: fp.js:182 (the Dragon's roar embers)
 	InspectEmberYellow = Color3.fromHex("#FFD25E"), -- design: fp.js:182
 	InspectEmberPink = Color3.fromHex("#FF6F7D"), -- design: fp.js:182
@@ -402,6 +413,10 @@ local Palette = {
 	StickerBoxFrostyTop = Color3.fromHex("#DDF4FF"),
 	StickerBoxFrostyEnd = Color3.fromHex("#7CC8F2"),
 	BoxTintFrosty = Color3.fromHex("#BFEFFF"),
+	-- Lava Box card (BOXES3 lava: colour #FF8A4D, accents #FFB347, #FFF1DC)
+	StickerBoxLavaTop = Color3.fromHex("#FFD9B8"),
+	StickerBoxLavaEnd = Color3.fromHex("#FF8A4D"),
+	BoxTintLava = Color3.fromHex("#FFC9A0"),
 	BoxSoftPolka = Color3.fromHex("#8FF3F8"), -- stage:58: the polka gradient's top (to #3FCFE2)
 	BoxSoftRibbon = Color3.fromHex("#FF6F9E"), -- stage:103
 	BoxSoftBlush = Color3.fromHex("#FF8FB8"), -- stage:112
@@ -438,6 +453,12 @@ local Palette = {
 	BoxFrostyMint = Color3.fromHex("#BFF2DC"), -- a burst cube colour
 	BoxFrostySprinkle = Color3.fromHex("#FF8FB8"), -- a burst capsule colour
 	BoxFrostyLemon = Color3.fromHex("#FFE36B"), -- a burst capsule colour
+	-- The Lava Box's Cocoa Volcano (BOXES3 lava): its light, beam and burst colours (the meshes keep their own).
+	BoxLavaLight = Color3.fromHex("#FFB060"), -- open.flash and open.beam
+	BoxLavaEmber = Color3.fromHex("#FFC93A"), -- a burst ember colour
+	BoxLavaCream = Color3.fromHex("#FFF1DC"), -- a burst cube colour
+	BoxLavaToast = Color3.fromHex("#E8A25A"), -- a burst cube colour
+	BoxLavaChoco = Color3.fromHex("#C9744A"), -- a burst drop colour
 	-- Buttons and badges (each a top / mid / end or top / end gradient, 180deg).
 	StickerGreenTop = Color3.fromHex("#A6F796"), -- H:245: the primary (green) buttons
 	StickerGreenMid = Color3.fromHex("#4CD45C"), -- H:245 (55%)

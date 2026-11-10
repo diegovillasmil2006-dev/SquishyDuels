@@ -149,6 +149,24 @@ local LIST: { BoxDef } = {
 			item("parfait_wyvern", 10),
 		},
 	},
+	-- Plan "50 squishies" step 5 (2026-11-10): opens from Lava Volcano (biome 5) on; 30 / 30 / 13 / 13 / 10 / 3.9 / 0.1 %.
+	{
+		id = "lava",
+		nameKey = "box.lava.name",
+		cost = 600_000_000_000,
+		paid = true,
+		zone = 5,
+		fixedCycle = 1000, -- each Common 300 times, each Uncommon 130, the Rare 100, the Epic 39, Mallow Behemoth once
+		items = {
+			item("cocoa_quokka", 3000),
+			item("cinder_bun", 3000),
+			item("smore_skunk", 1300),
+			item("cayenne_kiwi", 1300),
+			item("pizza_pangolin", 1000),
+			item("lava_cake_hippo", 390),
+			item("mallow_behemoth", 10),
+		},
+	},
 	{
 		id = "treat",
 		nameKey = "box.treat.name",

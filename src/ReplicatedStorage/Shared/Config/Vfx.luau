@@ -417,6 +417,37 @@ local Vfx = {
 		shockRingStartStuds = 0.15 / 0.28, -- lab50.js:322
 		shockReturnAfter = 1.7, -- the wyvern flies back this long after landing (lab50.js:323: t 2.4 - 0.7)
 		shockReturnSeconds = 0.6, -- lab50.js:323
+		-- Fondue Flood (Lava Cake Hippo, Lava Box 2026-11-10; design: sd/lab50.js:324-339): the fan outline pulses through
+		-- the wind-up; at the release the flood fills the fan at the ability's speed, holds, then sinks and fades.
+		fanSlices = 24, -- reading: the fan drawn as this many slices
+		fanThickness = 0.12, -- reading: the slices' height in studs
+		fanTeleOpacity = 0.3, -- lab50.js:332 (0.22 + 0.12·sin)
+		fanTelePulseHz = 30 / (2 * math.pi), -- lab50.js:332 (sin(30t))
+		fanRimStuds = 0.25, -- reading: the outline's bright rim at the fan's edge (vault: AoE telegraphs)
+		fanSinkFrom = 0.7, -- lab50.js:338 (k from t 1.3 = 0.7 s after the release)
+		fanSinkSeconds = 0.6, -- lab50.js:338
+		fanShrink = 0.1, -- lab50.js:338 (r·(1 - 0.1k))
+		fanSinkStuds = 0.035 / 0.28, -- lab50.js:338
+		fanDripEvery = 0.05, -- reading: 2 glowing drops at the front this often while it fills (lab50.js:335)
+		fanDripSpeed = 1.2 / 0.28,
+		fanDripSize = 0.04 / 0.28,
+		fanDripLifetime = 0.5,
+		fanDripGravity = -5 / 0.28,
+		-- Campfire Ring (Mallow Behemoth; design: sd/lab50.js:340-357): the slam's ring out to the flames' ring, each
+		-- flame's ember glow (its dropHitRadius) until it lights, then the flame rising and falling with embers.
+		campfireSlamAt = 0.45, -- lab50.js:349 (the slam, after the hop)
+		campfireSlamSeconds = 0.4, -- lab50.js:349
+		campfireSlamTransparencyFrom = 1 - 0.8, -- lab50.js:349 (opacity 0.8)
+		campfireGlowHz = 6, -- reading: the design's 24 Hz ember flicker slowed so it reads as a pulse
+		campfireGlowOpacity = 0.85, -- lab50.js:351
+		campfireFlameSeconds = 0.7, -- lab50.js:354
+		campfireFlameWidthShare = 0.7, -- reading: the flame's width / its hit circle's
+		campfireCoreShare = 0.55, -- reading: the flame's bright tip / its width
+		campfireEmbers = 10, -- lab50.js:355
+		campfireEmberSpeed = 1.5 / 0.28,
+		campfireEmberSize = 0.03 / 0.28,
+		campfireEmberLifetime = 0.6,
+		campfireEmberGravity = 1 / 0.28,
 		-- Batch B (owner 2026-10-17: "the Frog's bounce look from the design"): where Bubble Pop bounces, the Strawberry
 		-- Frog's bounce pass (design: fp.js:239): 6 hearts (Art/Palette UltBounceHeart*), a white ring, sfx.pop.
 		bounceHearts = 6,
