@@ -278,6 +278,7 @@ local SECTIONS: { { name: string, keys: { { key: string, runner: Runner } } } } 
 			{ key = "sfx.ultCharge.candyglass_qilin", runner = "plain" },
 			{ key = "sfx.ultCharge.souffle_seraph", runner = "plain" }, -- Halo Box (2026-11-10)
 			{ key = "sfx.ultCharge.divine_loaf", runner = "plain" },
+			{ key = "sfx.ultCharge.peppermint_puffin", runner = "plain" }, -- Christmas (big job item 11)
 			{ key = "sfx.ultRelease", runner = "plain" },
 			{ key = "sfx.ultRainDrop", runner = "plain" },
 			{ key = "sfx.ultCloudHover", runner = "plain" },

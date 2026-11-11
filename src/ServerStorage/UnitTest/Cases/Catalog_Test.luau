@@ -1494,7 +1494,7 @@ return function(t: Context)
 		local Rarity = t.requireShared("Rarity")
 		local uncommon = Rarity.index("Rare") -- 2026-11-01: Rare keeps the standard set ("Standard for now")
 		local owners: { [string]: string } = {}
-		for _, def in Catalog.list() do
+		for _, def in Catalog.all() do -- big job item 11: the seasonal squishies too (the Puffin has its own set)
 			local index = Rarity.index(def.rarity)
 			if index <= uncommon then
 				expect.equal(def.eliminationEffectId, KillStyle.STANDARD)
@@ -1822,6 +1822,48 @@ return function(t: Context)
 					error(rarity .. " uses the reserved colour " .. name)
 				end
 			end
+		end
+	end)
+
+	-- Big job item 11 (2026-11-10): the seasonal squishies (the Christmas pair).
+	t.test("seasonal squishies: in none of the year-round lists, found by get, all and seasonal; no shop price", function()
+		local PowerBudget = (t :: any).requireServer("Logic/PowerBudget")
+		local Christmas = t.requireShared("Config/Christmas")
+		local pair = { "gingersnap_elk", "peppermint_puffin" }
+		for _, def in Catalog.list() do
+			expect.equal(def.event, nil)
+		end
+		for _, rarity in RARITY_ORDER do
+			for _, def in Catalog.byRarity(rarity) do
+				expect.equal(def.event, nil)
+			end
+		end
+		expect.equal(#Catalog.all(), #Catalog.list() + #pair)
+		local seasonal = {}
+		for _, def in Catalog.seasonal(Christmas.event) do
+			table.insert(seasonal, def.id)
+		end
+		expect.deepEqual(seasonal, pair)
+		expect.deepEqual(Catalog.seasonal("easter"), {})
+		expect.deepEqual(Catalog.seasonal(nil), {})
+		for _, id in pair do
+			local def = Catalog.get(id)
+			expect.truthy(def ~= nil and Catalog.isValidId(id))
+			expect.equal(def.event, Christmas.event)
+			expect.equal(def.shopPrice, nil) -- sold at the event's own price, only while it is on
+			expect.equal(def.boxMult, nil)
+			local price = Christmas.prices[id]
+			expect.truthy(price > 0 and math.floor(price) == price and price <= Config.Economy.maxCoins)
+			local _, problems = PowerBudget.check(def)
+			expect.deepEqual(problems, {}) -- the server's boot check covers the seasonal ones too
+		end
+		expect.equal(Catalog.get("gingersnap_elk").rarity, "Rare")
+		expect.equal(Catalog.get("peppermint_puffin").rarity, "Epic")
+		expect.equal(Catalog.get("peppermint_puffin").ultimateId, "mint_whirl")
+		expect.equal(Catalog.get("peppermint_puffin").eliminationEffectId, "peppermint_twist")
+		-- every price belongs to a seasonal squishy of this event
+		for id in Christmas.prices do
+			expect.truthy(table.find(pair, id) ~= nil)
 		end
 	end)
 end

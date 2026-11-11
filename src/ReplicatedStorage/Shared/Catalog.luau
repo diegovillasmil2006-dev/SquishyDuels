@@ -11,7 +11,12 @@
 --
 -- API:
 --   Catalog.get(id)              -> SquishyDef? (nil for an unknown id or a non-string)
---   Catalog.list()               -> { SquishyDef } in catalog order (a new array each call; the defs are frozen)
+--   Catalog.list()               -> { SquishyDef } in catalog order (a new array each call; the defs are frozen).
+--                                   Big job item 11: the YEAR-ROUND squishies only. A seasonal one (def.event, the
+--                                   Christmas pair) is in none of the year-round lists (list, byRarity), so boxes,
+--                                   bots, quests, the shop and the collection never show it unless they ask:
+--   Catalog.all()                -> { SquishyDef }: every def, seasonal ones too (checks, tools, per-id tables)
+--   Catalog.seasonal(event)      -> { SquishyDef }: the squishies of that event ("christmas"), in catalog order
 --   Catalog.isValidId(v)         -> boolean (v is the id of a squishy in the catalog)
 --   Catalog.starterId()          -> "kitty_bread" (the free starter: Common, not in boxes, not sold)
 --   Catalog.byRarity(r)          -> { SquishyDef } of that rarity in catalog order (empty for a non-rarity)
@@ -731,18 +736,53 @@ local DEFS: { SquishyDef } = {
 		hold = { grip = Vector3.new(0, -0.55, 0.10), heldYaw = 35 },
 		inspect = { yaw = 25, pitch = 12 },
 	},
+	-- Big job item 11 (2026-11-10): the Christmas pair (Claude Design's "Squishies 50 Lineup" round 6: Gingersnap Elk,
+	-- Rare; Peppermint Puffin, Epic, with its own ultimate and kill set). `event = "christmas"`: in no box, sold in the
+	-- shop only while the Christmas event is on (Shared/Seasons; it is off until the owner says so) and they come back
+	-- every Christmas. Earning and prices as the Soft and Sweet boxes' Rare and Epic (no boxMult).
+	{
+		id = "gingersnap_elk",
+		nameKey = "squishy.gingersnapElk.name",
+		rarity = "Rare",
+		blueprintId = "gingersnap_elk",
+		event = "christmas", -- no shopPrice: its seasonal price is Config/Christmas.prices (3,750,000 = pando)
+		throw = { speed = 90, gravity = 40, radius = 1.4, cooldown = 1.00, windup = 0.18 }, -- = custard_cherub
+		eliminationEffectId = "standard",
+		visuals = { trail = "ribbon", flightSpin = "wobble", accent = "#C98A4E" },
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.34 },
+		hold = { grip = Vector3.new(0, -0.50, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
+	{
+		id = "peppermint_puffin",
+		nameKey = "squishy.peppermintPuffin.name",
+		rarity = "Epic",
+		blueprintId = "peppermint_puffin",
+		event = "christmas", -- no shopPrice: its seasonal price is Config/Christmas.prices (1,800,000,000 = cloud_bunny)
+		throw = { speed = 110, gravity = 20, radius = 0.9, cooldown = 1.10, windup = 0.18 }, -- = cloud_bunny
+		ultimateId = "mint_whirl", -- the design's own (sd/ults2.js: Mint Whirl), paid for out of the power budget (§5.8)
+		eliminationEffectId = "peppermint_twist", -- the design's kill set (KILLSETS2.PeppermintPuffin, Art/KillStyle)
+		visuals = { trail = "twinRibbon", flightSpin = "roll", accent = "#BFF5E0" }, -- mint: its red trips the no-red guard
+		anim = { squeezeAxis = "Y", foamRecoveryT = 0.36 },
+		hold = { grip = Vector3.new(0, -0.60, 0.10), heldYaw = 35 },
+		inspect = { yaw = 25, pitch = 12 },
+	},
 }
 
 local BY_ID: { [string]: SquishyDef } = {}
 local BY_RARITY: { [string]: { SquishyDef } } = {}
+local YEAR_ROUND: { SquishyDef } = {} -- big job item 11: every def without an `event`
 for _, def in DEFS do
 	BY_ID[def.id] = def
-	local list = BY_RARITY[def.rarity]
-	if list == nil then
-		list = {}
-		BY_RARITY[def.rarity] = list
+	if def.event == nil then
+		table.insert(YEAR_ROUND, def)
+		local list = BY_RARITY[def.rarity]
+		if list == nil then
+			list = {}
+			BY_RARITY[def.rarity] = list
+		end
+		table.insert(list, def)
 	end
-	table.insert(list, def)
 end
 TableUtil.deepFreeze(DEFS)
 TableUtil.deepFreeze(BY_ID)
@@ -762,7 +802,21 @@ function Catalog.get(id: unknown): SquishyDef?
 end
 
 function Catalog.list(): { SquishyDef }
+	return table.clone(YEAR_ROUND)
+end
+
+function Catalog.all(): { SquishyDef }
 	return table.clone(DEFS)
+end
+
+function Catalog.seasonal(event: unknown): { SquishyDef }
+	local list: { SquishyDef } = {}
+	for _, def in DEFS do
+		if def.event ~= nil and def.event == event then
+			table.insert(list, def)
+		end
+	end
+	return list
 end
 
 function Catalog.isValidId(v: unknown): boolean

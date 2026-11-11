@@ -627,6 +627,51 @@ local Abilities = {
 		sliceHalf = 4, -- design: lab50.js:409 (h = 8 st / 2)
 		sliceDeg = 90, -- design: lab50.js:410 (the crown toward the scene's -z), turned 180° like every design angle
 	},
+	-- Peppermint Puffin (Christmas, big job item 11, 2026-11-10; design: ults2.js "Mint Whirl", lab50.js:422-437): on the
+	-- opponent's spot a ring shows the final 6-stud size at once while a peppermint swirl grows from 2 to 6 studs in
+	-- 1.2 s, then it pops; inside the swirl at full size = out. Built like Gravity Well: the rain kind's one "drop" as
+	-- wide as the zone, its warning the design's 1.2 s.
+	-- shortcut: drawn with the rain kind's plain zone and drop shadow (UltFx), not the design's red and white swirl
+	-- disc yet; give it its own look when the Christmas event gets its design pass.
+	mint_whirl = {
+		kind = "rain",
+		nameKey = "ability.mintWhirl.name",
+		descriptionKey = "ability.mintWhirl.description",
+		incomingKey = "ability.mintWhirl.incoming",
+		readyKey = "ability.mintWhirl.ready",
+		cancelKey = "ability.interrupted",
+		chargeMax = 100, -- design: ults2.js (meter 100)
+		startCharge = 100 - ULT_START_SECONDS * 100 / 40, -- Duel HUD timer (header)
+		chargePerSecond = 100 / 40,
+		chargePerHitLanded = 0,
+		chargePerLifeLost = 0,
+		minIntervalSeconds = 40, -- design: ults2.js (cooldown 40 s)
+		telegraphSeconds = 0.6, -- design: ults2.js (charge 0.6 s): the wind-up
+		radius = 6, -- design: ults2.js ("swirl grows from 2 to 6 st radius"): the final ring
+		laneHeightAboveFloor = 13, -- as Rain Check (the rain kind needs it)
+		speed = 9 / 0.28, -- as Rain Check (cosmetic)
+		maxLength = 110, -- as Rain Check: the practice target nearest the aim within this many studs
+		recoverySeconds = 0.35, -- as Dragon Rush
+		cancelOnHitDuringTelegraph = true, -- as Dragon Rush
+		refundOnCancel = 0.5, -- as Dragon Rush
+		livesCost = 1, -- every hit costs 1 life
+		knockbackMultiplier = 1.5, -- as Dragon Rush
+		budgetCost = 0.27, -- the Puffin throws exactly like Cloud Bunny, so it pays Rain Check's cost (PowerBudget)
+		practiceCooldownSeconds = 10, -- as Dragon Rush
+		minHorizontalAim = 0.3, -- as Dragon Rush
+		originForwardStuds = 2, -- as Rain Check
+		drops = 1, -- one pop for the whole swirl
+		-- The final ring shows 1.2 s before the pop (design: ults2.js "final ring shown 1.2 s early"): firstShadow +
+		-- shadow + fall = 1.2 s (the rain kind wants each above 0).
+		firstShadowSeconds = 0.01,
+		dropStepSeconds = 0.1, -- one drop: unused
+		shadowSeconds = 1.18,
+		fallSeconds = 0.01,
+		dropHitRadius = 6, -- design: ults2.js ("inside the swirl at full size = out")
+		dropRadii = { 0 }, -- the pop is the swirl's centre
+		dropAngleStep = 0.1, -- one drop: unused
+		targetRadius = 6, -- the aimed player in the zone gets the pop at its own spot (the centre already is)
+	},
 } :: { [string]: Ability }
 
 return Abilities

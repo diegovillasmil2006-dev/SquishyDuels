@@ -78,6 +78,8 @@ local SquishyBlueprints: { [string]: Blueprint } = {
 	custard_cherub = require(script.custard_cherub),
 	souffle_seraph = require(script.souffle_seraph),
 	divine_loaf = require(script.divine_loaf),
+	gingersnap_elk = require(script.gingersnap_elk), -- big job item 11: the Christmas pair
+	peppermint_puffin = require(script.peppermint_puffin),
 	gift_box = require(script.gift_box),
 	dragon_head_vfx = require(script.dragon_head_vfx),
 }

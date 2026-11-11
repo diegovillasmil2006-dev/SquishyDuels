@@ -28,12 +28,12 @@ return function(t: Context)
 
 	t.test("one loop per Catalog squishy (K:6982), each with a length and keys in order inside it", function()
 		local ids = {}
-		for _, def in Catalog.list() do
+		for _, def in Catalog.all() do -- big job item 11: the seasonal squishies have their loops too
 			table.insert(ids, def.id)
 		end
 		table.sort(ids)
 		expect.deepEqual(ShowOffTracks.ids(), ids)
-		expect.equal(#ids, 48) -- + Series 01 and the 4 zone boxes (2026-11-10, Claude Design's SHOWOFF2)
+		expect.equal(#ids, 50) -- + Series 01, the 4 zone boxes and the Christmas pair (Claude Design's SHOWOFF2)
 		for _, id in ids do
 			local loop = ShowOffTracks.get(id)
 			expect.truthy(loop.length > 0)

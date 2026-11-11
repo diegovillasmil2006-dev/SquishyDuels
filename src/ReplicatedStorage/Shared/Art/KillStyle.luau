@@ -369,6 +369,28 @@ local STYLES: { [string]: Style } = {
 		-- shortcut: no sound sheet of its own yet; it plays Cloudburst's (Cosmo's Supernova's) until one is made.
 		sound = "sfx.kill.divine_coronation",
 	},
+	-- Christmas (big job item 11, 2026-11-10; design: KILLSETS2.PeppermintPuffin: disc white, ring #F04A5E, glow
+	-- #BFF5E0, red / white / green star shards, motif swirl).
+	peppermint_twist = {
+		id = "peppermint_twist",
+		nameKey = "elimination.peppermint_twist",
+		emblem = "img.kill.emblem.peppermint_twist",
+		emblemWhite = "img.kill.emblem.peppermint_twist.white",
+		shards = { "KillMintRed", "White", "KillMintGreen" },
+		squishyId = "peppermint_puffin",
+		disc = "White",
+		ring = "KillMintRed",
+		glow = "KillMintGlow",
+		frame = { image = "img.kill.frameSun", tint = "KillMintRed", size = 1.6, spin = 16 },
+		crownFrame = { image = "img.fx.rays", tint = "KillMintGlow", size = 2.2, spin = 12 },
+		-- the design's shards: stars flung out in a spiral
+		ornament = { image = "img.icon.star", size = 0.34 },
+		crown = { image = "img.icon.star", size = 0.5, count = 3, fan = 20 },
+		bannerVfx = "Banner/peppermint_twist",
+		killVfx = "Kill/peppermint_twist",
+		-- shortcut: no sound sheet of its own yet; it plays Cloudburst's until one is made.
+		sound = "sfx.kill.peppermint_twist",
+	},
 }
 
 local IDS: { string } = {
@@ -387,6 +409,7 @@ local IDS: { string } = {
 	"qilin_prism_parade",
 	"seraph_ascension",
 	"divine_coronation",
+	"peppermint_twist",
 }
 
 for _, style in STYLES do

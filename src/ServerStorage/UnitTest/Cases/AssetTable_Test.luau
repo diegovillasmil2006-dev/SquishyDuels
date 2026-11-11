@@ -85,6 +85,7 @@ local SOUND_KEYS = {
 	"sfx.ultCharge.candyglass_qilin",
 	"sfx.ultCharge.souffle_seraph", -- Halo Box (2026-11-10): Halo Toss's and Bread Stamp's wind-ups
 	"sfx.ultCharge.divine_loaf",
+	"sfx.ultCharge.peppermint_puffin", -- Christmas (big job item 11)
 	"sfx.ultRelease",
 	"sfx.ultRainDrop",
 	"sfx.ultCloudHover",
@@ -319,7 +320,7 @@ return function(t: Context)
 				table.insert(keys, slot.key)
 			end
 		end
-		expect.equal(#keys, 81) -- + Series 01's sfx.ultCharge.cosmo, the 4 zone boxes' 2 each, item 6's 2 music keys
+		expect.equal(#keys, 82) -- + Series 01's sfx.ultCharge.cosmo, the 4 zone boxes' 2 each, item 6's 2 music keys, the Puffin's
 		expect.deepEqual(sorted(keys), sorted(SOUND_KEYS))
 	end)
 
@@ -627,6 +628,8 @@ return function(t: Context)
 				"img.squishy.custard_cherub",
 				"img.squishy.souffle_seraph",
 				"img.squishy.divine_loaf",
+				"img.squishy.gingersnap_elk",
+				"img.squishy.peppermint_puffin",
 				"img.squishy.meringue_chick.white",
 				"img.squishy.cream_puff_kitten.white",
 				"img.squishy.bumble_bun.white",
@@ -634,6 +637,8 @@ return function(t: Context)
 				"img.squishy.custard_cherub.white",
 				"img.squishy.souffle_seraph.white",
 				"img.squishy.divine_loaf.white",
+				"img.squishy.gingersnap_elk.white",
+				"img.squishy.peppermint_puffin.white",
 				"img.nav.squishies.white",
 				"img.nav.boxes.white",
 				"img.nav.shop.white",

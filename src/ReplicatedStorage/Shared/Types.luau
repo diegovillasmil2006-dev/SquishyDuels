@@ -57,6 +57,7 @@ export type EliminationEffectId =
 	| "qilin_prism_parade"
 	| "seraph_ascension"
 	| "divine_coronation"
+	| "peppermint_twist" -- big job item 11: the Christmas Epic's
 
 export type SquishyDef = {
 	id: string,
@@ -69,6 +70,9 @@ export type SquishyDef = {
 	-- rarity's (Frosty 3, Lava 9, Prism 27, Halo 81); nil = 1 (the Soft and Sweet boxes).
 	boxMult: number?,
 	shopPrice: number?, -- nil = not sold (the starter)
+	-- Big job item 11 (2026-11-10): a seasonal squishy ("christmas"): sold and listed only while that event is on
+	-- (Shared/Seasons); owned ones stay and work all year. nil = always there.
+	event: string?,
 	robuxOnly: boolean?,
 	equivalentId: string?, -- future Robux-exclusive squishies (§6.12)
 	throw: { speed: number, gravity: number, radius: number, cooldown: number, windup: number }, -- studs/s, studs/s², studs, s, s

@@ -925,6 +925,14 @@ local Strings = {
 			ready = "Halo Toss ready",
 			description = "Throws its halo 14 studs out along a curve and back, like a boomerang. Touching the halo takes a life. The gold path is drawn on the ground first and the halo comes back the same way: step off the line and stay off it.",
 		},
+		-- Christmas (big job item 11), design: sd/ults2.js ("The outer ring shows the final size from the start: walk
+		-- out before the swirl reaches it.")
+		mintWhirl = {
+			name = "Mint Whirl",
+			incoming = "Mint Whirl incoming!",
+			ready = "Mint Whirl ready",
+			description = "Spins a peppermint swirl on your opponent's spot. A ring shows how big it will get; anyone still inside when the swirl fills it loses a life. Walk out before it reaches the ring.",
+		},
 		breadStamp = {
 			name = "Bread Stamp",
 			incoming = "Bread Stamp incoming!",
@@ -1031,6 +1039,8 @@ local Strings = {
 		custardCherub = { name = "Custard Cherub" },
 		souffleSeraph = { name = "Souffle Seraph" },
 		divineLoaf = { name = "Divine Loaf" },
+		gingersnapElk = { name = "Gingersnap Elk" }, -- big job item 11: the Christmas pair
+		peppermintPuffin = { name = "Peppermint Puffin" },
 		-- Squishies, Shop and Inspect: what a squishy multiplies (progression spec §3, §6; pens3 phase 1: in the pen).
 		-- {n} = its power (Catalog.getPower).
 		power = "x{n} power",
@@ -1066,6 +1076,7 @@ local Strings = {
 		qilin_prism_parade = "Qilin's Prism Parade", -- design: KILLSETS2.CandyglassQilin
 		seraph_ascension = "Seraph's Ascension", -- design: KILLSETS2.SouffleSeraph
 		divine_coronation = "Divine Coronation", -- design: KILLSETS2.DivineLoaf
+		peppermint_twist = "Puffin's Peppermint Twist", -- design: KILLSETS2.PeppermintPuffin (Christmas)
 	},
 
 	-- Inspect (§10.7, §10.8, §10.9, §10.6).

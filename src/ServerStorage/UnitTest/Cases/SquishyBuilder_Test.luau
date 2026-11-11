@@ -99,6 +99,8 @@ local SQUISHY_IDS = {
 	"custard_cherub",
 	"souffle_seraph",
 	"divine_loaf",
+	"gingersnap_elk", -- Christmas (big job item 11)
+	"peppermint_puffin",
 }
 local FACE_KIT_V1: { [string]: boolean } = {
 	kitty_bread = true,

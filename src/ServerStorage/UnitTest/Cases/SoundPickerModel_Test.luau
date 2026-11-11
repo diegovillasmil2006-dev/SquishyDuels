@@ -63,7 +63,7 @@ return function(t: Context)
 	end
 
 	t.test(
-		"the order holds the 81 AssetTable sound keys in 10 sections of 5, 7, 6, 5, 4, 6, 6, 21, 16 and 5",
+		"the order holds the 82 AssetTable sound keys in 10 sections of 5, 7, 6, 5, 4, 6, 6, 22, 16 and 5",
 		function()
 			local soundKeys: { [string]: boolean } = {}
 			local count = 0
@@ -82,8 +82,8 @@ return function(t: Context)
 					count += 1
 				end
 			end
-			expect.equal(count, 81) -- + Series 01's sfx.ultCharge.cosmo, the 4 zone boxes' 2 each, item 6's 2 music keys
-			expect.equal(#Model.ORDER, 81)
+			expect.equal(count, 82) -- + Series 01's sfx.ultCharge.cosmo, the 4 zone boxes' 2 each, item 6's 2 music keys, the Puffin's
+			expect.equal(#Model.ORDER, 82)
 			local seen: { [string]: boolean } = {}
 			local perSection = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
 			for _, key in Model.ORDER do
@@ -96,7 +96,7 @@ return function(t: Context)
 			end
 			-- 8: + the 2026-10-15 overhaul's two, + Cosmo's charge, + the Frosty Box's two
 			-- 7: + big job item 6's two (the highway's and a match's music, 2026-11-10)
-			expect.deepEqual(perSection, { 5, 7, 6, 5, 4, 6, 6, 21, 16, 5 })
+			expect.deepEqual(perSection, { 5, 7, 6, 5, 4, 6, 6, 22, 16, 5 })
 			expect.equal(Model.SECTION_COUNT, 10)
 			expect.equal(Model.sectionName(1), "Squeezing")
 			expect.equal(Model.sectionName(7), "Music and room sound")
@@ -105,14 +105,14 @@ return function(t: Context)
 			expect.equal(Model.ORDER[37], "music.match")
 			expect.equal(Model.ORDER[39], "amb.arena")
 			expect.equal(Model.sectionName(8), "Dash and Epic ultimates") -- spec phase 5
-			expect.equal(Model.ORDER[60], "sfx.ultBubblePop") -- + Cosmo's and the 4 zone boxes' charges
+			expect.equal(Model.ORDER[61], "sfx.ultBubblePop") -- + Cosmo's, the 4 zone boxes' and the Puffin's charges
 			expect.equal(Model.sectionName(9), "Inspect showcases") -- final polish 2026-10-11
-			expect.equal(Model.ORDER[61], "sfx.inspect.flick")
-			expect.equal(Model.ORDER[76], "sfx.inspect.blub")
+			expect.equal(Model.ORDER[62], "sfx.inspect.flick")
+			expect.equal(Model.ORDER[77], "sfx.inspect.blub")
 			expect.equal(select(2, Model.infoOf("sfx.inspect.ring")), "plain")
 			expect.equal(Model.sectionName(10), "Charge throw and catch") -- feature 1, 2026-10-11
-			expect.equal(Model.ORDER[77], "sfx.chargeLoop")
-			expect.equal(Model.ORDER[81], "sfx.crushBurst")
+			expect.equal(Model.ORDER[78], "sfx.chargeLoop")
+			expect.equal(Model.ORDER[82], "sfx.crushBurst")
 			expect.equal(select(2, Model.infoOf("sfx.catch")), "plain")
 		end
 	)

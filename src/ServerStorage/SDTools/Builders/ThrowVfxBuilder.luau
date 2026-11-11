@@ -919,6 +919,30 @@ local TRAILS: { TrailSpec } = {
 			sparkles("Sparkle", hex("#FFF1C9"), 10, 0.35),
 		},
 	},
+	-- Christmas (big job item 11, 2026-11-10; the design's CATALOG2 trails: Elk a #F2C48C b #C98A4E with white, red,
+	-- green and cookie stars; Puffin a #FFFFFF b #F04A5E, twin, red, white and green stars and a white sparkle).
+	{
+		id = "gingersnap_elk",
+		theme = "Gingersnap Elk: a cookie-to-ginger ribbon, icing and gumdrop bits and warm sparkles",
+		ribbons = { ribbonOf({ hex("#F2C48C"), hex("#C98A4E") }, 1.0, 0.44), core({ C.White, hex("#F2C48C") }) },
+		emitters = {
+			dots("Gumdrops", { C.White, hex("#F04A5E"), hex("#5DCB8A"), hex("#C98A4E") }, 10, 0.16, 24, -0.4),
+			sparkles("Sparkle", hex("#FFF1C9"), 8, 0.35),
+		},
+	},
+	{
+		id = "peppermint_puffin",
+		theme = "Peppermint Puffin: twin white-to-red peppermint streams, red, white and green bits and white sparkles",
+		ribbons = {
+			ribbonOf({ C.White, hex("#F04A5E") }, 0.65, 0.48, 0.45, "MintL"),
+			ribbonOf({ hex("#F04A5E"), C.White }, 0.65, 0.48, -0.45, "MintR"),
+			core({ C.White, hex("#BFF5E0") }, 0.32, 0.22),
+		},
+		emitters = {
+			dots("Mints", { hex("#F04A5E"), C.White, hex("#5DCB8A") }, 12, 0.16, 6, 0.5, { 0.6, 1.0 }),
+			sparkles("Sparkle", C.White, 8, 0.35),
+		},
+	},
 }
 ThrowVfxBuilder.TRAILS = TRAILS
 

@@ -1166,6 +1166,58 @@ local LOOPS: { [string]: Loop } = {
 			},
 		},
 	},
+	-- Christmas (big job item 11, 2026-11-10; design: sd/anims2.js SHOWOFF2).
+	-- GingersnapElk: Jingle Hop. A jingly hop, a wobble, and a glance over the shoulder.
+	gingersnap_elk = {
+		length = 2.2,
+		tracks = {
+			{
+				prop = "posY",
+				keys = { { 0, 0, "Quad Out" }, { 0.3, 0.35, "Quad In" }, { 0.6, 0, "-" }, { 2.2, 0, "-" } },
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 0.6, 0, "Sine InOut" },
+					{ 0.8, 7, "Sine InOut" },
+					{ 1, -7, "Sine InOut" },
+					{ 1.2, 4, "Sine InOut" },
+					{ 1.4, 0, "-" },
+					{ 2.2, 0, "-" },
+				},
+			},
+			{
+				prop = "rotY",
+				keys = { { 0, 0, "-" }, { 1.4, 0, "Sine InOut" }, { 1.8, -25, "Sine InOut" }, { 2.2, 0, "-" } },
+			},
+		},
+	},
+	-- PeppermintPuffin: Candy Spin. Spins twice like a peppermint on a hop, then a waddle.
+	peppermint_puffin = {
+		length = 2.4,
+		tracks = {
+			{
+				prop = "rotY",
+				keys = { { 0, 0, "Quad In" }, { 0.6, 360, "-" }, { 1.2, 720, "Quad Out" }, { 2.4, 720, "-" } },
+			},
+			{
+				prop = "posY",
+				keys = { { 0, 0, "Sine InOut" }, { 0.6, 0.4, "Sine InOut" }, { 1.2, 0, "-" }, { 2.4, 0, "-" } },
+			},
+			{
+				prop = "rotZ",
+				keys = {
+					{ 0, 0, "-" },
+					{ 1.2, 0, "Sine InOut" },
+					{ 1.5, 8, "Sine InOut" },
+					{ 1.8, -8, "Sine InOut" },
+					{ 2.1, 0, "-" },
+					{ 2.4, 0, "-" },
+				},
+			},
+		},
+	},
 }
 
 -- qb1: the posY / rot stand-ins of the scale-only loops (same length and key times as K, the same eases).

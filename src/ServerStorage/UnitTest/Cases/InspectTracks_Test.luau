@@ -356,12 +356,12 @@ return function(t: Context)
 
 	t.test("one showcase per Catalog squishy, each the design's INS entry verbatim (fp.js:113-141)", function()
 		local catalogIds: { string } = {}
-		for _, def in Catalog.list() do
+		for _, def in Catalog.all() do -- big job item 11: the seasonal squishies have their showcases too
 			table.insert(catalogIds, def.id)
 		end
 		table.sort(catalogIds)
 		expect.deepEqual(Tracks.ids(), catalogIds)
-		expect.equal(#Tracks.ids(), 48) -- + Series 01 and the 4 zone boxes (2026-11-10, Claude Design's INS2)
+		expect.equal(#Tracks.ids(), 50) -- + Series 01, the 4 zone boxes and the Christmas pair (Claude Design's INS2)
 		for id, design in DESIGN do
 			local track = Tracks.get(id)
 			if track == nil then

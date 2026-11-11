@@ -1136,6 +1136,24 @@ local SLOTS: { AssetSlot } = {
 		"kill banner sheet, Divine Loaf (Divine Coronation): for now Cloudburst's file 'sfx_kill_cloudburst_v2.ogg'",
 		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
 	),
+	-- Christmas (big job item 11, 2026-11-10). shortcut: borrowed files until the Puffin gets its own (no new sounds
+	-- until the owner's ElevenLabs answer): Mint Whirl's wind-up (0.6 s) is Rain Check's, its kill sheet Cloudburst's.
+	soundSlot(
+		"sfx.ultCharge.peppermint_puffin",
+		"SFX",
+		true,
+		nil,
+		"Mint Whirl wind-up (0.6 s); for now Rain Check's file, sfx_ultCharge_cloud_bunny.wav",
+		uploaded(114287899394348, 1, "sfx.ultCharge.cloud_bunny (Cloud Bunny ult charge-up).wav")
+	),
+	soundSlot(
+		"sfx.kill.peppermint_twist",
+		"SFX",
+		false,
+		nil,
+		"kill banner sheet, Peppermint Puffin (Puffin's Peppermint Twist): for now Cloudburst's file 'sfx_kill_cloudburst_v2.ogg'",
+		killSheet(101952354509153, "sfx_kill_cloudburst_v2.ogg")
+	),
 	-- Prism Box (2026-11-10). shortcut: borrowed wind-ups until each gets its own: Puff Burst (0.5 s) Bubble Pop's (a
 	-- pop), Prism Pen (0.7 s) Rain Check's (Cosmo's too).
 	soundSlot(
@@ -2016,6 +2034,8 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.squishy.custard_cherub", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.souffle_seraph", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.divine_loaf", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.gingersnap_elk", "image", IMAGE_NOTE), -- big job item 11: the Christmas pair
+	otherSlot("img.squishy.peppermint_puffin", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.meringue_chick.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.cream_puff_kitten.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.bumble_bun.white", "image", IMAGE_NOTE),
@@ -2023,6 +2043,8 @@ local SLOTS: { AssetSlot } = {
 	otherSlot("img.squishy.custard_cherub.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.souffle_seraph.white", "image", IMAGE_NOTE),
 	otherSlot("img.squishy.divine_loaf.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.gingersnap_elk.white", "image", IMAGE_NOTE),
+	otherSlot("img.squishy.peppermint_puffin.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.squishies.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.boxes.white", "image", IMAGE_NOTE),
 	otherSlot("img.nav.shop.white", "image", IMAGE_NOTE),
@@ -2167,6 +2189,8 @@ local SLOTS: { AssetSlot } = {
 	killEmblem("img.kill.emblem.seraph_ascension.white", 106915592122937, "kill_emblem_seraph_ascension_white.png", "Seraph's Ascension: Souffle Seraph, low-fidelity: white silhouette", "jayyyyy2806"),
 	killEmblem("img.kill.emblem.divine_coronation", 128334129648643, "kill_emblem_divine_coronation.png", "Divine Coronation: Divine Loaf, low-fidelity", "jayyyyy2806"),
 	killEmblem("img.kill.emblem.divine_coronation.white", 129391908520926, "kill_emblem_divine_coronation_white.png", "Divine Coronation: Divine Loaf, low-fidelity: white silhouette", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.peppermint_twist", 125634125463254, "kill_emblem_peppermint_twist.png", "Puffin's Peppermint Twist: Peppermint Puffin (Christmas), low-fidelity", "jayyyyy2806"),
+	killEmblem("img.kill.emblem.peppermint_twist.white", 125676351081761, "kill_emblem_peppermint_twist_white.png", "Puffin's Peppermint Twist: Peppermint Puffin (Christmas), low-fidelity: white silhouette", "jayyyyy2806"),
 	-- Highway v2 (jayyyyy 2026-10-23, Claude Design's "Highway Zones Spec v2": "Floors get two-tone squares from one
 	-- checker Texture (10-stud cells, black at Transparency 0.92)"; owner: "checkered pattern but with lego texture").
 	{

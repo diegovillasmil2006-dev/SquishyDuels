@@ -3858,7 +3858,8 @@ end
 -- Returns the catalog defs by id (nil when the catalog can't be read). `blueprints` is Art/SquishyBlueprints (nil
 -- while it does not exist: the blueprintId check is skipped).
 local function checkCatalog(problems: Problems, Catalog: any, rarities: { string }, blueprints: any): { [string]: any }?
-	local list, err = callList(Catalog, "Catalog", "list")
+	-- Big job item 11: `all` holds the seasonal squishies too (a catalog without it, a test's, has only `list`).
+	local list, err = callList(Catalog, "Catalog", if type(Catalog.all) == "function" then "all" else "list")
 	if err then
 		add(problems, err)
 		return nil

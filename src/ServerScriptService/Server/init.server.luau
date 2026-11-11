@@ -109,7 +109,7 @@ local dynamicRequire = require :: (ModuleScript) -> any
 
 -- 1. Config and the power budget
 local problems = Config.validate()
-for _, def in Catalog.list() do
+for _, def in Catalog.all() do -- big job item 11: the seasonal squishies too
 	local _, budgetProblems = PowerBudget.check(def)
 	for _, problem in budgetProblems do
 		table.insert(problems, problem)

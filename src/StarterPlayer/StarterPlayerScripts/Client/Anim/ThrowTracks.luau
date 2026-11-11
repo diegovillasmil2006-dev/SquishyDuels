@@ -305,6 +305,8 @@ local STYLE_OF: { [string]: string } = {
 	custard_cherub = "glide", -- CustardCherub
 	souffle_seraph = "lob", -- SouffleSeraph
 	divine_loaf = "shove", -- DivineLoaf
+	gingersnap_elk = "sidearm", -- GingersnapElk ("Cookie frisbee"; big job item 11: the Christmas pair)
+	peppermint_puffin = "spiral", -- PeppermintPuffin ("Peppermint spiral")
 }
 
 local STYLE_NAMES: { string } = {}

@@ -90,6 +90,7 @@ local SETS = {
 	"qilin_prism_parade",
 	"seraph_ascension",
 	"divine_coronation",
+	"peppermint_twist",
 }
 
 local ENGINE = {
@@ -168,6 +169,9 @@ local C = {
 	HaloCream = hex("#FFE7C2"),
 	HaloLilac = hex("#D8C8FF"),
 	LoafPearl = hex("#FFFDF8"),
+	MintRed = hex("#F04A5E"), -- Puffin's Peppermint Twist (Christmas; design KILLSETS2.PeppermintPuffin)
+	MintGreen = hex("#5DCB8A"),
+	MintGlow = hex("#BFF5E0"),
 	LoafGlow = hex("#FFF1C9"),
 }
 
@@ -1565,6 +1569,54 @@ local function killLoaf(): Part
 	return part
 end
 
+-- Puffin's Peppermint Twist (Peppermint Puffin, Christmas, big job item 11, 2026-11-10; design: KILLSETS2.PeppermintPuffin,
+-- "The puffin spins into a peppermint swirl and flings red-white-green stars out in a spiral"): the design's colours.
+local MINT_SHARDS = { C.MintRed, C.White, C.MintGreen }
+
+local function bannerMint(): Part
+	local part = carrier("peppermint_twist", "Puffin's Peppermint Twist (Peppermint Puffin): a white flash, spinning red-white-green stars, a red ring from 5k")
+	local a = attachment(part, "Burst", Vector3.zero)
+	addAll(a, {
+		bannerFlash(C.White),
+		bannerBits("Stars", tex("twinkle"), MINT_SHARDS, 10, { 5, 9 }, 0.45, { 0.5, 0.8 }, { rotSpeed = { 180, 360 }, light = 0.4 }),
+		bannerBits("Sparks", tex("sparkle"), C.MintGlow, 6, { 3, 6 }, 0.35, { 0.4, 0.6 }, { minTier = 3, light = 0.5 }),
+		{
+			name = "MintRing",
+			texture = tex("softRing"),
+			color = C.MintRed,
+			size = { { 0, 1.8 }, { 1, 4.6 } },
+			transparency = { { 0, 0.15 }, { 0.6, 0.5 }, { 1, 1 } },
+			lifetime = { 0.4 },
+			speed = { 0 },
+			spread = Vector2.zero,
+			zOffset = -0.35,
+			emitCount = 1,
+			minTier = 5,
+		},
+		bannerRays(C.MintGlow, 6, 6),
+	}, true)
+	return part
+end
+
+local function killMint(): Part
+	local part = carrier("peppermint_twist", "Puffin's Peppermint Twist (Peppermint Puffin): a swirl of red-white-green stars, a red ring")
+	local core = attachment(part, "Burst", Vector3.zero)
+	local floor = attachment(part, "Floor", Vector3.new(0, -2.9, 0))
+	addAll(core, {
+		coreFlash(C.White, 6, nil),
+		worldBits("SwirlStars", tex("twinkle"), MINT_SHARDS, 20, { 12, 20 }, 1.3, { 0.8, 1.1 }, { drag = 2, rotSpeed = { 180, 360 }, light = 0.4, delay = 0.1 }),
+		worldBits("Sparks", tex("sparkle"), C.MintGlow, 10, { 6, 12 }, 0.9, { 0.6, 0.9 }, { drag = 2, light = 0.5, delay = 0.15 }),
+		airRing("MintRing", C.MintRed, 3, 17, 0.35, 0.1),
+		coreFlash(C.MintGlow, 3.5, FINISH),
+		worldBits("FinishStars", tex("twinkle"), MINT_SHARDS, 8, { 8, 14 }, 1.0, { 0.7, 1.0 }, { drag = 2, rotSpeed = { 180, 360 }, light = 0.4, delay = FINISH }),
+	}, false)
+	addAll(floor, {
+		floorRing("WhiteShock", tex("softRing"), C.White, 1, 15, 0.55, 0.1),
+		floorRing("RedShock", tex("shockRing"), C.MintRed, 1, 11, 0.5, 0.15),
+	}, false)
+	return part
+end
+
 -- Public
 
 local BANNERS: { [string]: () -> Part } = {
@@ -1583,6 +1635,7 @@ local BANNERS: { [string]: () -> Part } = {
 	qilin_prism_parade = bannerQilin,
 	seraph_ascension = bannerSeraph,
 	divine_coronation = bannerLoaf,
+	peppermint_twist = bannerMint,
 }
 
 local KILLS: { [string]: () -> Part } = {
@@ -1601,6 +1654,7 @@ local KILLS: { [string]: () -> Part } = {
 	qilin_prism_parade = killQilin,
 	seraph_ascension = killSeraph,
 	divine_coronation = killLoaf,
+	peppermint_twist = killMint,
 }
 
 -- The library as a new, UNPARENTED Folder (marked when `Generated`, SDTools' root marker module, is given). `AssetTable`
