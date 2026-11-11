@@ -13,7 +13,12 @@
 --   * buyDecision(gear, line, expectedPrice): the next step and its price, or net.invalid / gear.max /
 --     gear.priceChanged (the price is compared, never charged);
 --   * HighwayMath.power(level, gear) = power(level) x multiplier(gear);
---   * ValidateGear: the shipped table passes; broken tables are named.
+--   * ValidateGear: the shipped table passes; broken tables are named;
+--   * big job item 10 (2026-11-10, the Gear Box and Golden gear): a gear table may hold `cards` and `gold`; goldCards
+--     cards turn a line's current piece Golden (x goldPower throw power, never as much as a step; armor: one more
+--     zone's traps), cards without a piece to turn wait (at most goldCards a line) and turn the next piece bought; the
+--     box costs boxShare x the dearest step bought last and gives a card only to a line with room, so no card is
+--     ever wasted.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -192,5 +197,120 @@ return function(t: Context)
 		expect.truthy(broken(function(g)
 			g.launcherPrices[36] = Config.Economy.maxCoins + 1
 		end) > 0)
+		-- Big job item 10: the Gear Box and Golden gear.
+		expect.truthy(broken(function(g)
+			g.goldPower = 1.5 -- over a tier 6-7 step (x1.41): the next plain piece would be weaker than the Golden one
+		end) > 0)
+		expect.truthy(broken(function(g)
+			g.goldPower = 1 -- a Golden piece that adds nothing
+		end) > 0)
+		expect.truthy(broken(function(g)
+			g.goldCards = 0
+		end) > 0)
+		expect.truthy(broken(function(g)
+			g.boxShare = 0 -- a free box
+		end) > 0)
+	end)
+
+	-- Big job item 10 (2026-11-10): the Gear Box and Golden gear -------------------------------------------------
+	-- A saved gear table may hold `cards` (0..goldCards waiting on each line) and `gold` (the tier of each line whose
+	-- piece is Golden). goldCards cards turn the line's current piece Golden: its throw power x goldPower (armor: one
+	-- more zone's traps); the next tier's piece is plain again, and still stronger than the Golden one before it.
+	local G = Config.Economy.Gear
+
+	t.test("tier, cards and Golden of a line; broken or missing counts as none", function()
+		local gear = { held = 5, platform = 4, arm = 0, armor = 3, cards = { held = 2, arm = 9, armor = "x" }, gold = { held = 2, platform = 2, armor = 3 } }
+		expect.equal(GearMath.tier(gear, "held"), 2)
+		expect.equal(GearMath.tier(gear, "platform"), 1) -- the last star of tier 1
+		expect.equal(GearMath.tier(gear, "arm"), 0)
+		expect.equal(GearMath.tier(gear, "armor"), 3) -- armor: a step a tier
+		expect.equal(GearMath.tier(gear, "hat"), 0)
+		expect.equal(GearMath.cards(gear, "held"), 2)
+		expect.equal(GearMath.cards(gear, "platform"), 0)
+		expect.equal(GearMath.cards(gear, "arm"), G.goldCards) -- never over what a Golden takes
+		expect.equal(GearMath.cards(gear, "armor"), 0)
+		expect.equal(GearMath.isGold(gear, "held"), true)
+		expect.equal(GearMath.isGold(gear, "platform"), false) -- Golden was another tier's piece
+		expect.equal(GearMath.isGold(gear, "arm"), false) -- no piece
+		expect.equal(GearMath.isGold(gear, "armor"), true)
+		expect.equal(GearMath.isGold(nil, "held"), false)
+		expect.equal(GearMath.cards({ held = 1 }, "held"), 0) -- a gear saved before the Gear Box
+	end)
+
+	t.test("a Golden power piece multiplies the throw power; a new plain piece is still an upgrade", function()
+		for _, line in { "held", "platform", "arm" } do
+			for tier = 1, #G.tierSteps do
+				local last = 0 -- the last step of this tier
+				for i = 1, tier do
+					last += G.tierSteps[i]
+				end
+				local plain = { [line] = last }
+				local golden = { [line] = last, gold = { [line] = tier } }
+				expect.near(GearMath.multiplier(golden), GearMath.multiplier(plain) * G.goldPower, GearMath.multiplier(plain) * 1e-9)
+				if last < GearMath.maxStep(line) then
+					local nextPiece = { [line] = last + 1, gold = { [line] = tier } } -- bought: the Golden mark is the old tier's
+					expect.truthy(GearMath.multiplier(nextPiece) > GearMath.multiplier(golden))
+				end
+			end
+		end
+		-- all three power lines Golden
+		local all = { held = 4, platform = 4, arm = 4, gold = { held = 1, platform = 1, arm = 1, armor = 1 } }
+		expect.near(GearMath.multiplier(all), 16 ^ 3 * G.goldPower ^ 3, 1e-6)
+	end)
+
+	t.test("goldAfter: the cards add up; the last one turns a piece that is not Golden yet; else they wait", function()
+		local need = G.goldCards
+		local gear = { held = 1, platform = 0, arm = 0, armor = 0, cards = { held = need - 2 } }
+		expect.deepEqual({ GearMath.goldAfter(gear, "held", 1) }, { need - 1, 0, false })
+		gear.cards.held = need - 1
+		expect.deepEqual({ GearMath.goldAfter(gear, "held", 1) }, { 0, 1, true }) -- spent: tier 1 is Golden
+		-- no piece on the line: the cards wait, never more than a Golden takes
+		expect.deepEqual({ GearMath.goldAfter(gear, "platform", need + 4) }, { need, 0, false })
+		-- already Golden: the cards wait for the next piece
+		local golden = { held = 2, cards = { held = need }, gold = { held = 1 } }
+		expect.deepEqual({ GearMath.goldAfter(golden, "held", 0) }, { need, 1, false })
+		golden.held = 5 -- the next tier's piece is bought: the waiting cards turn it Golden at once
+		expect.deepEqual({ GearMath.goldAfter(golden, "held", 0) }, { 0, 2, true })
+	end)
+
+	t.test("the Gear Box: its price follows the dearest step bought; its pool is every line with room", function()
+		expect.equal(GearMath.boxPrice(nil), math.floor(LAUNCHER[1] * G.boxShare))
+		expect.equal(GearMath.boxPrice({ held = 3, platform = 9, arm = 2, armor = 2 }), math.floor(LAUNCHER[9] * G.boxShare))
+		expect.equal(GearMath.boxPrice({ held = 0, platform = 0, arm = 0, armor = 4 }), math.floor(G.armorPrices[4] * G.boxShare))
+		expect.deepEqual(GearMath.boxPool(nil), { "held", "platform", "arm", "armor" })
+		local gear = { held = 36, platform = 1, arm = 0, armor = 7, cards = { platform = G.goldCards, armor = 1 }, gold = { held = 7 } }
+		-- held: a Golden last-tier piece needs no more cards; platform: full; arm and armor have room
+		expect.deepEqual(GearMath.boxPool(gear), { "arm", "armor" })
+		local price = GearMath.boxPrice(gear)
+		local decision = GearMath.boxDecision(gear, price)
+		expect.deepEqual(decision, { price = price, pool = { "arm", "armor" } })
+		local changed, why = GearMath.boxDecision(gear, price + 1)
+		expect.equal(changed, nil)
+		expect.equal(why, "gear.priceChanged")
+		local full = { cards = { held = G.goldCards, platform = G.goldCards, arm = G.goldCards, armor = G.goldCards } }
+		local none, whyFull = GearMath.boxDecision(full, GearMath.boxPrice(full))
+		expect.equal(none, nil)
+		expect.equal(whyFull, "gear.boxFull")
+	end)
+
+	t.test("twelve boxes at most make every line Golden: a card is never wasted", function()
+		local rng = Random.new(7)
+		for _ = 1, 200 do
+			local gear: any = { held = 1, platform = 1, arm = 1, armor = 1, cards = {}, gold = {} }
+			local opens = 0
+			while #GearMath.boxPool(gear) > 0 do
+				local pool = GearMath.boxPool(gear)
+				local line = pool[rng:NextInteger(1, #pool)]
+				local cards, gold = GearMath.goldAfter(gear, line, 1)
+				gear.cards[line], gear.gold[line] = cards, gold
+				opens += 1
+				expect.truthy(opens <= 100)
+			end
+			-- every line Golden (4 x goldCards) and then goldCards more waiting on each for the next piece
+			expect.equal(opens, 2 * 4 * G.goldCards)
+			for _, line in GearMath.LINES do
+				expect.equal(GearMath.isGold(gear, line), true)
+			end
+		end
 	end)
 end

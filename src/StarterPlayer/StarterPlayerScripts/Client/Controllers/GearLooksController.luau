@@ -32,6 +32,7 @@ local WorldLayout = require(Shared.World.WorldLayout)
 
 local Client = script.Parent.Parent
 local Scheduler = require(Client.Anim.Scheduler)
+local GearModels = require(Client.Models.GearModels)
 
 -- Types
 
@@ -53,7 +54,8 @@ local ROOT_PART = "HumanoidRootPart"
 local ATTR_PHASE = "SD_DuelPhase"
 local ATTR_MATCH = "SD_MatchId"
 local PLATFORM = "platform"
-local OUTLINE = "Outline" -- a model's ink hull (tools/meshes/gear_models.py)
+local OUTLINE = GearModels.OUTLINE -- a model's ink hull (tools/meshes/gear_models.py)
+local GOLD = 8 -- a Golden piece's look number is its tier + this (above every tier; big job item 10)
 local ORIGIN = WorldLayout.Highway.origin
 
 -- Module table
@@ -81,10 +83,9 @@ local function clientFx(): Instance
 	return folder :: Instance
 end
 
-local function cloneOf(line: string, tier: number): Model?
-	local folder = ReplicatedStorage:FindFirstChild(GearLooks.FOLDER)
-	local template = if folder then folder:FindFirstChild(GearLooks.modelName(line, tier)) else nil
-	return if template and template:IsA("Model") then template:Clone() else nil
+-- A tier's model (Models/GearModels: a Golden one, big job item 10, is blended toward gold).
+local function cloneOf(line: string, tier: number, golden: boolean): Model?
+	return GearModels.clone(GearLooks.modelName(line, tier), golden)
 end
 
 -- The body part a line sits on, and its entry of Config/GearLooks' mounts (R15, then R6).
@@ -131,8 +132,9 @@ local function takeOff(entry: Entry, line: string)
 	end
 end
 
+-- `tier` here and in Worn / Entry.standTier is a look number: the tier, + GOLD for a Golden piece (item 10).
 local function putOn(entry: Entry, line: string, tier: number, part: BasePart, mount: GearLooks.Mount)
-	local model = cloneOf(line, tier)
+	local model = cloneOf(line, tier % GOLD, tier >= GOLD)
 	if model == nil then
 		return
 	end
@@ -210,9 +212,9 @@ local function refresh()
 			near = player == own or eye == nil or (root.Position - eye).Magnitude <= reach
 		end
 		entry.near = near
-		local tiers = GearLooks.unpack(player:GetAttribute(GearLooks.ATTRIBUTE))
+		local tiers, gold = GearLooks.unpack(player:GetAttribute(GearLooks.ATTRIBUTE))
 		for _, line in GearLooks.WORN do
-			local tier = if near then tiers[line] else 0
+			local tier = if not near then 0 elseif gold[line] then tiers[line] + GOLD else tiers[line]
 			local part: BasePart?, mount: GearLooks.Mount? = nil, nil
 			if tier > 0 then
 				part, mount = mountOf(character :: Model, line)
@@ -230,12 +232,12 @@ local function refresh()
 			end
 		end
 		local onDeck = near and GearLooks.onDeck(ORIGIN:PointToObjectSpace((root :: BasePart).Position), entry.stand ~= nil)
-		local standTier = if onDeck then tiers[PLATFORM] else 0
+		local standTier = if not onDeck then 0 elseif gold[PLATFORM] then tiers[PLATFORM] + GOLD else tiers[PLATFORM]
 		if entry.stand and entry.standTier ~= standTier then
 			removeStand(entry)
 		end
 		if entry.stand == nil and standTier > 0 then
-			local model = cloneOf(PLATFORM, standTier)
+			local model = cloneOf(PLATFORM, standTier % GOLD, standTier >= GOLD)
 			if model then
 				for _, piece in model:GetChildren() do
 					if piece:IsA("BasePart") and piece.Name ~= OUTLINE then
@@ -290,10 +292,17 @@ end
 function GearLooksController.debugState(): { [string]: any }
 	local players: { [string]: any } = {}
 	for player, entry in entries do
-		local shown: { [string]: any } = { platform = entry.standTier, near = entry.near }
+		local golden: { string } = {}
+		local shown: { [string]: any } = { platform = entry.standTier % GOLD, near = entry.near, golden = golden }
+		if entry.standTier >= GOLD then
+			table.insert(golden, PLATFORM)
+		end
 		for _, line in GearLooks.WORN do
 			local worn = entry.worn[line]
-			shown[line] = if worn then worn.tier else 0
+			shown[line] = if worn then worn.tier % GOLD else 0
+			if worn and worn.tier >= GOLD then
+				table.insert(golden, line)
+			end
 		end
 		players[tostring(player.UserId)] = shown
 	end

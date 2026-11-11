@@ -19,7 +19,7 @@ local Switches = {
 	notifyEverySeconds = 4,
 	features = {
 		-- Opening boxes (the paid random items: the first thing to close if odds or grants ever go wrong).
-		boxes = { "BoxOpen" },
+		boxes = { "BoxOpen", "GearBoxOpen" }, -- GearBoxOpen: big job item 10 (the Gear Box is a random box too)
 		-- Everything bought with Coins in the shop windows.
 		shop = { "ShopBuy", "ShopRestockBuy", "GearBuy", "PenBuyIncome", "GripBuy", "BuyFood" },
 		-- The Robux prompts (coin bundles and passes).

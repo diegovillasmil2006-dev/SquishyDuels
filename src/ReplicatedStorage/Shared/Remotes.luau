@@ -244,6 +244,10 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- platform, arm, armor). expectedPrice is compared, never charged. data: Types.GearResult {gear, charged,
 	-- savePending}.
 	GearBuy = c2s("RemoteFunction", { arg("line", "string"), arg("expectedPrice", "coins") }),
+	-- Big job item 10 (HighwayService.openGearBox): opens one Gear Box for Coins: a gear card for one of the caller's
+	-- gear lines (3 cards turn a piece Golden). expectedPrice is compared, never charged. data: Types.GearBoxResult
+	-- {gear, line, turned, charged, savePending}.
+	GearBoxOpen = c2s("RemoteFunction", { arg("expectedPrice", "coins") }),
 	PromptCoinBundle = c2s("RemoteEvent", { arg("bundleKey", "bundleKey") }),
 	PromptGamePass = c2s("RemoteEvent", { arg("passKey", "passKey") }),
 	PolicyRetry = c2s("RemoteEvent", {}),

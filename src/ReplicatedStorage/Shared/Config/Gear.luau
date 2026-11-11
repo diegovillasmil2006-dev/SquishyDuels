@@ -67,6 +67,18 @@ local Gear = {
 		35_000_000_000_000,
 	},
 	-- Armor (owner 2026-11-06): n pieces go through the traps of zones 1..n (HighwayMath.reach; Config/Highway's course).
+
+	-- Big job item 10 (2026-11-10): the Gear Box and Golden gear (the owner's list: "Gear Box and Golden gear", Status
+	-- "gear from boxes" and "join 3"; the old plan's paper is lost, so the rules are Claude's calls, logged on the vault
+	-- page "Big job 2026-11" > My calls). A Gear Box (HighwayService.openGearBox) gives one gear card for a line that
+	-- holds fewer than `goldCards`; that many cards turn the line's current piece Golden by themselves: a power line's
+	-- throw power x `goldPower` (below a tier 6-7 step's x1.41, so a new plain piece is always an upgrade), an armor the
+	-- traps of one more zone. Golden belongs to the piece: the next tier is plain again. The box costs `boxShare` x the
+	-- dearest gear step bought last (nothing bought: x the first launcher step), in whole Coins, so 4 lines x 3 cards
+	-- cost about one step. No unlock rule (owner, "Check 2026-10-18" 22).
+	goldCards = 3,
+	goldPower = 1.25,
+	boxShare = 0.08,
 }
 
 return Gear

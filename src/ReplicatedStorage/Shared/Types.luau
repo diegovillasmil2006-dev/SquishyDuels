@@ -198,7 +198,16 @@ export type FoodCounts = { [string]: number }
 -- #starts + 1 = the Golden Gates; it only rises).
 export type HighwayState = { best: number, biome: number }
 -- Gear step 2: the steps bought of each gear line (GearMath.LINES; whole numbers in [0, GearMath.maxStep]).
-export type GearState = { held: number, platform: number, arm: number, armor: number }
+-- Big job item 10 (2026-11-10): `cards` = the gear cards waiting on each line (0..Gear.goldCards), `gold` = the tier of
+-- each line whose piece is Golden (0 = none); a profile saved before has neither (read as none; Shared/GearMath).
+export type GearState = {
+	held: number,
+	platform: number,
+	arm: number,
+	armor: number,
+	cards: { [string]: number }?,
+	gold: { [string]: number }?,
+}
 
 -- The one profile schema. The type name stays ProfileV1 across schema versions (§17.10): schemaVersion 2 added
 -- `grip` (the first migration, v1 -> v2, in Logic/ProfileSchema); schemaVersion 3 made the shelf one cubby a row.
@@ -708,6 +717,9 @@ export type HighwayLanding = {
 -- GearBuy data (gear step 2): the caller's gear after the buy; charged true (every refusal is a ResultErr with
 -- charged = false); savePending = the awaited "now" save failed.
 export type GearResult = { gear: GearState, charged: boolean, savePending: boolean }
+-- GearBoxOpen data (big job item 10): the caller's gear after the open, the line the card was for, and whether that
+-- card turned the line's piece Golden.
+export type GearBoxResult = { gear: GearState, line: string, turned: boolean, charged: boolean, savePending: boolean }
 
 -- QueueJoin data: the player's place in the queue (1 = next). A join from an OFFLINE/READONLY profile still
 -- succeeds and the server also sends Notify("duel.noRewardsOffline", nil, "warn") (§2.8).

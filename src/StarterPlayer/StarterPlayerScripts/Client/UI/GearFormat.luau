@@ -46,6 +46,7 @@ export type Card = {
 	maxText: string?, -- 2026-10-31 RESTOCK tab: the "max" chip's text (SOLD OUT / BOUGHT), else Strings.gear.max
 	icon: string?, -- 2026-11-01 INCOME tab: a picture (AssetTable key) on the tile, the tier in a badge
 	model: string?, -- 2026-11-10 (big job item 9): the piece's 3D model on the tile (its name in SD_Gear), the tier in a badge
+	golden: boolean?, -- 2026-11-10 (big job item 10): the pictured piece is Golden (its model shows gold)
 }
 
 -- Constants
@@ -57,6 +58,10 @@ local BIOMES = WorldLayout.Highway.biomes
 -- Module table
 
 local GearFormat = {}
+
+GearFormat.BOX = "box" -- big job item 10: the Gear Box's card "line" (not a GearMath line)
+local BOX_COLOR = "StickerGoldTop" -- its tile (a Palette token)
+local BOX_ICON = "img.icon.gift" -- its tile's picture (an AssetTable key; a stand-in until the GEAR tab is designed)
 
 -- Private
 
@@ -86,22 +91,35 @@ local function card(gear: any, line: string, coins: number, busyLine: string?): 
 		elseif busyLine == line then "busy"
 		elseif coins >= (price :: number) then "buy"
 		else "needCoins"
+	local desc = if max
+		then S.maxLine
+		elseif armor then S.armorLine
+		else Strings.format(S.powerLine, { x = stepText(tier) })
+	-- Big job item 10: the gear cards waiting on this line ride on the line's text; the pictured piece is Golden when
+	-- the line's own piece is and the step shown belongs to it (a star of the same tier, or all bought).
+	local waiting = GearMath.cards(gear, line)
+	if waiting > 0 and not max then
+		desc ..= " · " .. Strings.format(S.box.cards, { n = waiting, max = G.goldCards })
+	end
 	return {
 		line = line,
 		name = if index > 0 then Strings.format(S.star, { name = base, n = index }) else base,
 		tier = tier,
 		stars = if max then steps else index,
 		steps = steps,
-		desc = if max
-			then S.maxLine
-			elseif armor then S.armorLine
-			else Strings.format(S.powerLine, { x = stepText(tier) }),
+		desc = desc,
 		price = price,
 		state = state,
 		missing = if state == "needCoins" then (price :: number) - coins else 0,
 		color = BIOMES[tier].nameColor,
 		model = GearLooks.modelName(line, tier),
+		golden = GearMath.isGold(gear, line) and GearMath.tier(gear, line) == tier,
 	}
+end
+
+-- Big job item 10: the name of the piece a gear card on `line` is for: the line's own piece (none yet: its first).
+local function pieceName(gear: any, line: string): string
+	return (S.names :: any)[line][math.max(1, GearMath.tier(gear, line))]
 end
 
 -- Public
@@ -113,6 +131,57 @@ function GearFormat.cards(gear: any, coins: number?, busyLine: string?): { Card 
 		table.insert(list, card(gear, line, have, busyLine))
 	end
 	return list
+end
+
+-- Big job item 10: the Gear Box as a 5th card of the GEAR page (line BOX): its price, and under its name who can get
+-- the card: every line with room at the same chance (`random`: the account may buy paid random items), else the one
+-- line the fixed order gives next. The pool and the price are GearMath's, the ones the server opens with. No line
+-- with room = "max" (its chip reads Strings.gear.box.full).
+function GearFormat.boxCard(gear: any, coins: number?, busyLine: string?, random: boolean): Card
+	local have = if type(coins) == "number" and coins == coins then coins else 0
+	local pool = GearMath.boxPool(gear)
+	local price = GearMath.boxPrice(gear)
+	local names: { string } = {}
+	for _, line in pool do
+		table.insert(names, pieceName(gear, line))
+	end
+	local full = #pool == 0
+	local state: CardState = if full
+		then "max"
+		elseif busyLine == GearFormat.BOX then "busy"
+		elseif have >= price then "buy"
+		else "needCoins"
+	local chance = if full then 0 else math.floor(100 / #pool + 0.5)
+	-- Who gets the card: every line with room at the same chance (the lines without room read "Cards 3/3" on their
+	-- own cards), or the one line the fixed order gives next.
+	local who = if full
+		then S.box.fullLine
+		elseif not random or #pool == 1 then Strings.format(S.box.next, { name = names[1] })
+		else Strings.format(S.box.odds, { chance = chance })
+	return {
+		line = GearFormat.BOX,
+		name = S.box.name,
+		tier = 0,
+		stars = 0,
+		steps = 0,
+		-- one wrapped sentence (a line break made the card's text stack a line too tall: seen 2026-11-10)
+		desc = Strings.format(S.box.line, { max = G.goldCards }) .. " " .. who,
+		price = if full then nil else price,
+		state = state,
+		missing = if state == "needCoins" then price - have else 0,
+		color = BOX_COLOR,
+		icon = BOX_ICON,
+		maxText = S.box.full,
+	}
+end
+
+-- Big job item 10: what a Gear Box open says: the card's piece and the cards now waiting, or that it turned Golden.
+function GearFormat.boxToast(gear: any, line: string, turned: boolean): string
+	local name = pieceName(gear, line)
+	if turned then
+		return Strings.format(S.box.turned, { name = name })
+	end
+	return Strings.format(S.box.card, { name = name, n = GearMath.cards(gear, line), max = G.goldCards })
 end
 
 function GearFormat.powerText(gear: any): string

@@ -92,6 +92,7 @@ return function(t: Context)
 		nowSaves: number,
 		saveOk: boolean,
 		shown: { [any]: number }, -- item 9: what deps.showGear wrote last, by player
+		gamble: boolean, -- item 10: what deps.canGamble answers (may this account buy paid random items)
 		watch: ((player: any) -> ())?, -- item 9: the handler deps.watchProfiles was given
 	}
 
@@ -153,10 +154,14 @@ return function(t: Context)
 			nowSaves = 0,
 			saveOk = true,
 			shown = {},
+			gamble = true,
 			watch = nil,
 		}
 		HighwayService.reset()
 		HighwayService.useDeps({
+			canGamble = function(): boolean
+				return w.gamble
+			end,
 			showGear = function(player: any, tiers: number)
 				w.shown[player] = tiers
 			end,
@@ -1029,13 +1034,13 @@ return function(t: Context)
 		expect.equal(w.shown[w.a], 0) -- playerAdded: nothing owned
 		w.profiles[w.a].coins = 100_000
 		expect.equal(HighwayService.buyGear(w.a, "held", 18_000).ok, true)
-		expect.equal(w.shown[w.a], 1000) -- held tier 1
+		expect.equal(w.shown[w.a], 0x1000) -- held tier 1 (a hex digit a line)
 		expect.equal(HighwayService.buyGear(w.a, "armor", 9_000).ok, true)
-		expect.equal(w.shown[w.a], 1001)
+		expect.equal(w.shown[w.a], 0x1001)
 		expect.equal(w.shown[w.b], 0)
 		-- a refused buy shows nothing new
 		expectRefused(HighwayService.buyGear(w.a, "held", 1), "gear.priceChanged")
-		expect.equal(w.shown[w.a], 1001)
+		expect.equal(w.shown[w.a], 0x1001)
 		-- init hands the data port a handler: a profile that loads (or changes status) later is shown too
 		local NetService: any = t.requireServer("Services/NetService")
 		local real = NetService.onInvoke
@@ -1050,11 +1055,124 @@ return function(t: Context)
 		local watch = w.watch :: (player: any) -> ()
 		watch(w.b)
 		expect.equal(w.shown[w.b], GearLooks.pack(w.profiles[w.b].gear))
-		expect.equal(w.shown[w.b], 2707)
+		expect.equal(w.shown[w.b], 0x2707)
 		-- no profile in memory: no gear
 		w.profiles[w.b] = nil
 		watch(w.b)
 		expect.equal(w.shown[w.b], 0)
 		finish()
+	end)
+
+	-- Big job item 10 (2026-11-10): the Gear Box and Golden gear. A box gives one gear card for a line with room; the
+	-- third card turns the line's piece Golden (x goldPower throw power; armor: one more zone's traps).
+	local G = Config.Economy.Gear
+	local GearMath = t.requireShared("GearMath")
+	local BOX = math.floor(18_000 * G.boxShare) -- nothing bought: a share of the first launcher step
+
+	t.test("GearBoxOpen takes a Coin price, one in flight, and the boxes switch closes it", function()
+		local spec = Remotes.SPEC.GearBoxOpen
+		expect.truthy(spec ~= nil)
+		expect.equal(spec.kind, "RemoteFunction")
+		expect.equal(Config.Net.Remotes.GearBoxOpen.oneInFlight, true)
+		expect.truthy(table.find(t.requireShared("Config/Switches").features.boxes, "GearBoxOpen") ~= nil)
+	end)
+
+	t.test("openGearBox refuses in order, charging and writing nothing", function()
+		local w = fresh()
+		w.profiles[w.a].coins = 1_000_000
+		expectRefused(HighwayService.openGearBox(w.a, 1.5), "net.invalid")
+		w.status[w.a] = "loading"
+		expectRefused(HighwayService.openGearBox(w.a, BOX), "data.notReady")
+		w.status[w.a] = "ready"
+		expectRefused(HighwayService.openGearBox(w.a, BOX + 1), "gear.priceChanged")
+		w.savePending = true
+		expectRefused(HighwayService.openGearBox(w.a, BOX), "gear.paused")
+		w.savePending = false
+		w.phase[w.a] = "Active"
+		expectRefused(HighwayService.openGearBox(w.a, BOX), "inventory.lockedInDuel")
+		w.phase[w.a] = ""
+		w.profiles[w.a].coins = BOX - 1
+		expectRefused(HighwayService.openGearBox(w.a, BOX), "economy.notEnoughCoins")
+		-- every line full of waiting cards (no piece to turn Golden): the box has nothing to give
+		w.profiles[w.a].coins = 1_000_000
+		w.profiles[w.a].gear.cards = { held = 3, platform = 3, arm = 3, armor = 3 }
+		expectRefused(HighwayService.openGearBox(w.a, BOX), "gear.boxFull")
+		expect.deepEqual(w.spends, {})
+		expect.equal(w.writes, 0)
+		expect.equal(w.nowSaves, 0)
+		finish()
+	end)
+
+	t.test("openGearBox: a card for a random line with room; the third card turns the piece Golden", function()
+		local w = fresh()
+		local profile = w.profiles[w.a]
+		profile.coins = 10_000_000
+		profile.gear = { held = 4, platform = 0, arm = 0, armor = 0 } -- Lolli Sling with all its stars (tier 1)
+		local price = math.floor(GearMath.price("held", 4) * G.boxShare) -- a share of the dearest step bought last
+		expect.equal(GearMath.boxPrice(profile.gear), price)
+		w.random = 0 -- the pool's first line: held
+		local first = HighwayService.openGearBox(w.a, price)
+		expect.equal(first.ok, true)
+		expect.equal(first.data.line, "held")
+		expect.equal(first.data.turned, false)
+		expect.equal(first.data.charged, true)
+		expect.equal(first.data.gear.cards.held, 1)
+		expect.deepEqual(w.spends, { { player = w.a, amount = price, reason = "gear" } })
+		expect.truthy(table.find(w.dirty, "gear") ~= nil)
+		expect.equal(w.nowSaves, 1)
+		w.random = 0.999 -- the pool's last line: armor
+		expect.equal(HighwayService.openGearBox(w.a, price).data.line, "armor")
+		w.random = 0
+		expect.equal(HighwayService.openGearBox(w.a, price).data.gear.cards.held, 2)
+		local before = HighwayMath.power(1, profile.gear)
+		local third = HighwayService.openGearBox(w.a, price)
+		expect.equal(third.data.turned, true)
+		expect.equal(third.data.gear.cards.held, 0) -- the 3 cards are spent
+		expect.equal(third.data.gear.gold.held, 1) -- tier 1 is Golden
+		expect.near(HighwayMath.power(1, profile.gear), before * G.goldPower, before * 1e-9)
+		expect.equal(w.shown[w.a], 0x9000) -- everyone sees the Golden launcher (tier 1 + 8)
+		-- the reply is a copy: changing it never reaches the profile
+		third.data.gear.cards.held = 3
+		expect.equal(profile.gear.cards.held, 0)
+		-- an account that may not buy random items gets the fixed order (the pool's first), whatever the dice say
+		w.gamble = false
+		w.random = 0.999
+		expect.equal(HighwayService.openGearBox(w.a, price).data.line, "held")
+		finish()
+	end)
+
+	t.test("cards wait for a piece: buying one turns it Golden at once; a new tier is plain again", function()
+		local w = fresh()
+		local profile = w.profiles[w.a]
+		profile.coins = 1e12
+		w.random = 0
+		for _ = 1, 3 do
+			expect.equal(HighwayService.openGearBox(w.a, BOX).data.turned, false) -- no launcher yet: the cards wait
+		end
+		expect.equal(profile.gear.cards.held, 3)
+		w.random = 0 -- held is full now: the pool's first is platform
+		expect.equal(HighwayService.openGearBox(w.a, BOX).data.line, "platform")
+		local bought = HighwayService.buyGear(w.a, "held", 18_000)
+		expect.equal(bought.ok, true)
+		expect.equal(bought.data.gear.gold.held, 1)
+		expect.equal(bought.data.gear.cards.held, 0)
+		expect.equal(w.shown[w.a], 0x9000)
+		-- the stars of the same tier keep it Golden; the next tier's piece is plain (and still stronger)
+		for step = 2, 4 do
+			expect.equal(HighwayService.buyGear(w.a, "held", GearMath.price("held", step)).ok, true)
+		end
+		expect.equal(w.shown[w.a], 0x9000)
+		local golden = HighwayMath.power(1, profile.gear)
+		expect.equal(HighwayService.buyGear(w.a, "held", GearMath.price("held", 5)).ok, true)
+		expect.equal(w.shown[w.a], 0x2000)
+		expect.truthy(HighwayMath.power(1, profile.gear) > golden)
+		finish()
+	end)
+
+	t.test("Golden armor goes through the traps of one more zone", function()
+		expect.equal(GearMath.armor({ armor = 2 }), 2)
+		expect.equal(GearMath.armor({ armor = 2, gold = { armor = 2 } }), 3)
+		expect.equal(GearMath.armor({ armor = 2, gold = { armor = 1 } }), 2) -- an older piece's Golden is gone
+		expect.equal(GearMath.armor(nil), 0)
 	end)
 end

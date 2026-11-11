@@ -248,6 +248,8 @@ local Strings = {
 			max = "You have all of this gear!",
 			priceChanged = "The price changed. Please check it again.",
 			paused = "Buying is paused for a moment. Try again soon.",
+			-- Big job item 10 (GearBoxOpen; GearMath.boxDecision): no gear line can take another card.
+			boxFull = "Your gear cards are full. Buy your next gear to use them!",
 		},
 		-- 2026-10-31 buy Grip (GripBuy; GripMath.buyPrice, GripService.buyLevel).
 		gripBuy = {
@@ -1368,6 +1370,25 @@ local Strings = {
 		maxLine = "You have it all!",
 		need = "Need {coins} more",
 		bought = "You got {name}!",
+		-- Big job item 10 (2026-11-10): the Gear Box and Golden gear ([P] texts; the GEAR tab is a stand-in). {name} a
+		-- gear piece, {n} / {max} the cards waiting on its line, {x} Golden's throw power, {chance} the chance in percent
+		-- of each line a box can give a card for.
+		box = {
+			name = "Gear Box",
+			line = "{max} cards make a piece GOLDEN!",
+			-- Two or more gear lines have room (the ones whose card does not read "Cards 3/3"): the same chance each.
+			odds = "1 random card ({chance}% each gear)",
+			-- One line has room, or the account may not buy random items (the fixed order): no dice, the card says which.
+			next = "Next card: {name}",
+			full = "Cards full",
+			fullLine = "Buy your next gear to use your cards!",
+			card = "Gear card for {name}! {n}/{max}",
+			turned = "Your {name} is GOLDEN!",
+			goldPower = "GOLDEN: x{x} throw power",
+			goldArmor = "GOLDEN: one more zone's traps",
+			cards = "Cards {n}/{max}",
+			golden = "GOLDEN",
+		},
 		names = {
 			held = {
 				"Lolli Sling",

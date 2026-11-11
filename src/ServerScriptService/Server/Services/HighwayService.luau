@@ -54,6 +54,18 @@
 --   server starts empty.
 -- * Gear step 2 (2026-10-26; owner: "Build the gear next", "Traps + armor now", the prices of Config/Gear): a throw's
 --   power is also x GearMath.multiplier(profile.gear) (before PERFECT).
+-- * The Gear Box and Golden gear (big job item 10, 2026-11-10; Config/Gear, Shared/GearMath): GearBoxOpen(expectedPrice)
+--   (RF; Config.Net as GearBuy; the "boxes" emergency switch) opens one Gear Box: (1) expectedPrice not whole Coins ->
+--   net.invalid; (2) no READY profile -> data.notReady; (3) GearMath.boxDecision -> gear.boxFull (no line can take a
+--   card) / gear.priceChanged; (4) a pending failed save, closing or a restart -> gear.paused; (5) SD_DuelPhase ~= ""
+--   -> inventory.lockedInDuel; (6) EconomyService.trySpend(p, price, "gear"). Then the card's line: an account that may
+--   buy paid random items (deps.canGamble, PolicyGateService: eligible only) gets one of the pool at random
+--   (deps.random), every other one the pool's first (the fixed order the card shows: never a gamble, as BoxService);
+--   one mutate adds the card (GearMath.goldAfter: the third card turns the line's piece Golden), the `gear` field is
+--   sent, SD_Gear republished, and the awaited "now" save comes before ok({gear, line, turned, charged = true,
+--   savePending}). A GearBuy also settles its line: cards that were waiting turn the new piece Golden at once. A
+--   Golden power piece multiplies the throw power (GearMath.multiplier), Golden armor counts as one more piece
+--   (GearMath.armor).
 -- * The gear's looks (big job item 9, 2026-11-10): the tiers a player owns are public as the Player attribute SD_Gear
 --   (Shared/GearLooks.pack: one number), written when the player joins, when the profile loads or changes status and
 --   after every gear buy; every client dresses that player from it (Client/Controllers/GearLooksController).
@@ -110,6 +122,7 @@ local DataService = require(Services.DataService)
 local EconomyService = require(Services.EconomyService)
 local GripService = require(Services.GripService)
 local NetService = require(Services.NetService)
+local PolicyGateService = require(Services.PolicyGateService) -- big job item 10: the Gear Box's random card
 local ShutdownService = require(Services.ShutdownService)
 local StateService = require(Services.StateService)
 
@@ -144,6 +157,7 @@ export type Deps = {
 	spots: () -> { HighwayMath.Spot }, -- the course: Config's spots
 	buildCourse: () -> (), -- the course: stands them on the lane
 	showGear: (player: any, tiers: number) -> (), -- item 9: writes the Player attribute SD_Gear (GearLooks.pack)
+	canGamble: (player: any) -> boolean, -- item 10: PolicyGateService.canBuyPaidRandom (eligible accounts only)
 	watchProfiles: (handler: (player: any) -> ()) -> (), -- item 9: the data port's onLoaded and onStatusChanged
 }
 
@@ -151,6 +165,8 @@ export type Deps = {
 export type Reply = { ok: boolean, data: Types.HighwayPlan?, reason: string?, charged: boolean? }
 -- Gear step 2: what GearBuy answers: NetService.ok(Types.GearResult) or NetService.err(reason, false).
 export type GearReply = { ok: boolean, data: Types.GearResult?, reason: string?, charged: boolean? }
+-- Big job item 10: what GearBoxOpen answers: NetService.ok(Types.GearBoxResult) or NetService.err(reason, false).
+export type GearBoxReply = { ok: boolean, data: Types.GearBoxResult?, reason: string?, charged: boolean? }
 
 -- The open flight: the plan last sent (never changed: a boost makes a new one), the power so far (the scatter, PERFECT
 -- and boosts in; never a bounce), the press's server time and the number of its current settle schedule.
@@ -194,6 +210,7 @@ local GEAR_REASON = "gear"
 local FIELD_GEAR = "gear"
 local CODE_GEAR_PAUSED = "gear.paused"
 local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
+local GEAR_BOX_REMOTE = "GearBoxOpen" -- big job item 10
 
 -- Module table
 
@@ -365,6 +382,9 @@ local function defaultDeps(): Deps
 			local port = StateService.dataPort()
 			port.onLoaded(handler)
 			port.onStatusChanged(handler)
+		end,
+		canGamble = function(player: any): boolean
+			return PolicyGateService.canBuyPaidRandom(player)
 		end,
 	}
 end
@@ -560,9 +580,10 @@ local function schedule(player: any, session: Session, flight: Flight, now: numb
 	end)
 end
 
--- The course: the armor pieces of a saved gear table (a broken one counts as none).
+-- The course: the zones whose traps a saved gear table's armor goes through (a broken one counts as none; item 10: a
+-- Golden piece counts as one more).
 local function armorOf(gear: any): number
-	return if type(gear) == "table" and isFinite(gear.armor) then gear.armor else 0
+	return GearMath.armor(gear)
 end
 
 -- (4) A press during the own flight: the boost (see the header).
@@ -675,6 +696,32 @@ function HighwayService.throw(player: any, clientTime: any, fastSeconds: number?
 	return launch(player, session, root, now)
 end
 
+-- Big job item 10: a copy of a saved gear table with its cards and Golden tiers (table.clone would share those two).
+local function copyGear(gear: any): Types.GearState
+	local copy = table.clone(gear)
+	copy.cards = if type(gear.cards) == "table" then table.clone(gear.cards) else nil
+	copy.gold = if type(gear.gold) == "table" then table.clone(gear.gold) else nil
+	return copy
+end
+
+-- Big job item 10: `added` gear cards land on a line of the live gear table (0: after a buy on it); the third one
+-- turns the line's piece Golden (GearMath.goldAfter). Returns whether it did.
+local function settleGold(gear: any, line: string, added: number): boolean
+	local cards, gold, turned = GearMath.goldAfter(gear, line, added)
+	if added == 0 and not turned then
+		return false -- a buy with no cards waiting: nothing to write
+	end
+	if type(gear.cards) ~= "table" then
+		gear.cards = {}
+	end
+	if type(gear.gold) ~= "table" then
+		gear.gold = {}
+	end
+	gear.cards[line] = cards
+	gear.gold[line] = gold
+	return turned
+end
+
 -- Gear step 2: the next step of one of the caller's own gear lines (see the header for the order of the checks).
 function HighwayService.buyGear(player: any, line: any, expectedPrice: any): GearReply
 	if GearMath.maxStep(line) == nil or Validate.coins(expectedPrice) == nil then
@@ -709,6 +756,7 @@ function HighwayService.buyGear(player: any, line: any, expectedPrice: any): Gea
 		local gear = if type(live.gear) == "table" then live.gear else { held = 0, platform = 0, arm = 0, armor = 0 }
 		gear[line] = math.max(if isFinite(gear[line]) then gear[line] else 0, decision.step)
 		live.gear = gear
+		settleGold(gear, line, 0) -- item 10: cards that were waiting turn the new piece Golden at once
 		return true
 	end)
 	if not written then
@@ -720,7 +768,68 @@ function HighwayService.buyGear(player: any, line: any, expectedPrice: any): Gea
 	deps.markDirty(player, FIELD_GEAR)
 	publishGear(player) -- item 9: a new tier shows on the player at once
 	local data: Types.GearResult = {
-		gear = table.clone(deps.profileOf(player).gear), -- copied before the save yields
+		gear = copyGear(deps.profileOf(player).gear), -- copied before the save yields
+		charged = true,
+		savePending = false,
+	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
+-- Big job item 10: one Gear Box for the caller's Coins (see the header for the order of the checks).
+function HighwayService.openGearBox(player: any, expectedPrice: any): GearBoxReply
+	if Validate.coins(expectedPrice) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local profile = deps.profileOf(player)
+	if deps.statusOf(player) ~= STATUS_READY or type(profile) ~= "table" then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local decision, refusedWhy = GearMath.boxDecision(profile.gear, expectedPrice)
+	if decision == nil then
+		return NetService.err(refusedWhy or CODE_INVALID, false)
+	end
+	if deps.savePending(player) or deps.isClosing() or deps.isRestartPending() then
+		return NetService.err(CODE_GEAR_PAUSED, false)
+	end
+	if deps.duelPhaseOf(player) ~= "" then
+		return NetService.err(CODE_IN_DUEL, false)
+	end
+	local spent, why = deps.trySpend(player, decision.price, GEAR_REASON)
+	if not spent then
+		return NetService.err(
+			if why == "notEnoughCoins"
+				then CODE_NOT_ENOUGH
+				elseif why == "savePending" then CODE_GEAR_PAUSED
+				elseif why == "notReady" then CODE_NOT_READY
+				else CODE_INVALID,
+			false
+		)
+	end
+	-- The card's line: at random for an account that may buy paid random items, else the fixed order (the first).
+	local pool = decision.pool
+	local index = if deps.canGamble(player) then math.clamp(math.floor(deps.random() * #pool) + 1, 1, #pool) else 1
+	local line = pool[index]
+	local turned = false
+	local written = deps.mutate(player, function(live: any): boolean
+		local gear = if type(live.gear) == "table" then live.gear else { held = 0, platform = 0, arm = 0, armor = 0 }
+		live.gear = gear
+		turned = settleGold(gear, line, 1)
+		return true
+	end)
+	if not written then
+		-- Cannot happen without a yield after the spend (the session was ready a moment ago); logged loudly.
+		log:error(`user {userIdOf(player)}: a Gear Box was paid ({decision.price}) but its {line} card was not written`)
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local golden = if turned then " (the piece turned Golden)" else ""
+	log:info(`user {userIdOf(player)} opened a Gear Box for {decision.price} Coins: a {line} card{golden}`)
+	deps.markDirty(player, FIELD_GEAR)
+	publishGear(player)
+	local data: Types.GearBoxResult = {
+		gear = copyGear(deps.profileOf(player).gear), -- copied before the save yields
+		line = line,
+		turned = turned,
 		charged = true,
 		savePending = false,
 	}
@@ -764,6 +873,9 @@ function HighwayService.init()
 	end)
 	NetService.onInvoke(GEAR_REMOTE, function(player: Player, line: any, expectedPrice: any): any
 		return HighwayService.buyGear(player, line, expectedPrice)
+	end)
+	NetService.onInvoke(GEAR_BOX_REMOTE, function(player: Player, expectedPrice: any): any
+		return HighwayService.openGearBox(player, expectedPrice) -- item 10
 	end)
 	deps.watchProfiles(publishGear) -- item 9
 end

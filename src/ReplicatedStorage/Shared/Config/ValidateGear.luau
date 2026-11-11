@@ -6,7 +6,9 @@
 --   * tierSteps a non-empty list of whole numbers >= 1; tierPower finite and > 1;
 --   * launcherPrices one whole Coin price a step (as many as tierSteps add up to), each in [1, maxCoins], strictly
 --     rising; armGearShare in (0, 1] with every launcher price x it whole;
---   * armorPrices one whole price a tier, in [1, maxCoins], strictly rising.
+--   * armorPrices one whole price a tier, in [1, maxCoins], strictly rising;
+--   * big job item 10: goldCards a whole number >= 1, boxShare in (0, 1], goldPower above 1 and below the smallest
+--     step's power (a new plain piece must always be an upgrade over the Golden one before it).
 
 local G = "Config.Economy.Gear"
 
@@ -79,5 +81,22 @@ return function(config: any): { string }
 			)
 		end
 	end
+
+	-- Big job item 10 (the Gear Box and Golden gear).
+	expect(isWhole(g.goldCards) and g.goldCards >= 1, `{G}.goldCards must be a whole number >= 1`)
+	expect(isNumber(g.boxShare) and g.boxShare > 0 and g.boxShare <= 1, `{G}.boxShare must be in (0, 1]`)
+	-- A Golden piece must stay weaker than the smallest step, or buying the next (plain) piece would lower the power.
+	local smallest = math.huge
+	if isNumber(g.tierPower) and type(g.tierSteps) == "table" then
+		for _, n in g.tierSteps do
+			if isWhole(n) and n >= 1 then
+				smallest = math.min(smallest, g.tierPower ^ (1 / n))
+			end
+		end
+	end
+	expect(
+		isNumber(g.goldPower) and g.goldPower > 1 and g.goldPower < smallest,
+		`{G}.goldPower must be above 1 and below the smallest step's power`
+	)
 	return problems
 end

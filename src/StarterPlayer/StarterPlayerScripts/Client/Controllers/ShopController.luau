@@ -57,7 +57,6 @@ local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local EventSchedule = require(Shared.EventSchedule) -- 2026-10-31 shop restock
 local Format = require(Shared.Util.Format)
-local GearLooks = require(Shared.GearLooks) -- big job item 9: the gear models' folder
 local GearShop = require(Shared.Config.GearShop) -- gear step 3
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
@@ -69,6 +68,7 @@ local CoinIcon = require(Client.UI.Components.CoinIcon)
 local CountBadge = require(Client.UI.Components.CountBadge)
 local Create = require(Client.UI.Create)
 local GearFormat = require(Client.UI.GearFormat)
+local GearModels = require(Client.Models.GearModels) -- big job items 9-10: the gear cards' 3D pictures
 local IconGlyph = require(Client.UI.Components.IconGlyph)
 local IncomeFormat = require(Client.UI.IncomeFormat) -- INCOME step 2
 local Layout = require(Client.UI.Layout)
@@ -117,6 +117,7 @@ type GearCard = {
 	image: SquishyImage.SquishyImage?,
 	icon: string?, -- 2026-11-01 INCOME: the picture on the tile (AssetTable key)
 	model: string?, -- 2026-11-10 (big job item 9): the 3D model on the tile (its name in SD_Gear)
+	golden: boolean?, -- 2026-11-10 (big job item 10): that model shows gold
 }
 type Featured = {
 	root: Frame,
@@ -151,6 +152,8 @@ local BUTTON_LIP = Config.UI.Sticker.lip.button
 local PROMPT_TIMEOUT_SECONDS = 30 -- reading: the Robux spinner never outlives this
 local WHITE = Color3.new(1, 1, 1)
 local REMOTE_GEAR = "GearBuy" -- gear step 3
+local REMOTE_GEAR_BOX = "GearBoxOpen" -- big job item 10: the Gear Box
+local POLICY_ELIGIBLE = "eligible" -- the account may buy paid random items (PolicyGateService)
 local REMOTE_INCOME = "PenBuyIncome" -- INCOME step 2
 local REMOTE_GRIP = "GripBuy" -- 2026-10-31 buy Grip: the INCOME tab's third card
 local REMOTE_RESTOCK = "ShopRestockBuy" -- 2026-10-31 shop restock
@@ -478,10 +481,9 @@ end
 -- Big job item 9 (2026-11-10): a gear piece's own 3D model on its card's tile: a still ViewportFrame (never animated),
 -- framed by the model's bounds and lit like the squishy icons (StaticIcon's maths, Config.Inspect). It goes with the
 -- tile (a child). False when the place has no such model: the tile keeps its tier number.
-local function gearPicture(tile: Frame, name: string, px: number): boolean
-	local folder = ReplicatedStorage:FindFirstChild(GearLooks.FOLDER)
-	local template = if folder then folder:FindFirstChild(name) else nil
-	if template == nil or not template:IsA("Model") then
+local function gearPicture(tile: Frame, name: string, px: number, golden: boolean): boolean
+	local model = GearModels.clone(name, golden) -- item 10: a Golden piece shows gold
+	if model == nil then
 		return false
 	end
 	local fov = INSPECT.Framing.vFovDeg
@@ -500,8 +502,7 @@ local function gearPicture(tile: Frame, name: string, px: number): boolean
 	})
 	local camera: Camera = Create("Camera", { Name = "Camera", FieldOfView = fov, Parent = frame })
 	frame.CurrentCamera = camera
-	local model = template:Clone()
-	local hull = model:FindFirstChild("Outline")
+	local hull = model:FindFirstChild(GearModels.OUTLINE)
 	if hull then
 		hull:Destroy() -- at a tile's size the ink hull is thinner than a pixel: it shows as dark specks, not a line
 	end
@@ -562,7 +563,7 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 		spec.inset
 	)
 	card.tile, card.tier, card.steps, card.squishy, card.icon = tile, view.tier, view.steps, view.squishy, view.icon
-	card.model = view.model
+	card.model, card.golden = view.model, view.golden
 	local icon = view.icon
 	if icon then -- 2026-11-01 INCOME: the picture bobbing like a pass card's (H:342), the tier in a badge
 		local bob = holder("SD_Bob", tile)
@@ -570,7 +571,9 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 		bob.ZIndex = 2
 		picture(bob, icon, PASSES.art.px, "Picture")
 		UiIdle.add(bob, "bob", { periodS = PASSES.art.bobS }) -- ends with the tile (Destroying)
-		tierBadge(tile, view.tier)
+		if view.tier > 0 then -- item 10: the Gear Box's card has no tier
+			tierBadge(tile, view.tier)
+		end
 		return
 	end
 	local squishy = view.squishy
@@ -583,7 +586,7 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 		return
 	end
 	local model = view.model
-	if model and gearPicture(tile, model, spec.px - 2 * spec.border) then
+	if model and gearPicture(tile, model, spec.px - 2 * spec.border, view.golden == true) then
 		tierBadge(tile, view.tier) -- item 9: the piece's own model; the stars still sit along the tile's bottom
 	else
 		local number = Theme.label({
@@ -645,6 +648,7 @@ local function paintGearCard(card: GearCard, view: GearFormat.Card)
 		or card.squishy ~= view.squishy
 		or card.icon ~= view.icon
 		or card.model ~= view.model
+		or card.golden ~= view.golden
 	then
 		gearTile(card, view)
 	end
@@ -684,6 +688,9 @@ local function paintGear()
 	local gear = StateController.get("gear")
 	local coins = StateController.get("coins")
 	local views = GearFormat.cards(gear, if type(coins) == "number" then coins else nil, gearBusy)
+	-- Big job item 10: the Gear Box's card; its card is random only for an account that may buy paid random items.
+	local random = StateController.get("policy") == POLICY_ELIGIBLE
+	table.insert(views, GearFormat.boxCard(gear, if type(coins) == "number" then coins else nil, gearBusy, random))
 	for index, card in gearCards do
 		local view = views[index]
 		if view then
@@ -758,8 +765,10 @@ local function buyGear(card: GearCard)
 		local restock = card.remote == REMOTE_RESTOCK
 		local slot = tonumber(card.line) :: number
 		local index = EventSchedule.restockAt(Workspace:GetServerTimeNow())
+		local box = card.line == GearFormat.BOX -- big job item 10: the Gear Box
 		local result = if restock
 			then NetController.invokeAsync(card.remote, slot, view.price, HttpService:GenerateGUID(false))
+			elseif box then NetController.invokeAsync(REMOTE_GEAR_BOX, view.price)
 			elseif card.remote == REMOTE_GRIP then NetController.invokeAsync(card.remote, view.price)
 			else NetController.invokeAsync(card.remote, card.line, view.price)
 		gearBusy = nil
@@ -768,8 +777,10 @@ local function buyGear(card: GearCard)
 			if restock and index ~= nil then
 				restockBought[slot] = index
 			end
+			local data: any = result.data
 			local bought = if restock
 				then Strings.format(Strings.event.restockGot, { name = view.name })
+				elseif box and type(data) == "table" then GearFormat.boxToast(data.gear, data.line, data.turned == true)
 				elseif card.remote == REMOTE_INCOME or card.remote == REMOTE_GRIP then Strings.format(
 					Strings.income.bought,
 					{ name = view.name, level = view.tier }
@@ -934,19 +945,22 @@ end
 
 -- The GEAR page: its 2 x 2 cards, then the power line.
 local function buildGearPage(c: Cleanup.Cleanup, body: Instance, left: number, width: number, height: number): Frame
-	local lines = { "held", "platform", "arm", "armor" }
+	-- Big job item 10: the Gear Box is the 5th card (GearFormat.boxCard; a stand-in like the rest of this page).
+	local lines = { "held", "platform", "arm", "armor", GearFormat.BOX }
 	local pageFrame =
 		buildCardPage(c, body, left, width, height, PAGE_GEAR, Strings.gear.section, lines, REMOTE_GEAR, gearCards)
+	-- The power line sits in the grid's free cell beside the Gear Box (item 10: a third row of cards left no room for
+	-- a line under the grid at phone size; the grid gives it the cell's size).
 	local powerKind = roleKind(GearShop.powerRole)
 	local power = Theme.label({
 		Name = "Power",
 		Text = "",
-		Size = UDim2.new(1, 0, 0, math.ceil(Theme.lineHeight(powerKind))),
 		AutomaticSize = Enum.AutomaticSize.None,
-		TextXAlignment = Enum.TextXAlignment.Left,
-		TextWrapped = false,
-		LayoutOrder = 3,
-		Parent = pageFrame,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextWrapped = true,
+		LayoutOrder = #lines + 1,
+		Parent = pageFrame:FindFirstChild("Cards") or pageFrame,
 	}, powerKind)
 	Theme.stickerText(power, GearShop.powerRole)
 	gearPower = power

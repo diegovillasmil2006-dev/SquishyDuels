@@ -2,9 +2,10 @@
 -- GearLooks_Test: unit tests for ReplicatedStorage.Shared.GearLooks (big job item 9, 2026-11-10: the launcher and gear
 -- models, each tier its own look). Server only (ServerStorage.UnitTest). Pure, but for the models' folder.
 -- Contract:
---   * what a player wears is public as ONE number (the Player attribute SD_Gear): a digit a gear line in GearMath.LINES
---     order, each the tier owned (a power line: the tier of the last step bought; armor: a step a tier); it reads back
---     to the same tiers; anything that is not such a number reads as no gear;
+--   * what a player wears is public as ONE number (the Player attribute SD_Gear): a hex digit a gear line in
+--     GearMath.LINES order, each the tier owned (a power line: the tier of the last step bought; armor: a step a tier),
+--     + 8 when that piece is Golden (big job item 10); it reads back to the same tiers and Golden marks; anything that
+--     is not such a number reads as no gear;
 --   * ReplicatedStorage.SD_Gear holds one model for every line and tier, named by modelName: MeshParts only, one of
 --     them the ink hull "Outline", all anchored, weightless and never colliding, queried or touched, with the Grip
 --     attribute and the pivot turned so PivotTo puts the front along the LookVector;
@@ -40,8 +41,8 @@ return function(t: Context)
 		local tiers = GearLooks.tiers(gear)
 		expect.deepEqual(tiers, { held = 2, platform = 0, arm = TIERS, armor = 3 })
 		local packed = GearLooks.pack(gear)
-		expect.equal(packed, 2000 + TIERS * 10 + 3) -- LINES = held, platform, arm, armor
-		expect.deepEqual(GearLooks.unpack(packed), tiers)
+		expect.equal(packed, 0x2073) -- a hex digit a line: LINES = held, platform, arm, armor
+		expect.deepEqual((GearLooks.unpack(packed)), tiers)
 		-- the last star of a tier is still that tier; nothing bought is tier 0
 		expect.equal(GearLooks.tiers({ held = Gear.tierSteps[1] }).held, 1)
 		expect.equal(GearLooks.pack(nil), 0)
@@ -51,17 +52,30 @@ return function(t: Context)
 		for _, line in GearMath.LINES do
 			full[line] = GearMath.maxStep(line)
 		end
-		expect.equal(GearLooks.pack(full), 7777)
+		expect.equal(GearLooks.pack(full), 0x7777)
+	end)
+
+	-- Big job item 10: a Golden piece (GearMath.isGold: gear.gold[line] = the line's tier) adds 8 to its line's digit.
+	t.test("pack: a Golden piece adds 8 to its line's digit; unpack tells which pieces are Golden", function()
+		local gear = { held = 5, platform = 1, arm = 0, armor = 3, gold = { held = 2, platform = 4, arm = 1, armor = 3 } }
+		local packed = GearLooks.pack(gear)
+		expect.equal(packed, 0xA10B) -- held tier 2 Golden, platform 1 (its Golden tier is another), no arm, armor 3 Golden
+		local tiers, gold = GearLooks.unpack(packed)
+		expect.deepEqual(tiers, { held = 2, platform = 1, arm = 0, armor = 3 })
+		expect.deepEqual(gold, { held = true, platform = false, arm = false, armor = true })
+		-- a Golden mark without a piece is nothing
+		local _, none = GearLooks.unpack(0x8888)
+		expect.deepEqual(none, { held = false, platform = false, arm = false, armor = false })
 	end)
 
 	t.test("unpack: anything but such a number is no gear; a digit never reads past the last tier", function()
 		local none = { held = 0, platform = 0, arm = 0, armor = 0 }
-		for _, junk in { "1234", true, -1, 0 / 0, math.huge, 10 ^ #GearMath.LINES } :: { any } do
-			expect.deepEqual(GearLooks.unpack(junk), none)
+		for _, junk in { "1234", true, -1, 0 / 0, math.huge, 16 ^ #GearMath.LINES } :: { any } do
+			expect.deepEqual((GearLooks.unpack(junk)), none)
 		end
-		expect.deepEqual(GearLooks.unpack(nil), none)
-		expect.deepEqual(GearLooks.unpack(9999), { held = TIERS, platform = TIERS, arm = TIERS, armor = TIERS })
-		expect.deepEqual(GearLooks.unpack(305.9), { held = 0, platform = 3, arm = 0, armor = 5 })
+		expect.deepEqual((GearLooks.unpack(nil)), none)
+		expect.deepEqual((GearLooks.unpack(0x7777)), { held = TIERS, platform = TIERS, arm = TIERS, armor = TIERS })
+		expect.deepEqual((GearLooks.unpack(0x0305 + 0.9)), { held = 0, platform = 3, arm = 0, armor = 5 })
 	end)
 
 	t.test("the models: one for every line and tier, inert MeshParts with an ink hull", function()

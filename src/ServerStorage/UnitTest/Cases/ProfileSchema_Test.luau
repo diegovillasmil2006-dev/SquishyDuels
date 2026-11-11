@@ -169,6 +169,11 @@ local FIXTURE_V1 = {
 }
 
 return function(t: Context)
+	-- A saved gear table: the steps of each line, no gear card waiting and nothing Golden (big job item 10).
+	local function gearOf(held: number, platform: number, arm: number, armor: number): any
+		local none = { held = 0, platform = 0, arm = 0, armor = 0 }
+		return { held = held, platform = platform, arm = arm, armor = armor, cards = table.clone(none), gold = none }
+	end
 	local expect = t.expect
 	local ProfileSchema = t.requireServer("Logic/ProfileSchema")
 	local TableUtil = t.requireShared("Util/TableUtil")
@@ -223,7 +228,7 @@ return function(t: Context)
 		expected.bag = { 0, 0, 0, 0, 0, 0, 0 }
 		expected.food = NO_FOOD -- pens3 phase 9: the same
 		expected.highway = { best = 0, biome = 1 } -- pens3 phase 13: the same
-		expected.gear = { held = 0, platform = 0, arm = 0, armor = 0 } -- gear step 2: the same
+		expected.gear = gearOf(0, 0, 0, 0) -- gear step 2: the same (item 10: no cards, nothing Golden)
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
 		expected.pen = {
 			spots = 3,
@@ -308,7 +313,7 @@ return function(t: Context)
 		expect.equal(#d.bag, #Config.Economy.Pen.coatMult - 1)
 		expect.deepEqual(d.food, NO_FOOD) -- pens3 phase 9: no food
 		expect.deepEqual(d.highway, { best = 0, biome = 1 }) -- pens3 phase 13: no throw yet, Candy Meadow
-		expect.deepEqual(d.gear, { held = 0, platform = 0, arm = 0, armor = 0 }) -- gear step 2: no gear bought
+		expect.deepEqual(d.gear, gearOf(0, 0, 0, 0)) -- gear step 2: no gear bought (item 10: no cards, nothing Golden)
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
 		expect.deepEqual(problems, {})
@@ -1575,7 +1580,7 @@ return function(t: Context)
 	-- Gear step 2 (2026-10-26): gear ------------------------------------------------------------------------------
 
 	t.test("gear joins without a new version: an older profile gets none of each, no problem", function()
-		local none = { held = 0, platform = 0, arm = 0, armor = 0 }
+		local none = gearOf(0, 0, 0, 0)
 		expect.deepEqual(ProfileSchema.defaults(NOW).gear, none)
 		local older = load(FIXTURE_V1).profile :: any
 		older.gear = nil -- a profile saved before the gear
@@ -1592,16 +1597,52 @@ return function(t: Context)
 			return result.gear, notesAbout(problems, "gear")
 		end
 		local g, n = fixed("garbage")
-		expect.deepEqual(g, { held = 0, platform = 0, arm = 0, armor = 0 })
+		expect.deepEqual(g, gearOf(0, 0, 0, 0))
 		expect.equal(n, 1)
 		g, n = fixed({ held = 4.7, platform = 99, arm = -2, armor = 9 })
-		expect.deepEqual(g, { held = 4, platform = 36, arm = 0, armor = 7 }) -- cut: never more than was bought
+		expect.deepEqual(g, gearOf(4, 36, 0, 7)) -- cut: never more than was bought
 		expect.equal(n, 4)
 		g = fixed({ held = 0 / 0, platform = "x", arm = 3, armor = 2 })
-		expect.deepEqual(g, { held = 0, platform = 0, arm = 3, armor = 2 })
+		expect.deepEqual(g, gearOf(0, 0, 3, 2))
 		g, n = fixed({ held = 36, platform = 36, arm = 36, armor = 7 })
-		expect.deepEqual(g, { held = 36, platform = 36, arm = 36, armor = 7 })
+		expect.deepEqual(g, gearOf(36, 36, 36, 7))
 		expect.equal(n, 0)
+	end)
+
+	-- Big job item 10 (2026-11-10): the Gear Box's cards and Golden gear ------------------------------------------
+
+	t.test("gear cards and Golden join without a new version: an older gear gets none, unlogged; a saved one is kept", function()
+		local older = load(FIXTURE_V1).profile :: any
+		older.gear = { held = 5, platform = 0, arm = 2, armor = 1 } -- gear saved before the Gear Box
+		local result = load(older)
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.gear, gearOf(5, 0, 2, 1))
+		local kept = load(FIXTURE_V1).profile :: any
+		kept.gear = gearOf(5, 0, 2, 1)
+		kept.gear.cards = { held = 2, platform = 3, arm = 0, armor = 1 }
+		kept.gear.gold = { held = 2, platform = 0, arm = 1, armor = 0 }
+		local again = load(kept)
+		expect.deepEqual(again.problems, {})
+		expect.deepEqual(again.profile.gear.cards, { held = 2, platform = 3, arm = 0, armor = 1 })
+		expect.deepEqual(again.profile.gear.gold, { held = 2, platform = 0, arm = 1, armor = 0 })
+	end)
+
+	t.test("sanitize gear cards and Golden: whole numbers in range; broken -> none; logged", function()
+		local function fixed(cards: any, gold: any): (any, number)
+			local profile = load(FIXTURE_V1).profile :: any
+			profile.gear = { held = 4, platform = 0, arm = 0, armor = 0, cards = cards, gold = gold }
+			local result, problems = ProfileSchema.sanitize(profile, { now = NOW })
+			return result.gear, notesAbout(problems, "gear")
+		end
+		local none = { held = 0, platform = 0, arm = 0, armor = 0 }
+		local g, n = fixed("x", 7)
+		expect.deepEqual(g.cards, none)
+		expect.deepEqual(g.gold, none)
+		expect.equal(n, 2)
+		g, n = fixed({ held = 9, platform = -1, arm = 1.9, armor = "x" }, { held = 99, platform = 2 })
+		expect.deepEqual(g.cards, { held = 3, platform = 0, arm = 1, armor = 0 }) -- never over the cards a Golden takes
+		expect.deepEqual(g.gold, { held = 7, platform = 2, arm = 0, armor = 0 }) -- never past the last tier
+		expect.equal(n, 5)
 	end)
 
 	-- INCOME step 1 (2026-10-26): pen.income -----------------------------------------------------------------------

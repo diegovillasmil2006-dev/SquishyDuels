@@ -101,6 +101,7 @@ local Net = {
 		HighwayThrow = { rate = 14, burst = 30 },
 		-- Gear step 2: the gear shop's buy: PenPlace's 2 a second (a burst of 3), one at a time.
 		GearBuy = { rate = 2, burst = 3, oneInFlight = true },
+		GearBoxOpen = { rate = 2, burst = 3, oneInFlight = true }, -- big job item 10: the Gear Box, as GearBuy
 		PromptCoinBundle = { rate = 0.5, burst = 1 },
 		PromptGamePass = { rate = 0.5, burst = 1 },
 		-- Burst 2: the UI re-enables the button after exactly 30 s, so with network jitter an honest second press can

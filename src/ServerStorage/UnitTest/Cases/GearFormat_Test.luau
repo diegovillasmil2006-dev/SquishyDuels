@@ -78,6 +78,7 @@ return function(t: Context)
 				missing = 0,
 				color = BIOMES[1].nameColor,
 				model = "held_1", -- big job item 9: the piece's own 3D model on the tile
+				golden = false, -- big job item 10: not a Golden piece
 			})
 			expect.equal(c.platform.name, "Gumdrop Catapult")
 			expect.equal(c.platform.price, 18_000)
@@ -95,6 +96,7 @@ return function(t: Context)
 				missing = 0,
 				color = BIOMES[1].nameColor,
 				model = "armor_1",
+				golden = false,
 			})
 		end
 	)
@@ -152,6 +154,66 @@ return function(t: Context)
 		expect.equal(GearFormat.powerText(gear(0, 0, 0, 0)), "x1")
 		expect.equal(GearFormat.powerText(gear(4, 0, 0, 7)), "x16")
 		expect.equal(GearFormat.powerText(nil), "x1")
+	end)
+
+	-- Big job item 10 (2026-11-10): the Gear Box and Golden gear on the GEAR page.
+	t.test("cards: waiting gear cards ride on the line's text; a Golden piece's picture is gold", function()
+		local g = gear(2, 4, 0, 1)
+		g.cards = { held = 2, platform = 0, arm = 3, armor = 0 }
+		g.gold = { held = 1, platform = 1, arm = 0, armor = 0 }
+		local c = byLine(GearFormat.cards(g, 1e15))
+		expect.equal(c.held.desc, "x2 throw power · Cards 2/3")
+		expect.equal(c.held.golden, true) -- the next step is a star of the same (Golden) piece
+		expect.equal(c.platform.desc, "x2 throw power")
+		expect.equal(c.platform.golden, false) -- the next step is tier 2's piece: plain
+		expect.equal(c.arm.desc, "x2 throw power · Cards 3/3") -- waiting for the first arm piece
+		expect.equal(c.armor.golden, false)
+	end)
+
+	t.test("boxCard: the Gear Box's price, who can get the card and each one's chance (or the fixed next one)", function()
+		local GearMath = t.requireShared("GearMath")
+		local none = gear(0, 0, 0, 0)
+		local price = GearMath.boxPrice(none)
+		local card = GearFormat.boxCard(none, price, nil, true)
+		expect.equal(card.line, GearFormat.BOX)
+		expect.equal(card.name, "Gear Box")
+		expect.equal(card.price, price)
+		expect.equal(card.state, "buy")
+		expect.equal(card.desc, "3 cards make a piece GOLDEN! 1 random card (25% each gear)")
+		expect.equal(card.model, nil) -- a picture, not a gear model
+		expect.truthy(card.icon ~= nil)
+		-- short of Coins; a buy on its way
+		local short = GearFormat.boxCard(none, price - 5, nil, true)
+		expect.equal(short.state, "needCoins")
+		expect.equal(short.missing, 5)
+		expect.equal(GearFormat.boxCard(none, price, GearFormat.BOX, true).state, "busy")
+		-- an account that may not buy random items sees the one card it gets next
+		expect.equal(GearFormat.boxCard(none, price, nil, false).desc, "3 cards make a piece GOLDEN! Next card: Lolli Sling")
+		-- lines without room leave the pool: the chances are the pool's
+		local some = gear(5, 1, 0, 0)
+		some.cards = { held = 3, platform = 1, arm = 3, armor = 0 }
+		some.gold = { held = 2 } -- held: Golden, with 3 more cards waiting for the next piece
+		local two = GearFormat.boxCard(some, 1e15, nil, true)
+		expect.equal(two.desc, "3 cards make a piece GOLDEN! 1 random card (50% each gear)")
+		-- one line left with room: no dice at all, the card says which
+		some.cards.armor = 3
+		expect.equal(GearFormat.boxCard(some, 1e15, nil, true).desc, "3 cards make a piece GOLDEN! Next card: Gumdrop Catapult")
+		-- no line has room: nothing to buy
+		local full = gear(0, 0, 0, 0)
+		full.cards = { held = 3, platform = 3, arm = 3, armor = 3 }
+		local closed = GearFormat.boxCard(full, 1e15, nil, true)
+		expect.equal(closed.state, "max")
+		expect.equal(closed.price, nil)
+		expect.equal(closed.maxText, "Cards full")
+		expect.equal(closed.desc, "3 cards make a piece GOLDEN! Buy your next gear to use your cards!")
+	end)
+
+	t.test("boxToast: the card's piece and count, or the piece turned Golden", function()
+		local g = gear(5, 0, 0, 0)
+		g.cards = { held = 2 }
+		expect.equal(GearFormat.boxToast(g, "held", false), "Gear card for Butter Bow! 2/3")
+		expect.equal(GearFormat.boxToast(g, "held", true), "Your Butter Bow is GOLDEN!")
+		expect.equal(GearFormat.boxToast(g, "armor", false), "Gear card for Gumdrop Guard! 0/3") -- no armor yet: its first piece
 	end)
 
 	t.test("trailTier: the held launcher's tier, 0 without one", function()

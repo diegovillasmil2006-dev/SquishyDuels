@@ -18,6 +18,10 @@ local GearLooks = {
 	-- (the held squishy's own numbers, Config.Anim.held).
 	wearStuds = 150,
 	dropStuds = 180,
+	-- Big job item 10: a Golden piece (3 gear cards, Config/Gear) is its own model with every colour blended this far
+	-- toward gold (a Palette token) and a little shine, as a Golden squishy in the pen (Config.UI.Pen.forms.golden);
+	-- the ink hull stays dark.
+	gold = { color = "CandyGold", blend = 0.8, reflectance = 0.25 }, -- 0.7 read as beige on a pink and white piece
 	-- A worn piece is fitted to its body part axis by axis: the part's size over the size the piece was modelled for
 	-- (`fitStuds`: the blocky R15 body), each axis within min..max and none more than `stretch` times the thinnest
 	-- one, so the piece keeps its shape on a slim Rthro body or a bulky package (seen 2026-11-10: the owner's own

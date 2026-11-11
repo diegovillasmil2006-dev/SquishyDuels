@@ -767,8 +767,36 @@ local function fixHighway(d: any, problems: { string })
 end
 
 -- Gear step 2 (see the header): none of each line.
+local GEAR = Config.Economy.Gear
+
 local function noGear(): Types.GearState
-	return { held = 0, platform = 0, arm = 0, armor = 0 }
+	local none = { held = 0, platform = 0, arm = 0, armor = 0, cards = {}, gold = {} }
+	for _, line in GearMath.LINES do -- item 10: no gear card waiting, nothing Golden
+		none.cards[line] = 0
+		none.gold[line] = 0
+	end
+	return none
+end
+
+-- Big job item 10 (2026-11-10, the Gear Box and Golden gear): `gear.cards` and `gear.gold`, one whole number a line
+-- (cards 0..goldCards, gold 0..the last tier). A profile saved before has neither: both are added at 0 unlogged
+-- (nothing is broken, as a new paid box's boxOrder count); a wrong value is fixed and logged like the steps.
+local function fixGearCounts(gear: any, field: string, hi: number, problems: { string })
+	local counts = gear[field]
+	if type(counts) ~= "table" then
+		if counts ~= nil then
+			note(problems, `gear.{field}`, type(counts), "default")
+		end
+		counts = {}
+		gear[field] = counts
+	end
+	for _, line in GearMath.LINES do
+		if counts[line] == nil then
+			counts[line] = 0
+		else
+			fixInt(counts, line, 0, hi, 0, `gear.{field}.{line}`, problems)
+		end
+	end
 end
 
 local function fixGear(d: any, problems: { string })
@@ -776,6 +804,8 @@ local function fixGear(d: any, problems: { string })
 	for _, line in GearMath.LINES do
 		fixInt(gear, line, 0, GearMath.maxStep(line) :: number, 0, `gear.{line}`, problems)
 	end
+	fixGearCounts(gear, "cards", GEAR.goldCards, problems)
+	fixGearCounts(gear, "gold", #GEAR.tierSteps, problems)
 end
 
 local function versionOf(d: any): number

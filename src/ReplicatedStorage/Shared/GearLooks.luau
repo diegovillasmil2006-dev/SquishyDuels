@@ -11,8 +11,12 @@
 --   GearLooks.WORN                             { "held", "arm", "armor" }: the lines worn on the body
 --   GearLooks.tiers(gear) -> { [line]: 0..7 }  the tier owned on each GearMath line of a saved gear table (a power
 --                                              line: the tier of its last bought step; armor: a step a tier)
---   GearLooks.pack(gear) -> number             those tiers as one number: a decimal digit a line, GearMath.LINES order
---   GearLooks.unpack(value) -> { [line]: 0..7 } back again; anything but such a number is no gear at all
+--   GearLooks.pack(gear) -> number             those tiers as one number: a hex digit a line, GearMath.LINES order
+--                                              (0x3120 = held tier 3, platform 1, arm 2, no armor); big job item
+--                                              10: + 8 on a line's digit when its piece is Golden (GearMath.isGold)
+--   GearLooks.unpack(value) -> ({ [line]: 0..7 }, { [line]: boolean })
+--                                              back again: the tiers, and which pieces are Golden; anything but
+--                                              such a number is no gear at all
 --   GearLooks.modelName(line, tier) -> string  the model's name in the folder ("held_3")
 --   GearLooks.mount(line, partSize, mount, grip?) -> (CFrame, Vector3)
 --                                              where a worn piece's pivot sits in its body part's space, and its
@@ -45,6 +49,8 @@ GearLooks.WORN = table.freeze({ "held", "arm", "armor" })
 
 local ARMOR = "armor"
 local HELD = "held"
+local DIGIT = 16 -- a line's digit in the packed number: its tier (0..7), + GOLD when its piece is Golden (item 10)
+local GOLD = 8
 local MAX_TIER = #Config.Economy.Gear.tierSteps
 local AREA = WorldLayout.Highway.throwArea
 local P = L.platform
@@ -62,23 +68,27 @@ function GearLooks.pack(gear: any): number
 	local tiers = GearLooks.tiers(gear)
 	local value = 0
 	for _, line in GearMath.LINES do
-		value = value * 10 + tiers[line]
+		value = value * DIGIT + tiers[line] + (if GearMath.isGold(gear, line) then GOLD else 0)
 	end
 	return value
 end
 
-function GearLooks.unpack(value: any): { [string]: number }
+function GearLooks.unpack(value: any): ({ [string]: number }, { [string]: boolean })
 	local lines = GearMath.LINES
 	local rest = 0
-	if type(value) == "number" and value == value and value >= 0 and value < 10 ^ #lines then
+	if type(value) == "number" and value == value and value >= 0 and value < DIGIT ^ #lines then
 		rest = math.floor(value)
 	end
 	local tiers: { [string]: number } = {}
+	local gold: { [string]: boolean } = {}
 	for i = #lines, 1, -1 do
-		tiers[lines[i]] = math.min(rest % 10, MAX_TIER)
-		rest //= 10
+		local digit = rest % DIGIT
+		local tier = math.min(digit % GOLD, MAX_TIER)
+		tiers[lines[i]] = tier
+		gold[lines[i]] = digit >= GOLD and tier > 0
+		rest //= DIGIT
 	end
-	return tiers
+	return tiers, gold
 end
 
 function GearLooks.modelName(line: string, tier: number): string
