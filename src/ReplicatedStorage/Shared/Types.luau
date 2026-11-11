@@ -341,6 +341,7 @@ export type Snapshot = {
 	food: FoodCounts, -- pens3 phase 9: the profile's food as stored (the pen screen's food row and FEED buttons)
 	highway: HighwayState, -- pens3 phase 13: the profile's highway as stored (the level cap, the throw HUD)
 	gear: GearState, -- gear step 2: the profile's gear as stored (the zone banner's power, the gear shop)
+	bag: { number }, -- big job item 10: the coatings in the bag, one count a coating (the pen window's picker)
 }
 
 -- A partial StateDelta: only the changed fields are present.

@@ -141,6 +141,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
+local CoatMath = require(Shared.CoatMath) -- big job item 10: the coatings
 local PenMath = require(Shared.PenMath)
 local TableUtil = require(Shared.Util.TableUtil)
 local Types = require(Shared.Types)
@@ -184,6 +185,7 @@ export type Deps = {
 	now: () -> number, -- pens3 phase 7: os.time (a buy-back entry's `at`)
 	sendBuyBack: (player: any) -> (), -- StateService.markDirty(p, "buyBack")
 	sendFood: (player: any) -> (), -- pens3 phase 9: StateService.markDirty(p, "food")
+	sendBag: (player: any) -> (), -- big job item 10: StateService.markDirty(p, "bag") (the coatings in the bag)
 	friendMult: ((player: any) -> number)?, -- 2026-10-31: FriendsService.penMult (nil: no Friend Boost, as in the tests)
 }
 
@@ -233,6 +235,8 @@ local REMOTE_BUY_FOOD = "BuyFood" -- pens3 phase 9
 local REMOTE_FEED = "Feed"
 local REMOTE_FEED_ALL = "FeedAll"
 local FIELD_FOOD = "food"
+local FIELD_BAG = "bag" -- big job item 10: the coatings in the bag
+local REMOTE_COAT = "PenCoat"
 local REASON_FOOD = "food"
 local CODE_NOTHING_TO_FEED = "pen.nothingToFeed"
 
@@ -321,6 +325,9 @@ local function defaultDeps(): Deps
 		end,
 		sendFood = function(player: any)
 			StateService.markDirty(player, FIELD_FOOD)
+		end,
+		sendBag = function(player: any)
+			StateService.markDirty(player, FIELD_BAG)
 		end,
 		-- 2026-11-10 (big job item 4): a group member's boost adds to the Friend Boost (PerkService).
 		friendMult = function(player: any): number
@@ -601,6 +608,64 @@ function PenService.place(player: any, itemId: any, slot: any): Reply
 	deps.showPen(player)
 	deps.requestSave(player, SAVE_SOON)
 	return NetService.ok(penResult(player, deps.savePending(player)))
+end
+
+-- Big job item 10 (2026-11-10; Shared/CoatMath, Config/Coats): puts coating `coat` (1..7; 0 = take it off) on one of
+-- the caller's own squishies. (1) not whole numbers -> net.invalid; (2) no READY pen -> data.notReady; (3)
+-- CoatMath.decision -> inventory.notOwned / coat.same / coat.zoneLocked / pen.priceChanged; (4)-(6) paused, in a duel,
+-- then the spend (nothing for a coating from the bag or for taking one off). One mutate: the coating it wore goes
+-- back to the bag, the new one comes out of the bag (or was just bought); the pen is redrawn, the `bag` field sent,
+-- and the awaited "now" save comes before ok({pen, charged, savePending}).
+function PenService.coat(player: any, itemId: any, coat: any, expectedPrice: any): Reply
+	if Validate.integer(itemId) == nil or Validate.integer(coat) == nil or Validate.coins(expectedPrice) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	local profile = deps.profileOf(player)
+	if pen == nil or type(profile) ~= "table" then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local highway = profile.highway
+	local biome = if type(highway) == "table" then highway.biome else 1
+	local change, refused = CoatMath.decision(pen, profile.bag, biome, itemId, coat, expectedPrice)
+	if change == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	local spendRefused = spend(player, change.price, COIN_REASON, false)
+	if spendRefused ~= nil then
+		return NetService.err(spendRefused, false)
+	end
+	local written = deps.mutate(player, function(live: any): boolean
+		local item = PenMath.find(live.pen, itemId)
+		if item == nil then
+			return false
+		end
+		local bag = if type(live.bag) == "table" then live.bag else table.create(CoatMath.COUNT, 0)
+		live.bag = bag
+		if item.coat > 0 then
+			bag[item.coat] = CoatMath.inBag(bag, item.coat) + 1 -- the one it wore goes back to the bag
+		end
+		if change.fromBag then
+			bag[change.coat] = math.max(CoatMath.inBag(bag, change.coat) - 1, 0)
+		end
+		item.coat = change.coat
+		return true
+	end)
+	if not written then
+		-- Cannot happen without a yield after the checks (the squishy was there a moment ago); logged loudly.
+		log:error(`user {userIdOf(player)}: coating {coat} for pen item {itemId} was paid ({change.price}) but not written`)
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	log:info(`user {userIdOf(player)} put coating {coat} on pen item {itemId} for {change.price} Coins`)
+	deps.showPen(player) -- the base's squishies and rate, and the client's pen
+	deps.sendBag(player)
+	local data: Types.PenResult = {
+		pen = TableUtil.deepCopy(deps.profileOf(player).pen), -- copied before the save yields
+		charged = change.price > 0,
+		savePending = false,
+	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
 end
 
 function PenService.lock(player: any, itemId: any, locked: any): Reply
@@ -1060,6 +1125,9 @@ function PenService.init()
 	end)
 	NetService.onInvoke(REMOTE_LOCK, function(player: Player, itemId: any, locked: any): any
 		return PenService.lock(player, itemId, locked)
+	end)
+	NetService.onInvoke(REMOTE_COAT, function(player: Player, itemId: any, coat: any, expectedPrice: any): any
+		return PenService.coat(player, itemId, coat, expectedPrice) -- big job item 10
 	end)
 	NetService.onInvoke(REMOTE_SELL, function(player: Player, ids: any, requestId: any): any
 		return PenService.sellItems(player, ids, requestId)

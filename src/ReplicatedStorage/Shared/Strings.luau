@@ -251,6 +251,11 @@ local Strings = {
 			-- Big job item 10 (GearBoxOpen; GearMath.boxDecision): no gear line can take another card.
 			boxFull = "Your gear cards are full. Buy your next gear to use them!",
 		},
+		-- Big job item 10 (PenCoat; Shared/CoatMath, PenService.coat).
+		coat = {
+			same = "It already wears that coating.",
+			zoneLocked = "Reach that coating's zone on the highway first!",
+		},
 		-- 2026-10-31 buy Grip (GripBuy; GripMath.buyPrice, GripService.buyLevel).
 		gripBuy = {
 			max = "Your Grip is at the top level!",
@@ -1461,6 +1466,23 @@ local Strings = {
 		-- 2026-10-31 buy Grip: the GRIP card (IncomeFormat), its line and its max line.
 		gripLine = "Lv {now} -> Lv {next} Grip",
 		gripMax = "Top Grip level!",
+	},
+
+	-- Big job item 10 (2026-11-10): the 7 coatings (the lobby design's names, kit.json > looks.coatings; index =
+	-- PenItem.coat) and the pen window's picker ([P] texts: a stand-in). {name} a coating, {x} its coin boost, {n} how
+	-- many the bag holds, {zone} a highway zone's name, {squishy} a squishy's name.
+	coat = {
+		names = { "Wax", "Glitter", "Jelly", "Frost", "Chrome", "Neon", "Galaxy" },
+		title = "COATINGS",
+		button = "COAT",
+		line = "x{x} coins",
+		inBag = "In your bag: {n}",
+		locked = "Reach {zone}",
+		wearing = "ON",
+		takeOff = "TAKE OFF",
+		done = "{squishy} wears {name} now!",
+		off = "The coating is back in your bag.",
+		gift = "You got a {name} coating! Put it on a squishy in MY PEN.",
 	},
 
 	-- Coin bundle names (Config.Monetization.CoinBundles `nameKey`, §6.11).

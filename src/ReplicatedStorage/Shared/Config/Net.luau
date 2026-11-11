@@ -79,6 +79,7 @@ local Net = {
 		-- Pens3 phase 6: the pen screen's place / put away / swap and lock: 2 a second (a burst of 3), one at a time.
 		PenPlace = { rate = 2, burst = 3, oneInFlight = true },
 		PenLock = { rate = 2, burst = 3, oneInFlight = true },
+		PenCoat = { rate = 2, burst = 3, oneInFlight = true }, -- big job item 10: a coating on a squishy, as PenLock
 		-- Pens3 phases 7-8: the pen screen's sell, Sell All, buy-back and fuse: PenPlace's 2 a second (a burst of 3),
 		-- one at a time.
 		SellItems = { rate = 2, burst = 3, oneInFlight = true },

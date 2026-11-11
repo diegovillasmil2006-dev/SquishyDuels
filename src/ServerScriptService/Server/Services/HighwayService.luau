@@ -100,6 +100,7 @@ local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
+local CoatMath = require(Shared.CoatMath) -- big job item 10: a zone's coating as its reward
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local GearLooks = require(Shared.GearLooks) -- big job item 9: the public SD_Gear attribute
@@ -158,6 +159,7 @@ export type Deps = {
 	buildCourse: () -> (), -- the course: stands them on the lane
 	showGear: (player: any, tiers: number) -> (), -- item 9: writes the Player attribute SD_Gear (GearLooks.pack)
 	canGamble: (player: any) -> boolean, -- item 10: PolicyGateService.canBuyPaidRandom (eligible accounts only)
+	notifyCoat: (player: any, coat: number) -> (), -- item 10: the toast of a zone's coating reward
 	watchProfiles: (handler: (player: any) -> ()) -> (), -- item 9: the data port's onLoaded and onStatusChanged
 }
 
@@ -211,6 +213,8 @@ local FIELD_GEAR = "gear"
 local CODE_GEAR_PAUSED = "gear.paused"
 local CODE_NOT_ENOUGH = "economy.notEnoughCoins"
 local GEAR_BOX_REMOTE = "GearBoxOpen" -- big job item 10
+local FIELD_BAG = "bag" -- big job item 10: the coatings in the bag (a zone's reward lands there)
+local COAT_GIFT = "coat.gift" -- its toast (Strings)
 
 -- Module table
 
@@ -386,6 +390,9 @@ local function defaultDeps(): Deps
 		canGamble = function(player: any): boolean
 			return PolicyGateService.canBuyPaidRandom(player)
 		end,
+		notifyCoat = function(player: any, coat: number)
+			NetService.notify(player, COAT_GIFT, { name = (Strings.coat.names :: any)[coat] }, "success")
+		end,
 	}
 end
 
@@ -544,6 +551,23 @@ local function settle(player: any, session: Session, fire: boolean)
 		for _, kind in giftsBetween(before.biome, reached) do
 			if deps.grantSquishy(player, kind) then
 				table.insert(gifts, kind)
+			end
+		end
+		-- Big job item 10 (Config/Coats: the design's "<zone> reward"): the first time in zone 3..7, one of that zone's
+		-- coating goes into the bag, with a toast.
+		local coats = CoatMath.zoneGift(before.biome, reached)
+		if #coats > 0 then
+			deps.mutate(player, function(live: any): boolean
+				local bag = if type(live.bag) == "table" then live.bag else table.create(CoatMath.COUNT, 0)
+				live.bag = bag
+				for _, coat in coats do
+					bag[coat] = CoatMath.inBag(bag, coat) + 1
+				end
+				return true
+			end)
+			deps.markDirty(player, FIELD_BAG)
+			for _, coat in coats do
+				deps.notifyCoat(player, coat)
 			end
 		end
 	end

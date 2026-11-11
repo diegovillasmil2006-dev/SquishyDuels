@@ -242,6 +242,7 @@ return function(t: Context)
 		local snap = reply.data
 		expect.deepEqual(keysOf(snap), {
 			"awayGift",
+			"bag", -- big job item 10: the coatings in the bag
 			"boxOrder",
 			"buyBack",
 			"coins",
@@ -293,7 +294,9 @@ return function(t: Context)
 		expect.equal(snap.giftQueue, nil)
 		expect.equal(snap.gifts, nil)
 		expect.equal(snap.buyBack[1].price, 1_000) -- pens3 phase 7: as stored
-		expect.equal(snap.bag, nil) -- pens3 phase 8: the bag stays on the server
+		-- Pens3 phase 8 kept the bag on the server (nothing could use a coating yet); big job item 10: the pen window's
+		-- picker puts coatings on squishies, so the bag is sent as stored.
+		expect.deepEqual(snap.bag, { 0, 0, 0, 0, 0, 0, 1 })
 		expect.deepEqual(snap.food, { candy_drop = 3 }) -- pens3 phase 9: as stored
 		expect.deepEqual(
 			snap.dataStatus,
@@ -603,6 +606,7 @@ return function(t: Context)
 			"food", -- pens3 phase 9: the food pieces owned (profile.food)
 			"highway", -- pens3 phase 13: the farthest throw and the biome reached (profile.highway)
 			"gear", -- gear step 2: the gear steps bought (profile.gear)
+			"bag", -- big job item 10: the coatings in the bag (profile.bag)
 		})
 	end)
 

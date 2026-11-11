@@ -38,7 +38,7 @@
 --   restricted account gets, which its box card shows; BoxService marks it). profile.giftQueue and profile.gifts are
 --   never sent.
 -- * buyBack = profile.buyBack as stored (pens3 phase 7: the sales that can still be bought back, the pen screen's sold
---   cards; PenService marks it on every sale and buy-back). profile.bag (phase 8, the coatings) is never sent.
+--   cards; PenService marks it on every sale and buy-back). profile.bag (phase 8, the coatings) was never sent; big job item 10: it is the `bag` field now (the pen's picker).
 -- * food = profile.food {[foodId] = pieces} as stored (pens3 phase 9: the pen screen's food row, FEED buttons and
 --   BUY FOOD cards; PenService marks it on every buy and feed).
 -- * highway = profile.highway {best, biome} as stored (pens3 phase 13: the pen screen's level cap and the throw HUD;
@@ -133,6 +133,7 @@ local FIELDS: { string } = {
 	"food", -- pens3 phase 9: the profile's food as stored
 	"highway", -- pens3 phase 13: the profile's highway as stored
 	"gear", -- gear step 2: the profile's gear as stored
+	"bag", -- big job item 10: the coatings in the profile's bag as stored (one count a coating)
 }
 local FIELD_SET: { [string]: boolean } = {}
 for _, field in FIELDS do

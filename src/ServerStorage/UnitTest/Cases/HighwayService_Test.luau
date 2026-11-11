@@ -93,6 +93,7 @@ return function(t: Context)
 		saveOk: boolean,
 		shown: { [any]: number }, -- item 9: what deps.showGear wrote last, by player
 		gamble: boolean, -- item 10: what deps.canGamble answers (may this account buy paid random items)
+		coatGifts: { { player: any, coat: number } }, -- item 10: deps.notifyCoat calls (a zone's coating reward)
 		watch: ((player: any) -> ())?, -- item 9: the handler deps.watchProfiles was given
 	}
 
@@ -155,12 +156,16 @@ return function(t: Context)
 			saveOk = true,
 			shown = {},
 			gamble = true,
+			coatGifts = {},
 			watch = nil,
 		}
 		HighwayService.reset()
 		HighwayService.useDeps({
 			canGamble = function(): boolean
 				return w.gamble
+			end,
+			notifyCoat = function(player: any, coat: number)
+				table.insert(w.coatGifts, { player = player, coat = coat })
 			end,
 			showGear = function(player: any, tiers: number)
 				w.shown[player] = tiers
@@ -717,6 +722,27 @@ return function(t: Context)
 		throwAndLand(w, w.b)
 		expect.equal(lastLanding(w).reached, nil)
 		expect.equal(#w.squishies, 7)
+		finish()
+	end)
+
+	-- Big job item 10 (2026-11-10; Config/Coats: the design's "<zone> reward"): the first time in zone 3..7, one of
+	-- that zone's coating goes into the bag, with a toast.
+	t.test("a zone's coating as its reward: once, in the throw that first reaches zone 3 or later", function()
+		local w = fresh()
+		throwAndLand(w, w.a) -- Candy Meadow: no coating
+		expect.equal(w.profiles[w.a].bag, nil)
+		expect.deepEqual(w.coatGifts, {})
+		w.levels[w.a] = levelFor(800) -- Boba Lagoon: Jelly (3)
+		throwAndLand(w, w.a)
+		expect.deepEqual(w.profiles[w.a].bag, { 0, 0, 1, 0, 0, 0, 0 })
+		expect.deepEqual(w.coatGifts, { { player = w.a, coat = 3 } })
+		expect.truthy(table.find(w.dirty, "bag") ~= nil)
+		throwAndLand(w, w.a) -- Boba Lagoon again: nothing more
+		expect.deepEqual(w.profiles[w.a].bag, { 0, 0, 1, 0, 0, 0, 0 })
+		w.levels[w.a] = levelFor(6000) -- into Divine Heaven at once: Frost, Chrome, Neon and Galaxy
+		throwAndLand(w, w.a)
+		expect.deepEqual(w.profiles[w.a].bag, { 0, 0, 1, 1, 1, 1, 1 })
+		expect.equal(#w.coatGifts, 5)
 		finish()
 	end)
 

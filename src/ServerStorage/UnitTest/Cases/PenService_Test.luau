@@ -101,6 +101,7 @@ return function(t: Context)
 		now: number, -- pens3 phase 7: os.time (the buy-back's `at`)
 		backSent: { any }, -- sendBuyBack calls
 		foodSent: { any }, -- pens3 phase 9: sendFood calls
+		bagSent: { any }, -- big job item 10: sendBag calls
 		friendMult: { [any]: number }, -- 2026-10-31: deps.friendMult (the Friend Boost; 1 when not set)
 	}
 
@@ -158,6 +159,7 @@ return function(t: Context)
 			now = 1_800_000_000,
 			backSent = {},
 			foodSent = {},
+			bagSent = {},
 			friendMult = {},
 		}
 		PenService.reset()
@@ -253,6 +255,9 @@ return function(t: Context)
 			end,
 			sendBuyBack = function(player: any)
 				table.insert(w.backSent, player)
+			end,
+			sendBag = function(player: any)
+				table.insert(w.bagSent, player)
 			end,
 			sendFood = function(player: any)
 				table.insert(w.foodSent, player)
@@ -680,6 +685,72 @@ return function(t: Context)
 		-- A locked squishy still moves (a lock only keeps it from being sold or fused).
 		a.pen.items[1].locked = true
 		expect.equal(PenService.place(w.a, 1, 0).ok, true)
+		finish()
+	end)
+
+	-- Big job item 10 (2026-11-10): coatings (Shared/CoatMath, Config/Coats). A coating from the bag is free to put on,
+	-- else it is bought at its price; the one the squishy wore goes back to the bag.
+	t.test("coat: bought at its price or free from the bag; the old coating goes back to the bag", function()
+		local COATS = t.requireShared("Config/Coats").list
+		local w, a = screenWorld()
+		a.coins = COATS[1].price + COATS[2].price
+		a.bag = { 0, 0, 0, 0, 1, 0, 0 } -- one Chrome won earlier
+		a.highway = { best = 0, biome = 1 }
+		local before = PenMath.itemRate(a.pen.items[2])
+		-- bought: Wax
+		local reply = PenService.coat(w.a, 2, 1, COATS[1].price)
+		expect.equal(reply.ok, true)
+		expect.equal(reply.data.charged, true)
+		expect.equal(a.pen.items[2].coat, 1)
+		expect.equal(a.coins, COATS[2].price)
+		expect.near(PenMath.itemRate(a.pen.items[2]), before * 1.5, 1e-9)
+		expect.deepEqual(w.bagSent, { w.a })
+		expect.deepEqual(w.shown, { w.a }) -- the base shows the coated squishy
+		expect.equal(w.nowSaves, 1)
+		-- from the bag: Chrome, free; the Wax goes back to the bag
+		local chrome = PenService.coat(w.a, 2, 5, 0)
+		expect.equal(chrome.ok, true)
+		expect.equal(chrome.data.charged, false)
+		expect.equal(a.pen.items[2].coat, 5)
+		expect.deepEqual(a.bag, { 1, 0, 0, 0, 0, 0, 0 })
+		expect.equal(a.coins, COATS[2].price)
+		-- taken off: back to the bag, free
+		expect.equal(PenService.coat(w.a, 2, 0, 0).ok, true)
+		expect.equal(a.pen.items[2].coat, 0)
+		expect.deepEqual(a.bag, { 1, 0, 0, 0, 1, 0, 0 })
+		-- the reply's pen is a copy
+		reply.data.pen.items[2].coat = 7
+		expect.equal(a.pen.items[2].coat, 0)
+		finish()
+	end)
+
+	t.test("coat refusals: bad input, not ready, CoatMath's reasons, paused, short of Coins: nothing written", function()
+		local COATS = t.requireShared("Config/Coats").list
+		local w, a = screenWorld()
+		a.coins = 0
+		a.bag = { 0, 0, 0, 0, 0, 0, 0 }
+		a.highway = { best = 0, biome = 2 }
+		expectRefused(PenService.coat(w.a, 1.5, 1, 0), "net.invalid")
+		expectRefused(PenService.coat(w.a, 1, "x", 0), "net.invalid")
+		expectRefused(PenService.coat(w.a, 1, 1, -1), "net.invalid")
+		w.status[w.a] = "offline"
+		expectRefused(PenService.coat(w.a, 1, 1, COATS[1].price), "data.notReady")
+		w.status[w.a] = "ready"
+		expectRefused(PenService.coat(w.a, 99, 1, COATS[1].price), "inventory.notOwned")
+		expectRefused(PenService.coat(w.a, 1, 0, 0), "coat.same")
+		expectRefused(PenService.coat(w.a, 1, 3, COATS[3].price), "coat.zoneLocked") -- Jelly: Boba Lagoon not reached
+		expectRefused(PenService.coat(w.a, 1, 1, COATS[1].price + 1), "pen.priceChanged")
+		w.savePending = true
+		expectRefused(PenService.coat(w.a, 1, 1, COATS[1].price), "pen.paused")
+		w.savePending = false
+		w.phase[w.a] = "Preparing"
+		expectRefused(PenService.coat(w.a, 1, 1, COATS[1].price), "inventory.lockedInDuel")
+		w.phase[w.a] = ""
+		expectRefused(PenService.coat(w.a, 1, 1, COATS[1].price), "economy.notEnoughCoins")
+		expect.equal(w.writes, 0)
+		expect.equal(w.nowSaves, 0)
+		expect.deepEqual(w.bagSent, {})
+		expect.equal(a.pen.items[1].coat, 0)
 		finish()
 	end)
 

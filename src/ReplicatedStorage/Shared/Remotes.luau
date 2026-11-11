@@ -209,6 +209,13 @@ local SPEC: { [string]: RemoteSpec } = table.freeze({
 	-- savePending}.
 	PenPlace = c2s("RemoteFunction", { arg("itemId", "integer"), arg("slot", "integer") }),
 	PenLock = c2s("RemoteFunction", { arg("itemId", "integer"), arg("locked", "boolean") }),
+	-- Big job item 10 (PenService.coat; Shared/CoatMath): puts coating `coat` (1..7; 0 = take it off) on one of the
+	-- caller's own squishies: free from the bag, else bought at expectedPrice (compared, never charged). data:
+	-- Types.PenResult {pen, charged, savePending}; the bag follows as the `bag` state field.
+	PenCoat = c2s(
+		"RemoteFunction",
+		{ arg("itemId", "integer"), arg("coat", "integer"), arg("expectedPrice", "coins") }
+	),
 	-- Pens3 phases 7-8 (PenService, the pen screen): sell the caller's own squishies (pen item ids; a requestId makes a
 	-- retry replay, never sell twice; data Types.SellResult), Sell All (the Toy Box's plain Lv 1 unlocked ones, one of
 	-- each kind kept), buy one back within the buy-back time (its sold item id; data Types.PenResult, charged = true),

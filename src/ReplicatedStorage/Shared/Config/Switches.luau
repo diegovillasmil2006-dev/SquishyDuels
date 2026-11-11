@@ -31,7 +31,18 @@ local Switches = {
 		-- The highway: going there and throwing.
 		highway = { "GoHighway", "HighwayThrow" },
 		-- The pen: buying spots and shelf spots, placing, selling, buying back, fusing, feeding.
-		pen = { "PenBuySpot", "PenBuyShelf", "PenPlace", "SellItems", "SellAll", "BuyBack", "Fuse", "Feed", "FeedAll" },
+		pen = {
+			"PenBuySpot",
+			"PenBuyShelf",
+			"PenPlace",
+			"SellItems",
+			"SellAll",
+			"BuyBack",
+			"Fuse",
+			"Feed",
+			"FeedAll",
+			"PenCoat", -- big job item 10: the coatings
+		},
 		-- Quest and daily reward claims and quest swaps.
 		rewards = { "QuestClaim", "QuestSwap", "DailyClaim" },
 		-- Squeezing for Coins and Grip.
