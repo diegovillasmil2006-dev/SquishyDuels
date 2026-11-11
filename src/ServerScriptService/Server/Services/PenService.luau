@@ -237,6 +237,7 @@ local REMOTE_FEED_ALL = "FeedAll"
 local FIELD_FOOD = "food"
 local FIELD_BAG = "bag" -- big job item 10: the coatings in the bag
 local REMOTE_COAT = "PenCoat"
+local REMOTE_JUMBO = "PenJumbo" -- big job item 10: the forever item
 local REASON_FOOD = "food"
 local CODE_NOTHING_TO_FEED = "pen.nothingToFeed"
 
@@ -668,6 +669,52 @@ function PenService.coat(player: any, itemId: any, coat: any, expectedPrice: any
 	return NetService.ok(data)
 end
 
+-- Big job item 10 (the forever item, Config/Jumbo): PenJumbo(itemId, expectedPrice) makes one of the caller's own
+-- squishies Jumbo for good: (1) not a whole number / whole Coins -> net.invalid; (2) data.notReady; (3)
+-- PenMath.jumboDecision -> net.invalid / inventory.notOwned / pen.jumboAlready / pen.jumboMax / pen.priceChanged (the
+-- price is compared, never charged); (4)-(5) spend: pen.paused / inventory.lockedInDuel / economy.notEnoughCoins.
+-- Then ONE mutate (mut = 1; a write that fails is logged loudly), showPen (the look and the rate), the awaited save,
+-- ok({pen, charged = true, savePending}).
+function PenService.jumbo(player: any, itemId: any, expectedPrice: any): Reply
+	if Validate.integer(itemId) == nil or Validate.coins(expectedPrice) == nil then
+		return NetService.err(CODE_INVALID, false)
+	end
+	local pen = readyPen(player)
+	if pen == nil then
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	local buy, refused = PenMath.jumboDecision(pen, itemId, expectedPrice)
+	if buy == nil then
+		return NetService.err(refused or CODE_INVALID, false)
+	end
+	local spendRefused = spend(player, buy.price, COIN_REASON, false)
+	if spendRefused ~= nil then
+		return NetService.err(spendRefused, false)
+	end
+	local written = deps.mutate(player, function(live: any): boolean
+		local item = PenMath.find(live.pen, itemId)
+		if item == nil then
+			return false
+		end
+		item.mut = 1
+		return true
+	end)
+	if not written then
+		-- Cannot happen without a yield after the checks (the squishy was there a moment ago); logged loudly.
+		log:error(`user {userIdOf(player)}: Jumbo for pen item {itemId} was paid ({buy.price}) but not written`)
+		return NetService.err(CODE_NOT_READY, false)
+	end
+	log:info(`user {userIdOf(player)} made pen item {itemId} Jumbo for {buy.price} Coins`)
+	deps.showPen(player)
+	local data: Types.PenResult = {
+		pen = TableUtil.deepCopy(deps.profileOf(player).pen), -- copied before the save yields
+		charged = true,
+		savePending = false,
+	}
+	data.savePending = not deps.saveNow(player)
+	return NetService.ok(data)
+end
+
 function PenService.lock(player: any, itemId: any, locked: any): Reply
 	if Validate.integer(itemId) == nil or type(locked) ~= "boolean" then
 		return NetService.err(CODE_INVALID, false)
@@ -902,6 +949,7 @@ function PenService.fuse(player: any, a: any, b: any, c: any): Reply
 		for _, item in profile.pen.items do
 			if item.id == keeperId then
 				item.form, item.level, item.coat = fusion.form, fusion.level, 0 -- it comes out bare, in its slot
+				item.mut = fusion.mut or item.mut -- big job item 10: Jumbo when one of the three was
 			end
 			if not gone[item.id] then
 				table.insert(kept, item)
@@ -1128,6 +1176,9 @@ function PenService.init()
 	end)
 	NetService.onInvoke(REMOTE_COAT, function(player: Player, itemId: any, coat: any, expectedPrice: any): any
 		return PenService.coat(player, itemId, coat, expectedPrice) -- big job item 10
+	end)
+	NetService.onInvoke(REMOTE_JUMBO, function(player: Player, itemId: any, expectedPrice: any): any
+		return PenService.jumbo(player, itemId, expectedPrice) -- big job item 10
 	end)
 	NetService.onInvoke(REMOTE_SELL, function(player: Player, ids: any, requestId: any): any
 		return PenService.sellItems(player, ids, requestId)

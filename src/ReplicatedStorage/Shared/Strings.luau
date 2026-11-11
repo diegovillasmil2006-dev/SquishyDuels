@@ -214,6 +214,9 @@ local Strings = {
 			shelfMax = "Your whole shelf and the TOP spot are open!",
 			-- INCOME step 1 (PenBuyIncome; PenMath.incomeDecision, PenService).
 			incomeMax = "This upgrade is at its top level!",
+			-- Big job item 10 (PenJumbo; PenMath.jumboDecision).
+			jumboAlready = "That squishy is Jumbo already!",
+			jumboMax = "You have all the Jumbo squishies you can have!",
 		},
 		-- Pens3 phase 9 (BuyFood, Feed; PenMath.buyFoodDecision, feedDecision, PenService).
 		food = {
@@ -1488,6 +1491,17 @@ local Strings = {
 		done = "{squishy} wears {name} now!",
 		off = "The coating is back in your bag.",
 		gift = "You got a {name} coating! Put it on a squishy in MY PEN.",
+	},
+
+	-- Big job item 10: the forever item (Config/Jumbo; the pen window's JUMBO step, UI/PenFormat; [P] texts: a
+	-- stand-in). {name} the squishy, {x} the coin boost, {price} its Coins, {n} of {max} the Jumbo squishies owned.
+	jumbo = {
+		button = "JUMBO",
+		tag = "Jumbo",
+		ask = "Make {name} JUMBO?",
+		note = "A Jumbo squishy is bigger and earns x{x} coins. It stays Jumbo forever! You have {n} of {max}.",
+		buy = "JUMBO · {price}",
+		done = "{name} is JUMBO now!",
 	},
 
 	-- Coin bundle names (Config.Monetization.CoinBundles `nameKey`, §6.11).

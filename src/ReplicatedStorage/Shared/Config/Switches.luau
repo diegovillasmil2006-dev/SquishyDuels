@@ -42,6 +42,7 @@ local Switches = {
 			"Feed",
 			"FeedAll",
 			"PenCoat", -- big job item 10: the coatings
+			"PenJumbo", -- big job item 10: the forever item
 		},
 		-- Quest and daily reward claims and quest swaps.
 		rewards = { "QuestClaim", "QuestSwap", "DailyClaim" },

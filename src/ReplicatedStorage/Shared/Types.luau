@@ -168,6 +168,7 @@ export type PenItem = {
 	coat: number,
 	slot: number,
 	locked: boolean,
+	mut: number?, -- big job item 10: 1 = Jumbo forever (Config/Jumbo); a squishy saved before has none
 }
 -- The player's pen: `spots` open (Pen.startSpots .. Pen.maxSpots; the items in slots 1..spots walk in it and pay),
 -- `nextId` the id of the next new item, `items` every pen squishy the player has, `awayRate` (phase 4) its Coins a

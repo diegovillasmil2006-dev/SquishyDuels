@@ -754,6 +754,48 @@ return function(t: Context)
 		finish()
 	end)
 
+	-- Big job item 10: the forever item (Config/Jumbo; PenMath.jumboDecision).
+	t.test("jumbo: bought at the price of the next one; x2 for good; kept by a fusion; refusals write nothing", function()
+		local JUMBO = t.requireShared("Config/Jumbo")
+		local w, a = screenWorld()
+		a.coins = JUMBO.first + 7
+		local before = PenMath.itemRate(a.pen.items[3])
+		local reply = PenService.jumbo(w.a, 3, JUMBO.first)
+		expect.equal(reply.ok, true)
+		expect.equal(reply.data.charged, true)
+		expect.equal(a.pen.items[3].mut, 1)
+		expect.equal(a.coins, 7)
+		expect.near(PenMath.itemRate(a.pen.items[3]), before * JUMBO.mult, 1e-9)
+		expect.deepEqual(w.shown, { w.a }) -- the base shows the bigger squishy and the new rate
+		expect.equal(w.nowSaves, 1)
+		reply.data.pen.items[3].mut = nil -- the reply's pen is a copy
+		expect.equal(a.pen.items[3].mut, 1)
+		-- refusals: nothing more is written
+		local writes = w.writes
+		expectRefused(PenService.jumbo(w.a, 1.5, JUMBO.first), "net.invalid")
+		expectRefused(PenService.jumbo(w.a, 1, -1), "net.invalid")
+		expectRefused(PenService.jumbo(w.a, 99, JUMBO.first * JUMBO.growth), "inventory.notOwned")
+		expectRefused(PenService.jumbo(w.a, 3, JUMBO.first * JUMBO.growth), "pen.jumboAlready")
+		expectRefused(PenService.jumbo(w.a, 1, JUMBO.first), "pen.priceChanged") -- the second one costs more
+		expectRefused(PenService.jumbo(w.a, 1, JUMBO.first * JUMBO.growth), "economy.notEnoughCoins")
+		w.status[w.a] = "offline"
+		expectRefused(PenService.jumbo(w.a, 1, JUMBO.first * JUMBO.growth), "data.notReady")
+		w.status[w.a] = "ready"
+		expect.equal(w.writes, writes)
+		expect.equal(a.pen.items[1].mut, nil)
+		-- a fusion of three with one Jumbo among them makes a Jumbo (it is forever)
+		table.insert(a.pen.items, penItem(4, "toast", 0))
+		table.insert(a.pen.items, penItem(5, "toast", 0))
+		a.pen.nextId = 6
+		local fused = PenService.fuse(w.a, 4, 5, 3)
+		expect.equal(fused.ok, true)
+		local result = PenMath.find(a.pen, fused.data.id)
+		expect.equal(result.form, 1)
+		expect.equal(result.mut, 1)
+		expect.equal(PenMath.jumboCount(a.pen), 1)
+		finish()
+	end)
+
 	t.test("lock refusals: bad input, not ready, not owned, paused, in a duel: nothing written", function()
 		local w = screenWorld()
 		for _, case in { { 1.5, true }, { 1, "yes" }, { 1, nil }, { "1", false } } :: { { any } } do

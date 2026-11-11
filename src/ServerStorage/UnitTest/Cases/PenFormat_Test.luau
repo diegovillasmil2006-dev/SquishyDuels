@@ -121,19 +121,19 @@ return function(t: Context)
 			local pen = samplePen()
 			local placed = PenFormat.view(pen, 1, false)
 			expect.equal(placed.selected.id, 1)
-			expect.deepEqual(actionIds(placed), { "putAway", "move", "lock", "sell", "coat", "feed" }) -- + SELL, FEED
+			expect.deepEqual(actionIds(placed), { "putAway", "move", "lock", "sell", "coat", "jumbo", "feed" }) -- + SELL, FEED
 			expect.equal(placed.actions[1].text, screen.putAway)
 			expect.equal(placed.actions[1].kind, "primary")
 			expect.equal(placed.actions[1].reason, nil)
 			local toy = PenFormat.view(pen, 3, false)
-			expect.deepEqual(actionIds(toy), { "place", "lock", "sell", "coat", "feed" }) -- spot 2 is free
+			expect.deepEqual(actionIds(toy), { "place", "lock", "sell", "coat", "jumbo", "feed" }) -- spot 2 is free
 			-- A full pen: SWAP instead of PLACE.
 			pen.items[3].slot = 2
 			local full = PenFormat.view(pen, 4, false)
-			expect.deepEqual(actionIds(full), { "swap", "lock", "sell", "coat", "feed" })
+			expect.deepEqual(actionIds(full), { "swap", "lock", "sell", "coat", "jumbo", "feed" })
 			-- A locked one offers UNLOCK.
 			pen.items[4].locked = true
-			expect.deepEqual(actionIds(PenFormat.view(pen, 4, false)), { "swap", "unlock", "sell", "coat", "feed" })
+			expect.deepEqual(actionIds(PenFormat.view(pen, 4, false)), { "swap", "unlock", "sell", "coat", "jumbo", "feed" })
 			expect.equal(PenFormat.view(pen, 4, false).actions[2].text, screen.unlock)
 			-- Picking: only CANCEL, and the hint names the squishy.
 			local picking = PenFormat.view(pen, 4, true)
@@ -275,7 +275,7 @@ return function(t: Context)
 			expect.equal(nothing.actions[1].reason, Strings.reasonText("pen.nothingToSell"))
 			-- A squishy: SELL after its other actions, refused with the server's reason where it would be.
 			-- 3 Toasts: FUSE; then FEED (pens3 phase 9).
-			expect.deepEqual(actionIds(PenFormat.view(pen, 3, false)), { "place", "lock", "sell", "fuse", "coat", "feed" })
+			expect.deepEqual(actionIds(PenFormat.view(pen, 3, false)), { "place", "lock", "sell", "fuse", "coat", "jumbo", "feed" })
 			expect.equal(PenFormat.view(pen, 3, false).actions[3].reason, nil)
 			expect.equal(PenFormat.view(pen, 1, false).actions[4].reason, Strings.reasonText("pen.sellStarter"))
 			expect.equal(PenFormat.view(pen, 5, false).actions[3].reason, Strings.reasonText("pen.lastCopy"))
@@ -385,7 +385,7 @@ return function(t: Context)
 		pen.items[4].locked = true
 		expect.deepEqual(PenFormat.fuseSet(pen, 2), { 2, 7, 3 })
 		expect.equal(PenFormat.fuseSet(pen, 4), nil) -- locked itself
-		expect.deepEqual(actionIds(PenFormat.view(pen, 3, false)), { "place", "lock", "sell", "fuse", "coat", "feed" })
+		expect.deepEqual(actionIds(PenFormat.view(pen, 3, false)), { "place", "lock", "sell", "fuse", "coat", "jumbo", "feed" })
 		for _, it in pen.items do
 			if it.kind == "toast" then
 				it.form = 2
@@ -649,9 +649,9 @@ return function(t: Context)
 			}
 			local onShelf = PenFormat.view(pen, 4, false)
 			expect.equal(onShelf.selected, pen.items[4])
-			expect.deepEqual(actionIds(onShelf), { "putAway", "move", "lock", "sell", "coat", "feed" })
+			expect.deepEqual(actionIds(onShelf), { "putAway", "move", "lock", "sell", "coat", "jumbo", "feed" })
 			local toy = PenFormat.view(pen, 5, false)
-			expect.deepEqual(actionIds(toy), { "place", "lock", "sell", "coat", "feed" }) -- the pen is full, the shelf is not
+			expect.deepEqual(actionIds(toy), { "place", "lock", "sell", "coat", "jumbo", "feed" }) -- the pen is full, the shelf is not
 			-- Picking: a shelf card and the TOP card take the squishy.
 			local picking = PenFormat.view(pen, 5, true)
 			expect.deepEqual({ PenFormat.tap(picking, 14, nil) }, { "place", 5, 14 } :: { any })
@@ -660,7 +660,7 @@ return function(t: Context)
 			table.insert(pen.items, item(6, "toast", 14))
 			pen.items[5].slot = 0
 			table.insert(pen.items, item(7, "toast", 24))
-			expect.deepEqual(actionIds(PenFormat.view(pen, 5, false)), { "swap", "lock", "sell", "coat", "feed" })
+			expect.deepEqual(actionIds(PenFormat.view(pen, 5, false)), { "swap", "lock", "sell", "coat", "jumbo", "feed" })
 		end
 	)
 
@@ -743,11 +743,11 @@ return function(t: Context)
 			local coat = Strings.coat
 			local pen = samplePen()
 			local kitty = PenFormat.cardText(pen.items[1]).name
-			-- COAT sits before FEED and is never refused.
+			-- COAT sits before JUMBO and FEED and is never refused.
 			local main = PenFormat.view(pen, 1, false)
-			expect.equal(main.actions[#main.actions - 1].id, "coat")
-			expect.equal(main.actions[#main.actions - 1].text, coat.button)
-			expect.equal(main.actions[#main.actions - 1].reason, nil)
+			expect.equal(main.actions[#main.actions - 2].id, "coat")
+			expect.equal(main.actions[#main.actions - 2].text, coat.button)
+			expect.equal(main.actions[#main.actions - 2].reason, nil)
 			-- A bare squishy, the Coins there: WAX at its price.
 			local view = PenFormat.view(pen, 1, false, { confirm = "coat", coins = COATS[1].price })
 			expect.equal(view.confirm, "coat")
@@ -792,6 +792,53 @@ return function(t: Context)
 			expect.equal(best.hint, Strings.format(coat.wears, { name = "Galaxy", x = "12" }) .. " " .. coat.best)
 			-- Nothing selected: the step cannot open.
 			expect.equal(PenFormat.view(pen, nil, false, { confirm = "coat" }).confirm, nil)
+		end
+	)
+
+	t.test(
+		"jumbo step: asks, says what it does and how many you have; the confirm is its price; a Jumbo one says so",
+		function()
+			local Format = t.requireShared("Util/Format")
+			local JUMBO = t.requireShared("Config/Jumbo")
+			local jumbo = Strings.jumbo
+			local pen = samplePen()
+			local kitty = PenFormat.cardText(pen.items[1]).name
+			-- JUMBO sits between COAT and FEED.
+			local main = PenFormat.view(pen, 1, false)
+			expect.equal(main.actions[#main.actions - 1].id, "jumbo")
+			expect.equal(main.actions[#main.actions - 1].text, jumbo.button)
+			-- The step, the Coins there.
+			local view = PenFormat.view(pen, 1, false, { confirm = "jumbo", coins = JUMBO.first })
+			expect.equal(view.confirm, "jumbo")
+			expect.equal(view.status, Strings.format(jumbo.ask, { name = kitty }))
+			expect.equal(view.hint, Strings.format(jumbo.note, { x = "2", n = 0, max = JUMBO.max }))
+			expect.deepEqual(actionIds(view), { "confirm", "cancel" })
+			expect.equal(view.actions[1].text, Strings.format(jumbo.buy, { price = Format.coins(JUMBO.first) }))
+			expect.equal(view.actions[1].reason, nil)
+			expect.equal(view.jumbo, JUMBO.first)
+			-- Short of Coins: refused with the missing Coins.
+			local short = PenFormat.view(pen, 1, false, { confirm = "jumbo", coins = JUMBO.first - 5 })
+			expect.equal(short.actions[1].reason, Strings.format(Strings.common.needCoins.many, { missing = "5" }))
+			-- A Jumbo squishy: no JUMBO button, its step cannot open, it says so, and it must be held to sell.
+			pen.items[1].mut = 1
+			local done = PenFormat.view(pen, 1, false)
+			expect.deepEqual(actionIds(done), { "putAway", "move", "lock", "sell", "coat", "feed" })
+			expect.equal(PenFormat.view(pen, 1, false, { confirm = "jumbo", coins = 10 ^ 15 }).confirm, nil)
+			expect.equal(PenFormat.cardText(pen.items[1]).level, "Jumbo · Lv 1")
+			expect.equal(PenFormat.formName(pen.items[1]), "Jumbo " .. kitty)
+			pen.items[1].form = 1
+			expect.equal(PenFormat.cardText(pen.items[1]).level, "Jumbo Golden · Lv 1")
+			expect.equal(PenFormat.formName(pen.items[1]), "Jumbo Golden " .. kitty)
+			expect.truthy(PenFormat.needsHold({ id = 9, kind = "toast", form = 0, level = 1, coat = 0, mut = 1 }))
+			expect.falsy(PenFormat.needsHold({ id = 9, kind = "toast", form = 0, level = 1, coat = 0 }))
+			-- The next one costs more, and its step counts the one you have.
+			local second = PenFormat.view(pen, 2, false, { confirm = "jumbo", coins = 10 ^ 15 })
+			expect.equal(second.jumbo, JUMBO.first * JUMBO.growth)
+			expect.equal(second.hint, Strings.format(jumbo.note, { x = "2", n = 1, max = JUMBO.max }))
+			-- A walker's look finds its squishy by Jumbo too.
+			pen.items[1].form = 0
+			expect.equal(PenFormat.walkerItem(pen, 1, { kind = "kitty_bread", form = 0, level = 1, coat = 0, mut = 1 }), 1)
+			expect.equal(PenFormat.walkerItem(pen, 1, { kind = "kitty_bread", form = 0, level = 1, coat = 0 }), nil)
 		end
 	)
 end

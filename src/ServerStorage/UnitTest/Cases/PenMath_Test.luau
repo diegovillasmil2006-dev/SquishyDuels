@@ -1273,4 +1273,78 @@ return function(t: Context)
 		expect.equal(PenMath.rate(other), 2560)
 		expect.equal(PenMath.squeezeGrip(other), 2560)
 	end)
+
+	-- Big job item 10 (2026-11-10): the forever item (Config/Jumbo) -----------------------------------------------
+
+	t.test("jumbo: x2 coins for mut = 1 only; carried by encode / decode; never sold by Sell All", function()
+		local JUMBO = t.requireShared("Config/Jumbo")
+		local plain, big = item("toast"), item("toast")
+		big.mut = 1
+		expect.near(PenMath.itemRate(big), PenMath.itemRate(plain) * JUMBO.mult, 1e-9)
+		for _, junk in { 0, 2, "1", true } :: { any } do
+			local odd = item("toast")
+			odd.mut = junk
+			expect.equal(PenMath.itemRate(odd), PenMath.itemRate(plain)) -- only 1 is Jumbo
+		end
+		expect.truthy(PenMath.better(big, plain)) -- the game's "best first" sees the boost
+		-- the look: a 5th field for a Jumbo one, a plain look keeps its 4
+		expect.equal(PenMath.encode({ plain, big }), "toast.0.1.0;toast.0.1.0.1")
+		local looks = PenMath.decode("toast.0.1.0;toast.0.1.0.1;toast.0.1.0.2;toast.0.1.0.1.1")
+		expect.equal(#looks, 2) -- a 5th field that is not 1, or a 6th field: skipped
+		expect.equal(looks[1].mut, nil)
+		expect.equal(looks[2].mut, 1)
+		expect.equal(PenMath.decodeShelf("13=toast.0.1.0.1")[13].mut, 1)
+		-- Sell All keeps a Jumbo squishy
+		local box = pen(3, { at(0, item("toast")), at(0, item("toast")), at(0, big) })
+		local sold = PenMath.sellAllIds(box)
+		expect.equal(table.find(sold, big.id), nil)
+	end)
+
+	t.test("jumbo price and checks: first x growth for each one owned, at most max; the refusals in order", function()
+		local JUMBO = t.requireShared("Config/Jumbo")
+		local a, b = at(1, item("toast")), at(0, item("butter"))
+		local p = pen(3, { a, b })
+		expect.equal(PenMath.jumboCount(p), 0)
+		expect.equal(PenMath.jumboPrice(p), JUMBO.first)
+		expect.deepEqual(PenMath.jumboDecision(p, a.id, JUMBO.first), { price = JUMBO.first })
+		local function refused(itemId: any, price: any, code: string)
+			local buy, why = PenMath.jumboDecision(p, itemId, price)
+			expect.equal(buy, nil)
+			expect.equal(why, code)
+		end
+		refused(1.5, JUMBO.first, "net.invalid")
+		refused(a.id, "x", "net.invalid")
+		refused(999, JUMBO.first, "inventory.notOwned")
+		refused(a.id, JUMBO.first + 1, "pen.priceChanged")
+		a.mut = 1
+		expect.equal(PenMath.jumboCount(p), 1)
+		expect.equal(PenMath.jumboPrice(p), JUMBO.first * JUMBO.growth) -- the second one
+		refused(a.id, JUMBO.first * JUMBO.growth, "pen.jumboAlready")
+		expect.deepEqual(PenMath.jumboDecision(p, b.id, JUMBO.first * JUMBO.growth), { price = JUMBO.first * JUMBO.growth })
+		expect.equal(PenMath.jumboDecision("garbage", a.id, JUMBO.first), nil)
+		-- the price list: whole, rising, within the Coins a player can hold; then no more
+		local many, last = {}, 0
+		for n = 1, JUMBO.max do
+			local price = PenMath.jumboPrice(pen(3, many))
+			expect.truthy(price ~= nil and price > last and math.floor(price) == price)
+			expect.truthy(price <= Config.Economy.maxCoins)
+			last = price
+			local it = at(0, item("toast"))
+			it.mut = 1
+			many[n] = it
+		end
+		local full = pen(3, many)
+		local spare = at(0, item("butter"))
+		table.insert(full.items, spare)
+		expect.equal(PenMath.jumboPrice(full), nil)
+		local buy, why = PenMath.jumboDecision(full, spare.id, last)
+		expect.equal(buy, nil)
+		expect.equal(why, "pen.jumboMax")
+		-- a fusion: Jumbo when one of the three is
+		local x, y, z = at(0, item("toast")), at(0, item("toast")), at(0, item("toast"))
+		local three = pen(3, { x, y, z })
+		expect.equal(PenMath.fuseDecision(three, { x.id, y.id, z.id }).mut, nil)
+		y.mut = 1
+		expect.equal(PenMath.fuseDecision(three, { x.id, y.id, z.id }).mut, 1)
+	end)
 end

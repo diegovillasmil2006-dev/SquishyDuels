@@ -79,6 +79,7 @@
 --   PenMath.encode(items)        -> string: "kind.form.level.coat" per item joined by ";" (the base's SD_Pen attribute;
 --                                   entries that are not items are left out)
 --   PenMath.decode(text)         -> {{kind, form, level, coat}}: the reverse; malformed entries are skipped
+--                                   (big job item 10: a Jumbo item's entry ends ".1" and decodes with mut = 1)
 --   PenMath.walkArea(studs)      -> Area {minX, maxX, minZ, maxZ, blocks}: where the centre of a squishy `studs`
 --                                   long may walk, in plot-local studs (wb, owner 2026-10-17: the pen is the whole
 --                                   base): WorldLayout.Bases.pen.walk (the plot's fenced floor), half its size plus
@@ -169,11 +170,22 @@
 --                                   squishy keeps its spot (a lock is how a player keeps one where they put it); the
 --                                   Toy Box is never touched. Only `slot` changes: no item added, removed or doubled.
 --                                   Returns how many moved (0 for a broken pen).
+-- Big job item 10 (2026-11-10, the forever item; Config/Jumbo): a JUMBO squishy is an item with `mut == 1` (any other
+-- value, or none: not Jumbo). itemRate pays it x Jumbo.mult; encode / decode carry it as a 5th field ".1" (a plain
+-- look keeps its 4 fields); sellAllIds never sells one; fuseDecision's Fusion has `mut = 1` when one of the three is
+-- Jumbo (the result is).
+--   PenMath.jumboCount(pen)      -> number: the Jumbo squishies the pen holds
+--   PenMath.jumboPrice(pen)      -> number?: the next one's Coins (first x growth ^ count, whole, capped at
+--                                   maxCoins); nil once it holds Jumbo.max
+--   PenMath.jumboDecision(pen, itemId, expectedPrice) -> ({price}?, code?): the pure PenJumbo checks: net.invalid (not
+--                                   whole numbers, a broken pen), inventory.notOwned, pen.jumboAlready, pen.jumboMax,
+--                                   pen.priceChanged (the price is compared, never charged)
 
 -- Requires (relative, so a test's cloned Shared folder uses its own copies)
 
 local Catalog = require(script.Parent.Catalog)
 local Config = require(script.Parent.Config)
+local JUMBO = require(script.Parent.Config.Jumbo)
 local Types = require(script.Parent.Types)
 local Validate = require(script.Parent.Util.Validate)
 local WorldLayout = require(script.Parent.World.WorldLayout)
@@ -181,7 +193,7 @@ local WorldLayout = require(script.Parent.World.WorldLayout)
 -- Types
 
 export type Buy = { spot: number, price: number }
-export type Look = { kind: string, form: number, level: number, coat: number }
+export type Look = { kind: string, form: number, level: number, coat: number, mut: number? }
 export type Rect = { minX: number, maxX: number, minZ: number, maxZ: number }
 -- Wb: a walk area (walkArea): the floor a squishy's centre stays on and the rects it never steps into.
 export type Area = { minX: number, maxX: number, minZ: number, maxZ: number, blocks: { Rect }? }
@@ -189,8 +201,14 @@ export type Move = { id: number, from: number, to: number, swapId: number? } -- 
 export type Sale = { items: { Types.PenItem }, coins: number } -- pens3 phase 7: one SellItems / SellAll
 export type BuyBack = { index: number, entry: Types.BuyBackEntry } -- the entry of one BuyBack (its list index)
 -- Pens3 phase 8: one Fuse: the keeper becomes the result (form, level), the others go, the coatings go to the bag.
-export type Fusion =
-	{ keeper: Types.PenItem, others: { Types.PenItem }, form: number, level: number, coats: { number } }
+export type Fusion = {
+	keeper: Types.PenItem,
+	others: { Types.PenItem },
+	form: number,
+	level: number,
+	coats: { number },
+	mut: number?,
+}
 -- Pens3 phase 9: a Config food, one BuyFood, one Feed step, the Feed All plan.
 export type FoodDef = { id: string, nameKey: string, price: number, from: number, to: number }
 export type FoodBuy = { food: FoodDef, count: number, price: number }
@@ -229,6 +247,8 @@ local TOP_SLOT = PEN.placedMax -- the TOP spot (24)
 local CODE_SHELF_MAX = "pen.shelfMax"
 local INCOME = Config.Economy.Income -- INCOME step 1
 local CODE_INCOME_MAX = "pen.incomeMax"
+local CODE_JUMBO_ALREADY = "pen.jumboAlready" -- big job item 10
+local CODE_JUMBO_MAX = "pen.jumboMax"
 
 -- Module table
 
@@ -292,6 +312,7 @@ function PenMath.itemRate(item: any): number
 		* PEN.formMult[item.form + 1]
 		* PEN.coatMult[item.coat + 1]
 		* PEN.levelGain ^ (item.level - 1)
+		* (if item.mut == 1 then JUMBO.mult else 1)
 end
 
 function PenMath.better(a: Types.PenItem, b: Types.PenItem): boolean
@@ -736,7 +757,7 @@ function PenMath.sellAllIds(pen: any): { number }
 	local starter = Catalog.starterId()
 	local candidates: { Types.PenItem } = {}
 	for _, it in PenMath.toyBox(pen) do
-		if it.level == 1 and it.form == 0 and it.locked ~= true and it.kind ~= starter then
+		if it.level == 1 and it.form == 0 and it.locked ~= true and it.kind ~= starter and it.mut ~= 1 then
 			table.insert(candidates, it)
 		end
 	end
@@ -833,6 +854,7 @@ function PenMath.fuseDecision(pen: any, ids: any): (Fusion?, string?)
 	end
 	local others: { Types.PenItem } = {}
 	local coats: { number } = {}
+	local mut: number? = nil
 	for _, it in items do
 		if it ~= keeper then
 			table.insert(others, it)
@@ -840,8 +862,62 @@ function PenMath.fuseDecision(pen: any, ids: any): (Fusion?, string?)
 		if it.coat > 0 then
 			table.insert(coats, it.coat)
 		end
+		if it.mut == 1 then
+			mut = 1 -- big job item 10: Jumbo is forever
+		end
 	end
-	return { keeper = keeper, others = others, form = first.form + 1, level = keeper.level, coats = coats }, nil
+	return {
+		keeper = keeper,
+		others = others,
+		form = first.form + 1,
+		level = keeper.level,
+		coats = coats,
+		mut = mut,
+	},
+		nil
+end
+
+-- Public: the forever item (big job item 10; see the header) ----------------------------------------------------------
+
+function PenMath.jumboCount(pen: any): number
+	local count = 0
+	if type(pen) == "table" and type(pen.items) == "table" then
+		for _, it in pen.items do
+			if isItem(it) and it.mut == 1 then
+				count += 1
+			end
+		end
+	end
+	return count
+end
+
+function PenMath.jumboPrice(pen: any): number?
+	local count = PenMath.jumboCount(pen)
+	if count >= JUMBO.max then
+		return nil
+	end
+	return math.min(math.floor(JUMBO.first * JUMBO.growth ^ count), MAX_COINS)
+end
+
+function PenMath.jumboDecision(pen: any, itemId: any, expectedPrice: any): ({ price: number }?, string?)
+	if spotsOf(pen) == nil or not isWhole(itemId) or Validate.coins(expectedPrice) == nil then
+		return nil, CODE_INVALID
+	end
+	local item = PenMath.find(pen, itemId)
+	if item == nil then
+		return nil, CODE_NOT_OWNED
+	end
+	if item.mut == 1 then
+		return nil, CODE_JUMBO_ALREADY
+	end
+	local price = PenMath.jumboPrice(pen)
+	if price == nil then
+		return nil, CODE_JUMBO_MAX
+	end
+	if expectedPrice ~= price then
+		return nil, CODE_PRICE
+	end
+	return { price = price }, nil
 end
 
 -- Public: food and levels (pens3 phase 9) -----------------------------------------------------------------------------
@@ -993,7 +1069,8 @@ function PenMath.encode(items: { any }): string
 	local parts: { string } = {}
 	for _, item in items do
 		if isLook(item) then
-			table.insert(parts, string.format("%s.%d.%d.%d", item.kind, item.form, item.level, item.coat))
+			local text = string.format("%s.%d.%d.%d", item.kind, item.form, item.level, item.coat)
+			table.insert(parts, if item.mut == 1 then text .. ".1" else text) -- big job item 10: a Jumbo one
 		end
 	end
 	return table.concat(parts, ";")
@@ -1006,12 +1083,13 @@ function PenMath.decode(text: any): { Look }
 	end
 	for _, part in string.split(text, ";") do
 		local fields = string.split(part, ".")
-		if #fields == 4 then
+		if #fields == 4 or (#fields == 5 and fields[5] == "1") then
 			local look = {
 				kind = fields[1],
 				form = tonumber(fields[2]),
 				level = tonumber(fields[3]),
 				coat = tonumber(fields[4]),
+				mut = if fields[5] then 1 else nil, -- big job item 10: a Jumbo one
 			}
 			if isLook(look) then
 				table.insert(list, look :: any)

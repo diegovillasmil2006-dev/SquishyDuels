@@ -532,6 +532,10 @@ local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { str
 			fixInt(item, "form", 0, #PEN.formMult - 1, 0, path .. ".form", problems)
 			fixInt(item, "level", 1, PEN.maxLevel, 1, path .. ".level", problems)
 			fixInt(item, "coat", 0, #PEN.coatMult - 1, 0, path .. ".coat", problems)
+			if item.mut ~= nil and item.mut ~= 1 then
+				note(problems, path .. ".mut", item.mut, "removed") -- big job item 10: Jumbo is 1 or absent
+				item.mut = nil
+			end
 			table.insert(items, item)
 		end
 	end

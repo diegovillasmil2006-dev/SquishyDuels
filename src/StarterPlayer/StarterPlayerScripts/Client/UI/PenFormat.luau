@@ -71,6 +71,12 @@
 --       (CoatMath.next: coat.next, + coat.fromBag for one from the bag; coat.best when it wears the last one);
 --     - actions: the step up as the confirm ("WAX · 1M" / "WAX · FREE"; view.coat = what to send; refused with
 --       coat.locked before its zone, else the missing Coins), TAKE OFF (coatOff) while it wears one, CANCEL.
+--   The forever item (Config/Jumbo; the server decides, PenJumbo): a squishy that is not Jumbo also gets JUMBO (after
+--   COAT), which opens its step (Extra.confirm = "jumbo"): the count line asks (jumbo.ask), the hint says what it
+--   does and how many the player has (jumbo.note), the confirm is "JUMBO · <price>" (view.jumbo = the price to send;
+--   refused with the missing Coins, or pen.jumboMax once the player has them all), then CANCEL. A Jumbo squishy says
+--   so before its form on the level line and in formName ("Jumbo · Lv 3", "Jumbo Golden Toast"), and must be held
+--   to sell.
 
 -- Services
 
@@ -83,6 +89,7 @@ local Catalog = require(Shared.Catalog)
 local CoatMath = require(Shared.CoatMath)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local JUMBO = require(Shared.Config.Jumbo)
 local PenMath = require(Shared.PenMath)
 local Rarity = require(Shared.Rarity)
 local Strings = require(Shared.Strings)
@@ -111,6 +118,7 @@ export type ActionId =
 	| "buyShelf" -- wb
 	| "coat" -- big job item 10
 	| "coatOff"
+	| "jumbo"
 export type Action = {
 	id: ActionId,
 	text: string,
@@ -120,7 +128,7 @@ export type Action = {
 	price: number?, -- wb: the Coins the buy shows and sends as its expectedPrice (buyShelf)
 }
 export type Spot = { slot: number, item: Types.PenItem? }
-export type ConfirmKind = "sell" | "sellAll" | "buyBack" | "fuse" | "coat"
+export type ConfirmKind = "sell" | "sellAll" | "buyBack" | "fuse" | "coat" | "jumbo"
 export type SoldCard = { id: number, item: Types.PenItem, price: number, time: string }
 -- Pens3 phase 9: a BUY FOOD card, and the request of an action (requestFor).
 export type FoodCard = { id: string, name: string, price: number, count: number, each: string, have: string }
@@ -164,6 +172,7 @@ export type View = {
 	topHeading: string?,
 	income: number, -- INCOME step 2: PenMath.rateBoost(pen), for cardText
 	coat: CoatMath.Change?, -- big job item 10: the coat step's confirm (PenCoat's coat and price)
+	jumbo: number?, -- big job item 10: the Jumbo step's confirm (PenJumbo's price)
 }
 export type CardText = { name: string, rate: string, level: string }
 
@@ -178,6 +187,7 @@ local FOOD_BUY = SCREEN_UI.foodBuy
 local SHELF_FIRST = PEN.maxSpots + 1 -- pens3 phase 11
 local TOP_SLOT = PEN.placedMax
 local COAT = Strings.coat -- big job item 10
+local JUMBO_TEXT = Strings.jumbo
 
 -- Module table
 
@@ -186,7 +196,19 @@ local PenFormat = {}
 -- Private
 
 local function sameLook(item: any, look: any): boolean
-	return item.kind == look.kind and item.form == look.form and item.coat == look.coat
+	return item.kind == look.kind
+		and item.form == look.form
+		and item.coat == look.coat
+		and (item.mut == 1) == (look.mut == 1)
+end
+
+-- Big job item 10: a squishy's look words before its name or level: its form ("Golden"), "Jumbo", both, or none.
+local function lookTag(item: any): string?
+	local form = SCREEN.forms[item.form] -- pens3 phase 8: Golden / Rainbow
+	if item.mut ~= 1 then
+		return form
+	end
+	return if form then JUMBO_TEXT.tag .. " " .. form else JUMBO_TEXT.tag
 end
 
 local function lockAction(item: Types.PenItem): Action
@@ -224,7 +246,7 @@ end
 function PenFormat.cardText(item: Types.PenItem, boost: number?): CardText
 	local def = Catalog.get(item.kind)
 	local name = if def then Strings.resolve(def.nameKey) or item.kind else item.kind
-	local form = SCREEN.forms[item.form] -- pens3 phase 8: Golden / Rainbow
+	local form = lookTag(item)
 	local rate = PenMath.itemRate(item) * (boost or 1)
 	return {
 		name = name,
@@ -241,6 +263,7 @@ function PenFormat.needsHold(item: Types.PenItem): boolean
 	local def = Catalog.get(item.kind)
 	return item.form >= HOLD.form
 		or item.level >= HOLD.level
+		or item.mut == 1 -- big job item 10: a Jumbo one
 		or (def ~= nil and Rarity.compare(def.rarity, HOLD.rarity) >= 0)
 end
 
@@ -270,7 +293,7 @@ end
 -- The name of a look with its form ("Golden Toast"; a plain one its own name).
 function PenFormat.formName(item: any): string
 	local name = PenFormat.cardText(item).name
-	local form = SCREEN.forms[item.form]
+	local form = lookTag(item)
 	return if form then Strings.format(SCREEN.formName, { form = form, name = name }) else name
 end
 
@@ -509,6 +532,35 @@ local function confirmView(view: View, pen: any, extra: Extra, coins: number): b
 		view.hint = hint
 		view.confirm = kind
 		return true
+	elseif kind == "jumbo" then
+		-- Big job item 10: the forever item's step (see the header).
+		local item = view.selected
+		if item == nil or item.mut == 1 then
+			return false
+		end
+		local price = PenMath.jumboPrice(pen)
+		view.status = Strings.format(JUMBO_TEXT.ask, { name = PenFormat.formName(item) })
+		view.hint = Strings.format(
+			JUMBO_TEXT.note,
+			{ x = string.format("%g", JUMBO.mult), n = PenMath.jumboCount(pen), max = JUMBO.max }
+		)
+		view.jumbo = price
+		view.actions = {
+			{
+				id = "confirm",
+				text = if price
+					then Strings.format(JUMBO_TEXT.buy, { price = Format.coins(price) })
+					else JUMBO_TEXT.button,
+				kind = "primary",
+				reason = if price == nil
+					then Strings.reasonText("pen.jumboMax")
+					elseif coins < price then needCoins(price - coins)
+					else nil,
+			},
+			{ id = "cancel", text = Strings.common.cancel, kind = "cancel" },
+		}
+		view.confirm = kind
+		return true
 	else
 		return false
 	end
@@ -605,6 +657,9 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 				table.insert(view.actions, { id = "fuse", text = SCREEN.fuse, kind = "secondary" })
 			end
 			table.insert(view.actions, { id = "coat", text = COAT.button, kind = "secondary" }) -- big job item 10
+			if selected.mut ~= 1 then
+				table.insert(view.actions, { id = "jumbo", text = JUMBO_TEXT.button, kind = "secondary" })
+			end
 			local feed, hint = feedFor(pen, more.food, selected, cap) -- pens3 phase 9
 			table.insert(view.actions, feed)
 			view.hint = hint

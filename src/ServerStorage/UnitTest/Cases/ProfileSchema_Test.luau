@@ -934,6 +934,50 @@ return function(t: Context)
 		expect.equal(#notList.items, 3) -- rebuilt from owned
 	end)
 
+	t.test("big job item 10: a squishy's mut (Jumbo) is 1 or absent; anything else is removed and logged", function()
+		local function items(): { any }
+			return {
+				penItem(1, "kitty_bread", 0, 1, 0, 1),
+				penItem(2, "toast", 0, 1, 0, 2),
+				penItem(3, "banana", 0, 1, 0, 3),
+			}
+		end
+		local function byId(pen: any, id: number): any
+			for _, item in pen.items do
+				if item.id == id then
+					return item
+				end
+			end
+			return nil
+		end
+		local function mutProblems(problems: { string }): number
+			local count = 0
+			for _, line in problems do
+				if string.find(line, ".mut", 1, true) then
+					count += 1
+				end
+			end
+			return count
+		end
+		-- a pen saved before the forever item (no mut anywhere) and one with a Jumbo squishy: nothing to fix
+		local old, _, oldProblems = fixedPen({ spots = 3, nextId = 4, items = items() })
+		expect.equal(byId(old, 2).mut, nil)
+		expect.equal(mutProblems(oldProblems), 0)
+		local saved = items()
+		saved[2].mut = 1
+		local kept, _, keptProblems = fixedPen({ spots = 3, nextId = 4, items = saved })
+		expect.equal(byId(kept, 2).mut, 1)
+		expect.equal(mutProblems(keptProblems), 0)
+		-- broken values are removed, each one logged
+		local broken = items()
+		broken[1].mut, broken[2].mut, broken[3].mut = "yes", 1, 2
+		local fixed, _, problems = fixedPen({ spots = 3, nextId = 4, items = broken })
+		expect.equal(byId(fixed, 1).mut, nil)
+		expect.equal(byId(fixed, 2).mut, 1)
+		expect.equal(byId(fixed, 3).mut, nil)
+		expect.equal(mutProblems(problems), 2)
+	end)
+
 	t.test("sanitize pen ids: a bad or repeated id gets a fresh one, never dropped; nextId above every id", function()
 		local pen, _, problems = fixedPen({
 			spots = 3,

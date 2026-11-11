@@ -80,6 +80,7 @@ local Net = {
 		PenPlace = { rate = 2, burst = 3, oneInFlight = true },
 		PenLock = { rate = 2, burst = 3, oneInFlight = true },
 		PenCoat = { rate = 2, burst = 3, oneInFlight = true }, -- big job item 10: a coating on a squishy, as PenLock
+		PenJumbo = { rate = 2, burst = 3, oneInFlight = true }, -- big job item 10: the forever item, as PenLock
 		-- Pens3 phases 7-8: the pen screen's sell, Sell All, buy-back and fuse: PenPlace's 2 a second (a burst of 3),
 		-- one at a time.
 		SellItems = { rate = 2, burst = 3, oneInFlight = true },

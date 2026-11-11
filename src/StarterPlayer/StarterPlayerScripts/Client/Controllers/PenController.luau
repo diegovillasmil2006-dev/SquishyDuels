@@ -94,6 +94,9 @@
 --   A coating with a look.sparkle (Glitter, Frost, Galaxy) also twinkles: the design's one shared look sparkle
 --   (Config.JoyFx.lookSparkle), on walkers and shelf squishies of pens that are being animated, at most 12 a frame,
 --   none on low graphics or under ReducedMotion (Golden's and Rainbow's sparkle is still not drawn).
+--   The forever item (Config/Jumbo): a Jumbo squishy (its look's mut = 1) is built Jumbo.scale times as long, walker
+--   or shelf; the window's JUMBO button opens PenFormat's step, its confirm sends PenJumbo(id, price); an accepted
+--   one plays ui.levelTone with a gold burst and toasts jumbo.done.
 --   The window's COAT button opens PenFormat's coat step (Extra.bag = StateController's `bag`); its confirm sends
 --   PenCoat(id, coat, price) with what the view says, TAKE OFF sends PenCoat(id, 0, 0); an accepted one plays
 --   ui.purchase and toasts coat.done / coat.off.
@@ -164,6 +167,7 @@ local Client = script.Parent.Parent
 local AmbientMath = require(Client.Anim.AmbientMath)
 local FxPool = require(Client.Anim.FxPool)
 local JoyFx = require(Shared.Config.JoyFx)
+local JUMBO = require(Shared.Config.Jumbo)
 local MeshQuality = require(Client.Anim.MeshQuality)
 local Scheduler = require(Client.Anim.Scheduler)
 local Timeline = require(Client.Anim.Timeline)
@@ -311,6 +315,7 @@ local SHELF_SIGN = "ShelfSign"
 local SHELF_PROMPT = "ShelfPrompt"
 local REMOTE_BUY_SHELF = "PenBuyShelf"
 local REMOTE_COAT = "PenCoat" -- big job item 10
+local REMOTE_JUMBO = "PenJumbo"
 local FIELD_BAG = "bag"
 local ATTR_OUTLINE = "SD_Outline" -- a model slot's dark shell (Models/SquishyCache)
 -- Reading: Diego's shelf's bounding sphere: its middle (half of its 23.4 over the pads' frame) and radius (its 30 ×
@@ -388,7 +393,7 @@ local function maxDistance(): number
 end
 
 local function lookKey(look: PenMath.Look): string
-	return `{look.kind}.{look.form}.{look.coat}`
+	return `{look.kind}.{look.form}.{look.coat}.{look.mut or 0}`
 end
 
 -- The coin label's text and its measured layout (see the header).
@@ -418,7 +423,7 @@ local function build(look: PenMath.Look): Walker?
 		return nil
 	end
 	PenController.setShadows(model, shadows) -- owner 2026-10-17: by the graphics level
-	local studs = PenController.studsOf(look.kind)
+	local studs = PenController.studsOf(look.kind) * (if look.mut == 1 then JUMBO.scale else 1) -- big job item 10
 	local extents = model:GetExtentsSize()
 	local longest = math.max(extents.X, extents.Y, extents.Z)
 	if longest > 0 then
@@ -1265,6 +1270,20 @@ local function sendCoat(item: any, coat: number, price: number)
 	end
 end
 
+-- Big job item 10: one PenJumbo at the price the step shows; the feel of an accepted one (the level-up tone, a gold
+-- burst, the toast).
+local function sendJumbo(item: any, price: number)
+	local result = send(REMOTE_JUMBO, item.id, price)
+	if result and result.ok then
+		SoundController.play(SOUND_FUSE)
+		local s = screen
+		if s then
+			UiFx.burst(s.statusRoot, "large", Palette.PenFormGolden)
+		end
+		NotifyController.show("jumbo.done", { name = PenFormat.formName(item) }, "success")
+	end
+end
+
 -- The confirm step's confirm: what the view says to send.
 local function confirmNow()
 	local view = currentView()
@@ -1272,6 +1291,10 @@ local function confirmNow()
 	if kind == "coat" then
 		if view.coat and view.selected then
 			task.spawn(sendCoat, view.selected, view.coat.coat, view.coat.price)
+		end
+	elseif kind == "jumbo" then
+		if view.jumbo and view.selected then
+			task.spawn(sendJumbo, view.selected, view.jumbo)
 		end
 	elseif kind == "sell" and view.sellIds then
 		task.spawn(sendFor, kind, REMOTE_SELL, view.sellIds, HttpService:GenerateGUID(false))
@@ -1362,7 +1385,7 @@ local function onAction(id: string)
 		return
 	end
 	-- Pens3 phases 7-8: the confirm steps (big job item 10: and the coat step).
-	if id == "sell" or id == "sellAll" or id == "buyBack" or id == "fuse" or id == "coat" then
+	if id == "sell" or id == "sellAll" or id == "buyBack" or id == "fuse" or id == "coat" or id == "jumbo" then
 		confirm = id :: any
 		render()
 		return
