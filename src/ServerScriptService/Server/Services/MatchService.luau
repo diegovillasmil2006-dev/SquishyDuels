@@ -793,6 +793,19 @@ local function finiteOrZero(value: number?): number
 	return value
 end
 
+-- Power-ups v1.1: the player's live timed power-ups (kind -> server time it ends) at the latest step's time.
+local function buffsView(match: Match, r: MatchRules.Participant?): { [string]: number }
+	local out: { [string]: number } = {}
+	if r then
+		for power, untilAt in r.buffs do
+			if type(untilAt) == "number" and untilAt > match.now then
+				out[power] = untilAt
+			end
+		end
+	end
+	return out
+end
+
 -- Everyone still in the match (a player who left or never arrived is not listed: no enemy, no leader). Match HUD M1:
 -- with their respawn time, out, spawn protection and streaks (every tile's respawn seconds and streak, M:73, 149).
 local function playersView(match: Match): { Types.MatchParticipantView }
@@ -818,6 +831,7 @@ local function playersView(match: Match): { Types.MatchParticipantView }
 				bestStreak = p.bestStreak,
 				arrived = r.arrived, -- round 1 of the match screens: the intro's card shows them in
 				level = Pend.levels[p.userId] or 1, -- the MATCH FOUND show's Grip level
+				buffs = buffsView(match, r), -- big job item 7: everyone sees who has a power-up
 			})
 		end
 	end
@@ -844,19 +858,6 @@ local function standingsView(match: Match): { Types.MatchStandingView }
 		end
 	end
 	return list
-end
-
--- Power-ups v1.1: the player's live timed power-ups (kind -> server time it ends) at the latest step's time.
-local function buffsView(match: Match, r: MatchRules.Participant?): { [string]: number }
-	local out: { [string]: number } = {}
-	if r then
-		for power, untilAt in r.buffs do
-			if type(untilAt) == "number" and untilAt > match.now then
-				out[power] = untilAt
-			end
-		end
-	end
-	return out
 end
 
 -- Power-ups v1.1: every pad of the match, {name, readyAt} (server time; 0 = ready).

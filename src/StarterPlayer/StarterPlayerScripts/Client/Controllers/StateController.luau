@@ -179,6 +179,8 @@ export type MatchPlayer = {
 	-- Round 1 of the match screens (2026-10-26; an older server: true / 1):
 	arrived: boolean, -- in the map (the intro's card shows them in)
 	level: number, -- their Grip level as the MATCH FOUND show gave it
+	-- Big job item 7 (2026-11-10; an older server: none): power -> the server time it ends (as MatchYou.buffs)
+	buffs: { [string]: number },
 }
 
 -- Match HUD M1: one HUD event of a match (Types.MatchEventView, parsed). kind "ko" now (victim always set); seq counts
@@ -483,6 +485,21 @@ end
 
 -- FFA/TDM v1: the match payload readers (server data, still checked before use). ---------------------------------
 
+-- Power-ups v1.1: live power-ups (power name -> finite end time; other entries are skipped), nil when the payload has
+-- no table: the own ones, and since big job item 7 (2026-11-10) every player's.
+local function buffsFrom(raw: unknown): { [string]: number }?
+	if type(raw) ~= "table" then
+		return nil
+	end
+	local buffs: { [string]: number } = {}
+	for power, untilAt in raw :: any do
+		if type(power) == "string" and finite(untilAt) then
+			buffs[power] = untilAt
+		end
+	end
+	return buffs
+end
+
 local function matchPlayerFrom(raw: unknown): MatchPlayer?
 	if type(raw) ~= "table" then
 		return nil
@@ -509,6 +526,8 @@ local function matchPlayerFrom(raw: unknown): MatchPlayer?
 		-- Round 1 of the match screens (an older server: in, level 1):
 		arrived = t.arrived ~= false,
 		level = math.max(1, countOr(t.level, 1)),
+		-- Big job item 7 (2026-11-10): their live power-ups (an older server: none), for the looks on the fighters.
+		buffs = buffsFrom(t.buffs) or {},
 	}
 end
 
@@ -583,21 +602,6 @@ local function findPlayer(players: { MatchPlayer }, userId: number): MatchPlayer
 		end
 	end
 	return nil
-end
-
--- Power-ups v1.1: the own live power-ups (power name -> finite end time; other entries are skipped), nil when the
--- payload has no table.
-local function buffsFrom(raw: unknown): { [string]: number }?
-	if type(raw) ~= "table" then
-		return nil
-	end
-	local buffs: { [string]: number } = {}
-	for power, untilAt in raw :: any do
-		if type(power) == "string" and finite(untilAt) then
-			buffs[power] = untilAt
-		end
-	end
-	return buffs
 end
 
 -- Power-ups v1.1: the map's power-up pads ({name, readyAt}; a readyAt that is not a finite number, -inf included,

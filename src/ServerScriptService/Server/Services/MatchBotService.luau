@@ -86,6 +86,7 @@ type Pilot = {
 -- Constants
 
 local CFG = Config.Match.Bots
+local BOT_LOOKS = require(Shared.Config.MatchLooks).Bots -- big job item 7: what the bots wear
 local DUEL_BOTS = Config.Duel.Bots -- the practice bot's reaction times and its ultimate switch
 local STORM = Config.Match.Storm
 local ROOT_PART = "HumanoidRootPart"
@@ -103,7 +104,8 @@ local MatchBotService = {}
 local log = Log.new("MatchBot")
 local rng = Random.new()
 local pilots: { Pilot } = {}
-local template: Model? = nil
+-- Big job item 7 (2026-11-10): a few dressed characters (Config/MatchLooks.Bots.templates looks), not one plain one.
+local templates: { Model } = {}
 local enabled = false
 local closed = false
 
@@ -148,19 +150,24 @@ end
 local function ready(): boolean
 	return enabled
 		and not closed
-		and template ~= nil
+		and #templates > 0
 		and not ShutdownService.isClosing()
 		and not ShutdownService.isRestartPending()
 end
 
 local function take(_modeId: string, count: number): { any }
 	local list: { any } = {}
-	local source = template
-	if not ready() or source == nil then
+	if not ready() then
 		return list
 	end
-	for _ = 1, count do
-		local rig = source:Clone()
+	local first = rng:NextInteger(1, #templates)
+	for index = 1, count do
+		-- the looks in turn from a random one (two bots share a look only when there are more bots than looks), each
+		-- clone with its own skin tone
+		local rig = templates[(first + index) % #templates + 1]:Clone()
+		if rig then
+			BotService.reskin(rig)
+		end
 		local bot = if rig then BotService.newBot(rig) else nil
 		if bot == nil then
 			break -- fewer bots this time (newBot logged why)
@@ -462,13 +469,15 @@ local function onThrowAccepted(info: any)
 	end
 end
 
--- The plain character every match bot is a clone of; tried again every rigRetrySeconds until it is built.
+-- The characters the match bots are clones of (each BotService.buildRigAsync call draws its own look); tried again
+-- every rigRetrySeconds until they are built. Bots can play as soon as the first one is.
 local function buildTemplate()
-	while template == nil and not closed do
+	local wanted = if BOT_LOOKS.enabled then math.max(BOT_LOOKS.templates, 1) else 1
+	while #templates < wanted and not closed do
 		local rig = BotService.buildRigAsync()
 		if rig then
 			rig.Archivable = true -- Clone() needs it
-			template = rig
+			table.insert(templates, rig)
 		else
 			task.wait(CFG.rigRetrySeconds)
 		end

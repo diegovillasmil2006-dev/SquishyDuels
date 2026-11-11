@@ -72,6 +72,23 @@ function BotRules.name(rng: Random, starts: { string }, ends: { string }, cfg: a
 	return first .. second .. separator .. tostring(rng:NextInteger(c.nameDigitsMin, c.nameDigitsMax))
 end
 
+-- Big job item 7 (2026-11-10): what one bot wears, drawn from Config/MatchLooks.Bots: a skin tone, a shirt, pants,
+-- hair and, hatChance of the time, a hat (asset ids of free Roblox-made avatar items).
+export type Look = { skin: Color3, shirt: number, pants: number, hair: number, hat: number? }
+
+function BotRules.look(rng: Random, looks: any): Look
+	local function pick(list: { any }): any
+		return list[rng:NextInteger(1, #list)]
+	end
+	return {
+		skin = pick(looks.skins),
+		shirt = pick(looks.shirts),
+		pants = pick(looks.pants),
+		hair = pick(looks.hair),
+		hat = if #looks.hats > 0 and rng:NextNumber() < looks.hatChance then pick(looks.hats) else nil,
+	}
+end
+
 function BotRules.fillDelay(rng: Random, cfg: any?): number
 	local c = bots(cfg)
 	return BotRules.between(rng, c.fillDelayMinSeconds, c.fillDelayMaxSeconds)

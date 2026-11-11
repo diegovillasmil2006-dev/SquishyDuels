@@ -466,6 +466,9 @@ export type MatchParticipantView = {
 	-- cards; level = the Grip level the MATCH FOUND show gave them (1 when unknown).
 	arrived: boolean,
 	level: number,
+	-- Big job item 7 (2026-11-10, match looks): their live timed power-ups (kind -> the server time it ends), as
+	-- MatchYouView.buffs, so every client can show a power-up on the player who has it.
+	buffs: { [string]: number },
 }
 
 -- One HUD event of a match (Match HUD M1, 2026-10-16): seq counts from 1 per match. kind "ko" now; later "revived",

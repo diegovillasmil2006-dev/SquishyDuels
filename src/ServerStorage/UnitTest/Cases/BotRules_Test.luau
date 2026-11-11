@@ -94,6 +94,38 @@ return function(t: Context)
 		)
 	end)
 
+	-- Big job item 7 (2026-11-10): the bots wear clothes (they were all black: the default description's colours).
+	t.test("a bot's look: a skin tone, a shirt, pants and hair from the lists, a hat only some of the time", function()
+		local LOOKS = t.requireShared("Config/MatchLooks").Bots
+		local rng = Random.new(5)
+		local hats, seenShirts = 0, {}
+		for _ = 1, 400 do
+			local look = BotRules.look(rng, LOOKS)
+			expect.truthy(table.find(LOOKS.skins, look.skin) ~= nil)
+			expect.truthy(table.find(LOOKS.shirts, look.shirt) ~= nil)
+			expect.truthy(table.find(LOOKS.pants, look.pants) ~= nil)
+			expect.truthy(table.find(LOOKS.hair, look.hair) ~= nil)
+			if look.hat ~= nil then
+				hats += 1
+				expect.truthy(table.find(LOOKS.hats, look.hat) ~= nil)
+			end
+			seenShirts[look.shirt] = true
+		end
+		expect.truthy(hats > 400 * LOOKS.hatChance * 0.6 and hats < 400 * LOOKS.hatChance * 1.4)
+		for _, shirt in LOOKS.shirts do
+			expect.truthy(seenShirts[shirt]) -- every shirt comes up
+		end
+		-- no hat list, or a zero chance: never a hat
+		local bare = table.clone(LOOKS)
+		bare.hats = {}
+		expect.equal(BotRules.look(Random.new(1), bare).hat, nil)
+		local never = table.clone(LOOKS)
+		never.hatChance = 0
+		for _ = 1, 50 do
+			expect.equal(BotRules.look(rng, never).hat, nil)
+		end
+	end)
+
 	t.test("the fill delay stays inside the owner's 8-10 s", function()
 		expect.equal(BOTS.fillDelayMinSeconds, 8)
 		expect.equal(BOTS.fillDelayMaxSeconds, 10)

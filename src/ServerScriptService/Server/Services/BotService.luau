@@ -53,6 +53,7 @@ local ProjectileMath = require(Shared.ProjectileMath)
 local Strings = require(Shared.Strings)
 local ValidateBots = require(Shared.Config.ValidateBots)
 local BotRules = require(script.Parent.Parent.Logic.BotRules)
+local LOOKS = require(Shared.Config.MatchLooks).Bots -- big job item 7: what the bots wear
 local AbilityService = require(script.Parent.AbilityService)
 local CharacterService = require(script.Parent.CharacterService)
 local CombatService = require(script.Parent.CombatService)
@@ -178,19 +179,52 @@ local function rootOf(bot: Bot): BasePart?
 	return if root and root:IsA("BasePart") then root else nil
 end
 
--- A plain Roblox character (the default HumanoidDescription). Yields. nil when the avatar service fails (no bot this
--- time; the next lone wait tries again).
+-- A Roblox character wearing a bot look (big job item 7, 2026-11-10: BotRules.look from Config/MatchLooks.Bots: a
+-- skin tone, a shirt, pants, hair, sometimes a hat; until then every bot was the default HumanoidDescription, whose
+-- body colours are black). An item Roblox takes off sale fails the whole character, so a second try keeps the skin
+-- tone only. Yields. nil when the avatar service fails (no bot this time; the next lone wait tries again).
 local function buildRigAsync(): Model?
-	local description = Instance.new("HumanoidDescription")
-	local ok, rig = pcall(function(): Model
-		return Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R15)
-	end)
-	description:Destroy()
-	if ok and typeof(rig) == "Instance" and rig:IsA("Model") then
-		return rig
+	local wear = if LOOKS.enabled then BotRules.look(rng, LOOKS) else nil
+	local problem: any = nil
+	for _, dressed in { true, false } do
+		local description = Instance.new("HumanoidDescription")
+		if wear then
+			local skin = wear.skin
+			description.HeadColor, description.TorsoColor = skin, skin
+			description.LeftArmColor, description.RightArmColor = skin, skin
+			description.LeftLegColor, description.RightLegColor = skin, skin
+			if dressed then
+				description.Shirt, description.Pants = wear.shirt, wear.pants
+				description.HairAccessory = tostring(wear.hair)
+				description.HatAccessory = if wear.hat then tostring(wear.hat) else ""
+			end
+		end
+		local ok, rig = pcall(function(): Model
+			return Players:CreateHumanoidModelFromDescriptionAsync(description, Enum.HumanoidRigType.R15)
+		end)
+		description:Destroy()
+		if ok and typeof(rig) == "Instance" and rig:IsA("Model") then
+			return rig
+		end
+		problem = rig
+		if wear == nil then
+			break -- no look to drop: one try, as before
+		end
 	end
-	log:warn("the bot's character could not be built; no bot this time:", rig)
+	log:warn("the bot's character could not be built; no bot this time:", problem)
 	return nil
+end
+
+-- Big job item 7: a clone's own skin tone (MatchBotService: a match's bots are clones of a few looks).
+local function reskin(rig: Model)
+	local colors = rig:FindFirstChildOfClass("BodyColors")
+	if colors == nil or not LOOKS.enabled then
+		return
+	end
+	local skin = LOOKS.skins[rng:NextInteger(1, #LOOKS.skins)]
+	colors.HeadColor3, colors.TorsoColor3 = skin, skin
+	colors.LeftArmColor3, colors.RightArmColor3 = skin, skin
+	colors.LeftLegColor3, colors.RightLegColor3 = skin, skin
 end
 
 local function makeBot(rig: Model, folder: Instance): Bot
@@ -686,6 +720,7 @@ function BotService.newBot(rig: Model): Bot?
 end
 
 BotService.buildRigAsync = buildRigAsync -- yields; nil when the avatar service fails
+BotService.reskin = reskin
 BotService.destroyBot = destroyBot
 BotService.face = face -- (root, point)
 BotService.throwAt = throwAtPlayer -- (bot, root, targetRoot): the practice bot's aim (Config.Duel.Bots)

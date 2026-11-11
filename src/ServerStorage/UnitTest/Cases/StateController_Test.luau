@@ -931,10 +931,14 @@ return function(t: Context)
 			expect.equal(player.protectUntil, 0)
 			expect.equal(player.streak, 0)
 			expect.equal(player.bestStreak, 0)
+			expect.deepEqual(player.buffs, {}) -- big job item 7: an older server sends no power-ups for the others
 		end
 		local raw = matchState("match:h", "Result")
 		raw.players[2].respawnAt = 512
 		raw.players[2].protectUntil = 0 / 0
+		-- big job item 7 (2026-11-10): every player's live power-ups (kind -> end time; junk entries are skipped)
+		raw.players[2].buffs = { speed = 99.5, shield = "soon", [3] = 7 }
+		raw.players[3].buffs = "none"
 		raw.players[2].streak = 3
 		raw.players[2].bestStreak = 4.7
 		raw.players[3].out = true
@@ -956,6 +960,8 @@ return function(t: Context)
 		local two, three = view.players[2], view.players[3]
 		expect.equal(two.respawnAt, 512)
 		expect.equal(two.protectUntil, 0)
+		expect.deepEqual(two.buffs, { speed = 99.5 })
+		expect.deepEqual(three.buffs, {})
 		expect.equal(two.streak, 3)
 		expect.equal(two.bestStreak, 4)
 		expect.equal(three.out, true)

@@ -1114,6 +1114,17 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 		state.ok = true
 		return state
 	end,
+	-- Big job item 7 (2026-11-10): "matchLooks", spec? -> MatchLooksController.debugShow: one pretend match look on
+	-- the local character ({ relation, team, power, protected, name }; nil ends it); replies its debugState().
+	matchLooks = function(spec: unknown): Reply
+		local show = functionOf(optionalModule("Controllers", "MatchLooksController"), "debugShow")
+		if show == nil then
+			return missing("MatchLooksController.debugShow")
+		end
+		local state = show(if type(spec) == "table" then spec else nil)
+		state.ok = true
+		return state
+	end,
 }
 
 local function onInvoke(command: unknown, ...: any): Reply
