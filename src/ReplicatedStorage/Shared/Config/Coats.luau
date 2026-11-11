@@ -12,7 +12,10 @@
 -- Coins of one bought in the pen's picker, on the scale of that zone's gear and box prices. A coating from the bag is
 -- free to put on; a squishy's old coating goes back to the bag (as when it is fused or sold).
 -- `look`: the design's finish (a Material's name, Reflectance, Transparency; `tint` + `blend` = the share of the
--- squishy's own colour that turns to the tint). A colour here is the design file's own value.
+-- squishy's own colour that turns to the tint; `sparkle` = the design's shared LookSparkle on this look: its colours,
+-- how many a second, `inside` = born inside the body. Drawn by PenController with Config.JoyFx.lookSparkle). A colour
+-- here is the design file's own value. Not built: Jelly's extra wobble on every hop (the design's "SqueezeSquish at
+-- 1.3x"): pen squishies do not squash.
 
 local Coats = {
 	list = {
@@ -26,7 +29,14 @@ local Coats = {
 			id = "glitter",
 			zone = 1,
 			price = 50_000_000,
-			look = { material = "Foil", reflectance = 0.1, transparency = 0, tint = Color3.fromHex("#FFD6F2"), blend = 0.2 },
+			look = {
+				material = "Foil",
+				reflectance = 0.1,
+				transparency = 0,
+				tint = Color3.fromHex("#FFD6F2"),
+				blend = 0.2,
+				sparkle = { colors = { Color3.fromHex("#FFFFFF") }, rate = 2 },
+			},
 		},
 		{
 			id = "jelly",
@@ -38,7 +48,14 @@ local Coats = {
 			id = "frost",
 			zone = 4,
 			price = 50_000_000_000,
-			look = { material = "Ice", reflectance = 0.1, transparency = 0, tint = Color3.fromHex("#CFEFFF"), blend = 0.4 },
+			look = {
+				material = "Ice",
+				reflectance = 0.1,
+				transparency = 0,
+				tint = Color3.fromHex("#CFEFFF"),
+				blend = 0.4,
+				sparkle = { colors = { Color3.fromHex("#DFF6FF") }, rate = 1 },
+			},
 		},
 		{
 			id = "chrome",
@@ -62,7 +79,15 @@ local Coats = {
 			id = "galaxy",
 			zone = 7,
 			price = 200_000_000_000_000,
-			look = { material = "Glass", reflectance = 0.2, transparency = 0.1, tint = Color3.fromHex("#2B1E5C"), blend = 0.65 },
+			look = {
+				material = "Glass",
+				reflectance = 0.2,
+				transparency = 0.1,
+				tint = Color3.fromHex("#2B1E5C"),
+				blend = 0.65,
+				-- "white + lilac, emitted inside the body = stars"; the lilac is the kit's own (the Rainbow's top band)
+				sparkle = { colors = { Color3.fromHex("#FFFFFF"), Color3.fromHex("#B98CFF") }, rate = 3, inside = true },
+			},
 		},
 	},
 }

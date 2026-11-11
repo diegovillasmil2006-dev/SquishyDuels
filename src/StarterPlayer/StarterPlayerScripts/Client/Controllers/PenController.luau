@@ -88,6 +88,15 @@
 --   the face's (isFace), take formColor (Golden: blend 0.7 toward PenFormGolden; Rainbow: blend 0.75 toward the
 --   PenFormRainbow band of the part's middle in the model's height) and the form's material, reflectance and
 --   transparency when it is built (a hidden part stays hidden). Nothing else: no extra meshes, no sparkle yet.
+-- * Big job item 10 (2026-11-10, the coatings; Config/Coats): a coated walker's parts, except the face's and the dark
+--   outline's, then take the coating's finish (its material, reflectance and transparency) and coatColor (the
+--   coating's tint over the colour it has, the form's included: "the form sets the colour, the coating the finish").
+--   A coating with a look.sparkle (Glitter, Frost, Galaxy) also twinkles: the design's one shared look sparkle
+--   (Config.JoyFx.lookSparkle), on walkers and shelf squishies of pens that are being animated, at most 12 a frame,
+--   none on low graphics or under ReducedMotion (Golden's and Rainbow's sparkle is still not drawn).
+--   The window's COAT button opens PenFormat's coat step (Extra.bag = StateController's `bag`); its confirm sends
+--   PenCoat(id, coat, price) with what the view says, TAKE OFF sends PenCoat(id, 0, 0); an accepted one plays
+--   ui.purchase and toasts coat.done / coat.off.
 -- * Pens3 phase 9 (food and levels; stand-ins in the same screen): PenFormat.view also gets StateController's food
 --   and the selected BUY FOOD card (foodId; a tap on one, onFood, selects it), and since pens3 phase 13 its highway
 --   field (the level cap: 10 a biome reached; the screen redraws when it changes). FEED sends Feed(the squishy, a
@@ -120,7 +129,8 @@
 --   model when the level changes (its property signal, no polling). "On" is SquishyCache's build: the parts built
 --   without a shadow (the Root, the faces) never get one. Held, duel and match squishies are not touched.
 -- Public: the pure parts (signState, studsOf, hopLift, labelText, labelLayout, newWalk, stepWalker, awayText,
--- syncWaits, tapHit, isFace, formColor, shelfPlace, shelfCall, shadowsOn), setShadows, applyShadows, refreshShadows,
+-- syncWaits, tapHit, isFace, formColor, coatColor, shelfPlace, shelfCall, shadowsOn), setShadows, applyShadows,
+-- refreshShadows,
 -- init(), start(), destroy() (tests and leak checks; the bootstrap never calls it), debugState().
 
 -- Services
@@ -139,6 +149,7 @@ local Shared = ReplicatedStorage.Shared
 local AssetTable = require(Shared.AssetTable)
 local Catalog = require(Shared.Catalog)
 local Cleanup = require(Shared.Util.Cleanup)
+local CoatMath = require(Shared.CoatMath)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local Log = require(Shared.Util.Log)
@@ -200,6 +211,7 @@ type Walker = Walk & {
 	icon: ImageLabel,
 	hop: number, -- 0..1 through the hop loop
 	lastLift: number,
+	twinkle: number?, -- big job item 10: 0..1 toward its next look sparkle
 	-- Pens3 phase 11: a shelf squishy's place (shelfPlace) and its loop's start (seconds).
 	rest: CFrame?,
 	labelAt: Vector3?,
@@ -298,6 +310,9 @@ local SHELF_FIRST = Config.Economy.Pen.maxSpots + 1
 local SHELF_SIGN = "ShelfSign"
 local SHELF_PROMPT = "ShelfPrompt"
 local REMOTE_BUY_SHELF = "PenBuyShelf"
+local REMOTE_COAT = "PenCoat" -- big job item 10
+local FIELD_BAG = "bag"
+local ATTR_OUTLINE = "SD_Outline" -- a model slot's dark shell (Models/SquishyCache)
 -- Reading: Diego's shelf's bounding sphere: its middle (half of its 23.4 over the pads' frame) and radius (its 30 ×
 -- 23.4 × 6, halved, rounded up).
 local SHELF_UP = 12
@@ -421,6 +436,23 @@ local function build(look: PenMath.Look): Walker?
 				part.Material = (Enum.Material :: any)[form.material]
 				part.Reflectance = form.reflectance
 				part.Transparency = form.transparency
+			end
+		end
+	end
+	-- Big job item 10: a coating's finish over the colour the squishy has (see the header).
+	local coat = CoatMath.def(look.coat)
+	if coat then
+		for _, part in model:GetDescendants() do
+			if
+				part:IsA("BasePart")
+				and part.Transparency < 1
+				and not PenController.isFace(part.Name)
+				and part:GetAttribute(ATTR_OUTLINE) ~= true
+			then
+				part.Color = PenController.coatColor(part.Color, coat.look)
+				part.Material = (Enum.Material :: any)[coat.look.material]
+				part.Reflectance = coat.look.reflectance
+				part.Transparency = coat.look.transparency
 			end
 		end
 	end
@@ -805,9 +837,72 @@ end
 -- Pens3 phases 7-8: the pen screen's part of the effect (set with the screen's code below).
 local stepScreen: () -> ()
 
+-- Big job item 10: the design's one shared look sparkle (the lobby kit's E18; Config.JoyFx.lookSparkle): a squishy
+-- whose coating has a look.sparkle twinkles `rate` times a second in its colours, round its body (or inside it:
+-- Galaxy's stars). One pooled particle each (FxPool: capped, none under ReducedMotion); at most maxActive squishies a
+-- frame (sparkleLeft: step sets it, 0 on low graphics or with Config.JoyFx off).
+local SPARKLE = JoyFx.lookSparkle
+local SPARKLES: { [number]: { rate: number, reach: number, props: { FxPool.Props } } } = {}
+for coat = 1, CoatMath.COUNT do
+	local sparkle = CoatMath.def(coat).look.sparkle
+	if sparkle then
+		local size = (SPARKLE.size[1] + SPARKLE.size[2]) / 2
+		local props: { FxPool.Props } = {}
+		for _, color in sparkle.colors do
+			table.insert(props, {
+				Texture = AssetTable.image("img.kit.sparkle") or "",
+				Color = ColorSequence.new(color),
+				Size = NumberSequence.new({
+					NumberSequenceKeypoint.new(0, 0),
+					NumberSequenceKeypoint.new(0.35, size, SPARKLE.size[2] - size),
+					NumberSequenceKeypoint.new(1, 0),
+				}),
+				Transparency = NumberSequence.new(0),
+				Lifetime = NumberRange.new(SPARKLE.lifetime[1], SPARKLE.lifetime[2]),
+				Speed = NumberRange.new(SPARKLE.speed[1], SPARKLE.speed[2]),
+				SpreadAngle = Vector2.new(180, 180),
+				Rotation = NumberRange.new(0, 360),
+				RotSpeed = NumberRange.new(-SPARKLE.rotSpeed, SPARKLE.rotSpeed),
+				LightInfluence = 0,
+				ZOffset = SPARKLE.zOffset,
+			})
+		end
+		SPARKLES[coat] = {
+			rate = sparkle.rate,
+			reach = if sparkle.inside then SPARKLE.reach.inside else SPARKLE.reach.outside,
+			props = props,
+		}
+	end
+end
+local sparkleLeft = 0
+
+local function twinkle(w: Walker, dt: number)
+	local sparkle = SPARKLES[w.look.coat]
+	if sparkle == nil or sparkleLeft <= 0 then
+		return
+	end
+	sparkleLeft -= 1
+	local t = (w.twinkle or 0) + dt * sparkle.rate
+	if t >= 1 then
+		t %= 1 -- one at a time: a long frame never bursts
+		local box, size = w.model:GetBoundingBox()
+		local offset = Vector3.new(rnd() - 0.5, rnd() - 0.5, rnd() - 0.5) * size * sparkle.reach
+		FxPool.default():emit(box.Position + offset, 1, sparkle.props[math.floor(rnd() * #sparkle.props) + 1])
+	end
+	w.twinkle = t
+end
+
 -- Pens3 phase 11: one frame of a shown pen's shelf (see the header): the show-off loops near the camera and on the
 -- screen, else (and under ReducedMotion) the rest pose, written once.
-local function stepShelf(pen: Pen, eye: Vector3, now: number, reduced: boolean, camera: Camera, tanHalf: number)
+local function stepShelf(
+	pen: Pen,
+	eye: Vector3,
+	dt: number,
+	now: number,
+	reduced: boolean,
+	camera: Camera,
+	tanHalf: number
+)
 	if next(pen.shelf) == nil then
 		return
 	end
@@ -820,6 +915,7 @@ local function stepShelf(pen: Pen, eye: Vector3, now: number, reduced: boolean, 
 		if playing then
 			local lift, turn = ShowOffTracks.poseAt(w.look.kind, now + (w.phase or 0), w.studs)
 			placeShelf(w, lift, turn)
+			twinkle(w, dt)
 		elseif w.posed then
 			placeShelf(w, 0, CFrame.identity)
 		end
@@ -919,6 +1015,8 @@ local function step(dt: number, now: number): boolean
 	local reduced = Tweens.reducedMotion()
 	local viewport = camera.ViewportSize
 	local tanHalf = math.tan(math.rad(camera.FieldOfView) / 2)
+	-- Big job item 10: this frame's look sparkles (the design: max 12 squishies, none on low graphics).
+	sparkleLeft = if JoyFx.enabled and MeshQuality.forCamera(camera) ~= "Low" then SPARKLE.maxActive else 0
 	for _, pen in pens do
 		local distance = (pen.centre - eye).Magnitude
 		local near = distance <= P.cullStuds
@@ -926,7 +1024,7 @@ local function step(dt: number, now: number): boolean
 			show(pen, near)
 		end
 		if near then
-			stepShelf(pen, eye, now, reduced, camera, tanHalf) -- pens3 phase 11
+			stepShelf(pen, eye, dt, now, reduced, camera, tanHalf) -- pens3 phase 11
 		end
 		if near and distance <= P.animateStuds and #pen.walkers > 0 then
 			local point = camera:WorldToViewportPoint(pen.centre)
@@ -941,6 +1039,7 @@ local function step(dt: number, now: number): boolean
 					if moving or w.lastLift ~= 0 then
 						place(pen, w, lift)
 					end
+					twinkle(w, dt)
 				end
 			end
 		end
@@ -1034,6 +1133,7 @@ local function currentView(): PenFormat.View
 		food = StateController.get(FIELD_FOOD), -- pens3 phase 9
 		foodId = foodId,
 		highway = StateController.get(FIELD_HIGHWAY), -- pens3 phase 13: the level cap
+		bag = StateController.get(FIELD_BAG), -- big job item 10: the coat step
 	})
 end
 
@@ -1151,11 +1251,29 @@ local function sendFood(kind: string, remote: string, key: string?, ...: any)
 	end
 end
 
+-- Big job item 10: one PenCoat (coat 0 = take the coating off, free); the feel of an accepted one.
+local function sendCoat(item: any, coat: number, price: number)
+	local result = send(REMOTE_COAT, item.id, coat, price)
+	if result and result.ok then
+		SoundController.play(SOUND_PURCHASE)
+		if coat > 0 then
+			local texts = { squishy = PenFormat.formName(item), name = Strings.coat.names[coat] }
+			NotifyController.show("coat.done", texts, "success")
+		else
+			NotifyController.show("coat.off", nil, "success")
+		end
+	end
+end
+
 -- The confirm step's confirm: what the view says to send.
 local function confirmNow()
 	local view = currentView()
 	local kind = view.confirm
-	if kind == "sell" and view.sellIds then
+	if kind == "coat" then
+		if view.coat and view.selected then
+			task.spawn(sendCoat, view.selected, view.coat.coat, view.coat.price)
+		end
+	elseif kind == "sell" and view.sellIds then
 		task.spawn(sendFor, kind, REMOTE_SELL, view.sellIds, HttpService:GenerateGUID(false))
 	elseif kind == "sellAll" then
 		task.spawn(sendFor, kind, REMOTE_SELL_ALL, HttpService:GenerateGUID(false))
@@ -1243,8 +1361,8 @@ local function onAction(id: string)
 		end
 		return
 	end
-	-- Pens3 phases 7-8: the confirm steps.
-	if id == "sell" or id == "sellAll" or id == "buyBack" or id == "fuse" then
+	-- Pens3 phases 7-8: the confirm steps (big job item 10: and the coat step).
+	if id == "sell" or id == "sellAll" or id == "buyBack" or id == "fuse" or id == "coat" then
 		confirm = id :: any
 		render()
 		return
@@ -1272,6 +1390,9 @@ local function onAction(id: string)
 	end
 	if id == "feed" then
 		task.spawn(sendFood, "feed", REMOTE_FEED, `feed:{item.id}:{item.level}`, item.id)
+		return
+	elseif id == "coatOff" then
+		task.spawn(sendCoat, item, 0, 0) -- big job item 10
 		return
 	end
 	if id == "place" then
@@ -1453,6 +1574,11 @@ function PenController.formColor(color: Color3, form: number, share: number): Co
 		return color:Lerp(RAINBOW[band], FORMS.rainbow.blend)
 	end
 	return nil
+end
+
+-- Big job item 10: a part's colour under a coating (Config/Coats' look): `blend` of the way to its tint, if it has one.
+function PenController.coatColor(color: Color3, look: any): Color3
+	return if look.tint then color:Lerp(look.tint, look.blend) else color
 end
 
 -- "+{coins}/s": the whole Coins a second of a look, x the base's INCOME boost (`boost`: SD_PenIncome; 1 when not a number).
@@ -1754,6 +1880,7 @@ function PenController.start()
 	c:add(StateController.changed("coins"):connect(render)) -- BUY BACK's missing Coins and the balance after
 	c:add(StateController.changed(FIELD_FOOD):connect(render)) -- pens3 phase 9: the food row, FEED and BUY FOOD
 	c:add(StateController.changed(FIELD_HIGHWAY):connect(render)) -- pens3 phase 13: a new biome raises the level cap
+	c:add(StateController.changed(FIELD_BAG):connect(render)) -- big job item 10: the coat step's free coatings
 	ControlsController.setPointerClaim(claim)
 	c:add(function()
 		ControlsController.setPointerClaim(nil)

@@ -19,6 +19,11 @@
 --                                           is compared, never charged: 0 for the bag and for taking off)
 --   CoatMath.zoneGift(from, to) -> {coat}   the coatings of the zones after `from` up to `to` that are a zone's
 --                                           reward (zones 3 and later: the design's "<zone> reward"), one each
+--   CoatMath.next(coat, bag, biome) -> (Change?, locked)
+--                                           the pen window's step up for a squishy wearing `coat` (0 = bare): the best
+--                                           better coating the bag holds (free), else the next coating up at its
+--                                           price, with locked = true while its zone is not reached (it cannot be
+--                                           bought yet). nil once it wears the last coating.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -90,6 +95,20 @@ function CoatMath.zoneGift(from: number, to: number): { number }
 		end
 	end
 	return list
+end
+
+function CoatMath.next(coat: any, bag: any, biome: any): (Change?, boolean)
+	local worn = if CoatMath.def(coat) then coat else 0
+	for better = CoatMath.COUNT, worn + 1, -1 do
+		if CoatMath.inBag(bag, better) > 0 then
+			return { coat = better, price = 0, fromBag = true }, false
+		end
+	end
+	local up = COATS[worn + 1]
+	if up == nil then
+		return nil, false
+	end
+	return { coat = worn + 1, price = up.price, fromBag = false }, not CoatMath.open(worn + 1, biome)
 end
 
 return CoatMath

@@ -9,6 +9,7 @@
 --   squeeze   Controllers/SqueezeFeel: the peak burst, the release pop and the big pop of the held squishy (third
 --             person; the first-person overlay keeps the design's own small sparkles, owner 2026-10-26)
 --   penCoin   Controllers/PenController: a coin hops out of each of the own pen's squishies when the pen pays
+--   lookSparkle  Controllers/PenController: a coated pen squishy's twinkle (the design's shared look sparkle)
 --   levelUp   Controllers/GripController: the Grip level-up's burst round the player (Anim/FeelFx plays `moments`)
 --   ui        UI/UiFx: the burst tiers' stars and hearts and its white core flash
 -- Every particle goes through Anim/FxPool or Anim/MoveVfx: pooled, capped by Config.Vfx.Budgets, halved on phones
@@ -82,6 +83,22 @@ local JoyFx = {
 		gravity = -48,
 		rotation = 12,
 		rotSpeed = 80,
+	},
+
+	-- Big job item 10: the lobby design's ONE shared look sparkle (kit.json effect E18 "LookSparkle": size 0.25-0.45,
+	-- 1-3 a second a squishy, max 12 active, within 60 studs, off on low graphics). Which looks twinkle, in which
+	-- colours and how often is Config/Coats' look.sparkle. One pooled particle at a time, born within `reach` of the
+	-- squishy's half size from its middle (inside = Galaxy's "stars inside the body") and drawn zOffset studs nearer
+	-- the camera, so the body never hides it. Only pens that are being animated (Config.UI.Pen.animateStuds = the
+	-- design's 60 studs).
+	lookSparkle = {
+		maxActive = 12,
+		size = { 0.25, 0.45 },
+		lifetime = { 0.45, 0.7 },
+		speed = { 0.2, 0.8 },
+		rotSpeed = 90,
+		reach = { outside = 1.05, inside = 0.6 },
+		zOffset = 1.5,
 	},
 
 	-- The Grip level-up round the player: Anim/FeelFx events (the same format as Config.MoveFx.moments); the

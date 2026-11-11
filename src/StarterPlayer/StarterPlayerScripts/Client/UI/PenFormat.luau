@@ -64,6 +64,13 @@
 --     sends PenBuyShelf with it, the sign's call); refused with the missing Coins when short, and SHELF MAX
 --     (pen.screen.shelfMax) refused with reason.pen.shelfMax once all is open; none for a pen without a shelf.
 --   walkerItem maps a walker to the pen's own spots (PenMath.inPen: BaseService's SD_Pen order).
+-- Big job item 10 (2026-11-10: the coatings; the server decides, PenCoat; a stand-in until the owner's design):
+--   a squishy's actions get COAT before FEED; it opens the coat step (Extra.confirm = "coat"; Extra.bag =
+--   StateController's coating bag; the zone reached = Extra.highway.biome, 1 without one, as PenService reads it):
+--     - the count line asks (coat.ask), the hint says what it wears (coat.wears / coat.none) and the step up
+--       (CoatMath.next: coat.next, + coat.fromBag for one from the bag; coat.best when it wears the last one);
+--     - actions: the step up as the confirm ("WAX · 1M" / "WAX · FREE"; view.coat = what to send; refused with
+--       coat.locked before its zone, else the missing Coins), TAKE OFF (coatOff) while it wears one, CANCEL.
 
 -- Services
 
@@ -73,12 +80,14 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
+local CoatMath = require(Shared.CoatMath)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local PenMath = require(Shared.PenMath)
 local Rarity = require(Shared.Rarity)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
+local WorldLayout = require(Shared.World.WorldLayout)
 
 -- Types
 
@@ -100,6 +109,8 @@ export type ActionId =
 	| "buyFew"
 	| "buyMany"
 	| "buyShelf" -- wb
+	| "coat" -- big job item 10
+	| "coatOff"
 export type Action = {
 	id: ActionId,
 	text: string,
@@ -109,7 +120,7 @@ export type Action = {
 	price: number?, -- wb: the Coins the buy shows and sends as its expectedPrice (buyShelf)
 }
 export type Spot = { slot: number, item: Types.PenItem? }
-export type ConfirmKind = "sell" | "sellAll" | "buyBack" | "fuse"
+export type ConfirmKind = "sell" | "sellAll" | "buyBack" | "fuse" | "coat"
 export type SoldCard = { id: number, item: Types.PenItem, price: number, time: string }
 -- Pens3 phase 9: a BUY FOOD card, and the request of an action (requestFor).
 export type FoodCard = { id: string, name: string, price: number, count: number, each: string, have: string }
@@ -123,6 +134,7 @@ export type Extra = {
 	food: any?, -- pens3 phase 9
 	foodId: string?,
 	highway: any?, -- pens3 phase 13: the profile's highway field (the level cap)
+	bag: any?, -- big job item 10: the coating bag
 }
 export type View = {
 	spots: { Spot },
@@ -151,6 +163,7 @@ export type View = {
 	top: Spot?,
 	topHeading: string?,
 	income: number, -- INCOME step 2: PenMath.rateBoost(pen), for cardText
+	coat: CoatMath.Change?, -- big job item 10: the coat step's confirm (PenCoat's coat and price)
 }
 export type CardText = { name: string, rate: string, level: string }
 
@@ -164,6 +177,7 @@ local FOOD = Config.Economy.Food -- pens3 phase 9
 local FOOD_BUY = SCREEN_UI.foodBuy
 local SHELF_FIRST = PEN.maxSpots + 1 -- pens3 phase 11
 local TOP_SLOT = PEN.placedMax
+local COAT = Strings.coat -- big job item 10
 
 -- Module table
 
@@ -376,6 +390,11 @@ function PenFormat.requestFor(pending: Pending?, key: string, newId: () -> strin
 	return id, { key = key, id = id }
 end
 
+-- Big job item 10: a coating's coin boost as its number ("1.5", "12").
+local function coatBoost(coat: number): string
+	return string.format("%g", PEN.coatMult[coat + 1])
+end
+
 -- The confirm step (see the header): its question, note, ids and actions; false when it cannot open.
 local function confirmView(view: View, pen: any, extra: Extra, coins: number): boolean
 	local kind = extra.confirm
@@ -445,6 +464,51 @@ local function confirmView(view: View, pen: any, extra: Extra, coins: number): b
 		view.hint = Strings.format(SCREEN.fuseNote, { level = fusion.level, rate = rate })
 			.. (if #fusion.coats > 0 then " " .. SCREEN.coatNote else "")
 		text = SCREEN.fuse
+	elseif kind == "coat" then
+		-- Big job item 10: the coat step (see the header).
+		local item = view.selected
+		if item == nil then
+			return false
+		end
+		local highway = extra.highway
+		local step, locked = CoatMath.next(item.coat, extra.bag, if type(highway) == "table" then highway.biome else 1)
+		local worn = COAT.names[item.coat]
+		local hint = if worn then Strings.format(COAT.wears, { name = worn, x = coatBoost(item.coat) }) else COAT.none
+		view.status = Strings.format(COAT.ask, { name = PenFormat.formName(item) })
+		view.actions = {}
+		if step then
+			local name = COAT.names[step.coat]
+			hint ..= " " .. Strings.format(COAT.next, { name = name, x = coatBoost(step.coat) })
+			local reason: string? = nil
+			if step.fromBag then
+				hint ..= " " .. COAT.fromBag
+			elseif locked then
+				local biome = WorldLayout.Highway.biomes[CoatMath.def(step.coat).zone]
+				local zone = if biome then Strings.resolve(biome.nameKey) else nil
+				reason = Strings.format(COAT.locked, { zone = zone or "?", name = name })
+			elseif coins < step.price then
+				reason = needCoins(step.price - coins)
+			end
+			table.insert(view.actions, {
+				id = "confirm",
+				text = Strings.format(
+					if step.fromBag then COAT.free else COAT.buy,
+					{ name = string.upper(name), price = Format.coins(step.price) }
+				),
+				kind = "primary",
+				reason = reason,
+			})
+			view.coat = step
+		else
+			hint ..= " " .. COAT.best
+		end
+		if worn then
+			table.insert(view.actions, { id = "coatOff", text = COAT.takeOff, kind = "secondary" })
+		end
+		table.insert(view.actions, { id = "cancel", text = Strings.common.cancel, kind = "cancel" })
+		view.hint = hint
+		view.confirm = kind
+		return true
 	else
 		return false
 	end
@@ -540,6 +604,7 @@ function PenFormat.view(pen: any, selectedId: number?, picking: boolean, extra: 
 			if PenFormat.fuseSet(pen, selected.id) then
 				table.insert(view.actions, { id = "fuse", text = SCREEN.fuse, kind = "secondary" })
 			end
+			table.insert(view.actions, { id = "coat", text = COAT.button, kind = "secondary" }) -- big job item 10
 			local feed, hint = feedFor(pen, more.food, selected, cap) -- pens3 phase 9
 			table.insert(view.actions, feed)
 			view.hint = hint

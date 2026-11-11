@@ -105,6 +105,17 @@ return function(t: Context)
 		expect.truthy(JoyFx.penCoin.everySeconds >= 0.5)
 	end)
 
+	t.test("the look sparkle keeps the design's limits: 12 squishies, small, short, within the total budget", function()
+		local s = JoyFx.lookSparkle
+		expect.equal(s.maxActive, 12)
+		expect.truthy(s.size[1] >= 0.25 and s.size[1] <= s.size[2] and s.size[2] <= 0.45)
+		expect.truthy(s.lifetime[1] > 0 and s.lifetime[1] <= s.lifetime[2] and s.lifetime[2] <= 1)
+		expect.truthy(s.speed[1] <= s.speed[2])
+		expect.truthy(s.reach.inside < 1 and s.reach.outside >= 1)
+		-- every squishy twinkling at the top rate still leaves most of the particle budget free
+		expect.truthy(s.maxActive * 3 * s.lifetime[2] <= Config.Vfx.Budgets.liveParticlesTotal / 3)
+	end)
+
 	t.test("the candy kit pictures have ids; the UI numbers are sane", function()
 		for _, key in { "img.kit.star", "img.kit.starGold", "img.kit.heart", "img.kit.sparkle", "img.kit.puff", "img.coin" } do
 			expect.truthy(AssetTable.image(key) ~= nil)

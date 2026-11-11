@@ -413,6 +413,11 @@ return function(t: Context)
 			expect.truthy(same(PenController.formColor(white, 2, 0.5), white:Lerp(Color3.fromHex("#8DF27A"), 0.75)))
 			expect.truthy(same(PenController.formColor(white, 2, 1), white:Lerp(Color3.fromHex("#B98CFF"), 0.75)))
 			expect.truthy(same(PenController.formColor(white, 2, -1), white:Lerp(Color3.fromHex("#FF6FA3"), 0.75)))
+			-- Big job item 10: a coating keeps the colour (the form's too) unless it has a tint: Frost 0.4 to #CFEFFF.
+			local COATS = t.requireShared("Config/Coats").list
+			local gold = Color3.fromHex("#FFC93C")
+			expect.equal(PenController.coatColor(gold, COATS[1].look), gold) -- Wax: the finish only
+			expect.truthy(same(PenController.coatColor(gold, COATS[4].look), gold:Lerp(Color3.fromHex("#CFEFFF"), 0.4)))
 		end
 	)
 	t.test(

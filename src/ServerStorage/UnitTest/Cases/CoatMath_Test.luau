@@ -8,7 +8,9 @@
 --   * a coating can be bought once its zone is reached; one in the bag is free to put on;
 --   * decision(pen, bag, biome, itemId, coat, expectedPrice): the change, or net.invalid / inventory.notOwned /
 --     coat.same / coat.zoneLocked / pen.priceChanged; coat 0 takes the coating off, for free;
---   * zoneGift(from, to): one of each coating whose zone (3 or later) lies after `from` up to `to`.
+--   * zoneGift(from, to): one of each coating whose zone (3 or later) lies after `from` up to `to`;
+--   * next(coat, bag, biome): the pen window's step up: the bag's best better coating (free), else the next coating
+--     up at its price, locked while its zone is not reached; nil for the last coating.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -51,6 +53,11 @@ return function(t: Context)
 			expect.truthy(def.look.reflectance >= 0 and def.look.reflectance <= 1)
 			expect.truthy(def.look.transparency >= 0 and def.look.transparency < 1)
 			expect.equal(CoatMath.def(coat), def)
+			local sparkle = def.look.sparkle -- the design's shared look sparkle: 1 to 3 a second a squishy
+			if sparkle then
+				expect.truthy(#sparkle.colors >= 1 and sparkle.rate >= 1 and sparkle.rate <= 3)
+			end
+			expect.equal(sparkle ~= nil, coat == 2 or coat == 4 or coat == 7) -- Glitter, Frost, Galaxy
 		end
 		expect.deepEqual(ids, { "wax", "glitter", "jelly", "frost", "chrome", "neon", "galaxy" })
 		expect.equal(COATS[1].zone, 1) -- Wax and Glitter: plain shop items
@@ -114,5 +121,25 @@ return function(t: Context)
 		expect.deepEqual(CoatMath.zoneGift(2, 5), { 3, 4, 5 }) -- a long throw through three new zones
 		expect.deepEqual(CoatMath.zoneGift(6, 8), { 7 }) -- Divine Heaven and the Gates: Galaxy
 		expect.deepEqual(CoatMath.zoneGift(7, 8), {})
+	end)
+
+	t.test("next: the best better coating in the bag for free, else the next one up; locked before its zone", function()
+		local none = table.create(CoatMath.COUNT, 0)
+		local function check(coat: any, bag: any, biome: any, want: any, wantLocked: boolean)
+			local step, locked = CoatMath.next(coat, bag, biome)
+			expect.deepEqual(step, want)
+			expect.equal(locked, wantLocked)
+		end
+		check(0, none, 1, { coat = 1, price = COATS[1].price, fromBag = false }, false)
+		check(1, none, 1, { coat = 2, price = COATS[2].price, fromBag = false }, false) -- Glitter: a shop item too
+		check(2, none, 2, { coat = 3, price = COATS[3].price, fromBag = false }, true) -- Jelly waits for Boba Lagoon
+		check(2, none, 3, { coat = 3, price = COATS[3].price, fromBag = false }, false)
+		-- the bag first: its best coating above the worn one, whatever the zone
+		check(0, { 2, 0, 0, 1, 0, 1, 0 }, 1, { coat = 6, price = 0, fromBag = true }, false)
+		check(6, { 2, 0, 0, 1, 0, 1, 0 }, 1, { coat = 7, price = COATS[7].price, fromBag = false }, true) -- none better
+		check(7, { 2, 2, 2, 2, 2, 2, 2 }, 8, nil, false) -- Galaxy is the last one
+		-- a broken coat number or bag reads as bare and empty
+		check("x", "garbage", 1, { coat = 1, price = COATS[1].price, fromBag = false }, false)
+		check(0, none, nil, { coat = 1, price = COATS[1].price, fromBag = false }, true)
 	end)
 end

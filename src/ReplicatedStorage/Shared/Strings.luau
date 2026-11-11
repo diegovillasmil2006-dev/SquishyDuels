@@ -1469,17 +1469,22 @@ local Strings = {
 	},
 
 	-- Big job item 10 (2026-11-10): the 7 coatings (the lobby design's names, kit.json > looks.coatings; index =
-	-- PenItem.coat) and the pen window's picker ([P] texts: a stand-in). {name} a coating, {x} its coin boost, {n} how
-	-- many the bag holds, {zone} a highway zone's name, {squishy} a squishy's name.
+	-- PenItem.coat) and the pen window's COAT step ([P] texts: a stand-in; UI/PenFormat). {name} a coating (ask: the
+	-- squishy; buy / free: the coating in capitals), {x} its coin boost, {price} its Coins, {zone} a highway zone's
+	-- name, {squishy} a squishy's name.
 	coat = {
 		names = { "Wax", "Glitter", "Jelly", "Frost", "Chrome", "Neon", "Galaxy" },
-		title = "COATINGS",
 		button = "COAT",
-		line = "x{x} coins",
-		inBag = "In your bag: {n}",
-		locked = "Reach {zone}",
-		wearing = "ON",
+		ask = "Coat {name}?",
+		none = "No coating yet.",
+		wears = "It wears {name}: x{x} coins.",
+		next = "{name} gives x{x} coins.",
+		fromBag = "It is in your bag: free!",
+		best = "That is the best coating!",
+		buy = "{name} · {price}",
+		free = "{name} · FREE",
 		takeOff = "TAKE OFF",
+		locked = "Reach {zone} for the {name} coating.",
 		done = "{squishy} wears {name} now!",
 		off = "The coating is back in your bag.",
 		gift = "You got a {name} coating! Put it on a squishy in MY PEN.",
