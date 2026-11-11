@@ -100,6 +100,16 @@ local function logChanges()
 	end
 end
 
+-- Big job item 8 (2026-11-10): readers of a live value (the update countdown's date) hear every load and change.
+local listeners: { () -> () } = {}
+
+local function changed()
+	logChanges()
+	for _, listener in listeners do
+		task.spawn(listener)
+	end
+end
+
 local function load(): boolean
 	local ok, result = pcall(deps.getSnapshot)
 	if not ok then
@@ -117,9 +127,9 @@ local function load(): boolean
 			log:warn("config refresh failed (the old values stay):", err)
 		end
 		table.clear(values)
-		logChanges()
+		changed()
 	end)
-	logChanges()
+	changed()
 	return true
 end
 
@@ -215,6 +225,11 @@ function SwitchService.useDeps(overrides: { [string]: any }?)
 	for feature in known do
 		known[feature] = true
 	end
+end
+
+-- Big job item 8: `listener` runs (in its own thread) after the configs load and after every change of them.
+function SwitchService.onChanged(listener: () -> ())
+	table.insert(listeners, listener)
 end
 
 -- Tests: loads the snapshot now (start() does it in the background, retrying).

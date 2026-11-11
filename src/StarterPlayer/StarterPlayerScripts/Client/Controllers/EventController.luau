@@ -33,6 +33,7 @@ local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local EVENTS = require(Shared.Config.Events)
 local EventSchedule = require(Shared.EventSchedule)
+local UpdateClock = require(Shared.UpdateClock)
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
@@ -143,11 +144,14 @@ end
 local function refresh()
 	local current = pill
 	local t = Workspace:GetServerTimeNow()
+	local state = EventSchedule.at(t)
 	if current then
-		current:setText(EventSchedule.pillText(t))
+		-- Big job item 8 (2026-11-10): while an update date is set (Workspace SD_NextUpdateAt, from the experience config
+		-- next_update) and no event is live, "Update in 2d 05h" takes turns with the event's line (UpdateClock.pill).
+		local nextUpdate = Workspace:GetAttribute(UpdateClock.ATTRIBUTE)
+		current:setText(UpdateClock.pill(EventSchedule.pillText(t), state.live, nextUpdate, t))
 		placePill()
 	end
-	local state = EventSchedule.at(t)
 	local wanted = state.live and state.kind == "candyRain" and HudController.isShown()
 	if wanted and waypoint == nil then
 		waypoint = Waypoint.show(CANDY.centre)

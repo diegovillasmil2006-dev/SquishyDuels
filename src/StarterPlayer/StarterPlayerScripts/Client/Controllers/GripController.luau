@@ -128,6 +128,7 @@ local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
 local GripMath = require(Shared.GripMath)
+local SavingsMath = require(Shared.SavingsMath)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local SqueezeLimit = require(Shared.SqueezeLimit)
@@ -179,6 +180,7 @@ export type CardModel = {
 	cardGoal: string?, -- the regular card's goal line (foam fix 2: the short grip.hudGoal* form of the same goal)
 	goalKey: string?, -- its Strings key (GripMath.Goal.textKey)
 	goalArgs: { [string]: any }?, -- its format arguments
+	saving: number?, -- big job item 8: the savings bar, Coins / the goal's price (0..1); nil with nothing to save for
 }
 
 -- The Grip panel's base size and how far below the screen's centre it sits (panelLayout, foam fix 2).
@@ -196,6 +198,8 @@ type Card = {
 	chipRow: Frame,
 	chipLabel: TextLabel,
 	goalLabel: TextLabel,
+	savingsHolder: Frame, -- big job item 8: the savings bar under the goal line (a stand-in), regular row only
+	savingsBar: ProgressBar.ProgressBar,
 	buy: TextButton, -- 2026-11-01: the buy "+" (in buySlot on the regular row, on the root's right when compact)
 	buySlot: Frame,
 	compactLabel: TextLabel,
@@ -572,6 +576,23 @@ local function buildRegular(c: Cleanup.Cleanup, body: Frame): (Frame, { [string]
 	}, "Small")
 	Theme.stickerText(goalLabel, "gripText")
 	goalLabel.TextWrapped = true
+	-- Big job item 8 (2026-11-10): the savings bar under the goal line (Coins / the goal's price; CardModel.saving). A
+	-- STAND-IN in the Grip bar's own look until the owner's Claude Design design arrives (his rule for new HUD pieces).
+	local savingsHolder: Frame = Create("Frame", {
+		Name = "Savings",
+		LayoutOrder = 3,
+		Visible = false,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(COLUMN.gripBarWidth, COLUMN.gripBarHeight),
+		Parent = regular,
+	})
+	local savingsBar = ProgressBar.new({
+		name = "SavingsBar",
+		variant = "grip",
+		widthPx = COLUMN.gripBarWidth,
+		parent = savingsHolder,
+	})
+	c:add(savingsBar)
 	return regular,
 		{
 			bar = gripBar,
@@ -579,6 +600,8 @@ local function buildRegular(c: Cleanup.Cleanup, body: Frame): (Frame, { [string]
 			chipRow = chipRow,
 			chipLabel = chipLabel,
 			goalLabel = goalLabel,
+			savingsHolder = savingsHolder,
+			savingsBar = savingsBar,
 			buySlot = buySlot,
 		}
 end
@@ -727,6 +750,8 @@ local function buildCard(c: Cleanup.Cleanup)
 		chipRow = parts.chipRow,
 		chipLabel = parts.chipLabel,
 		goalLabel = parts.goalLabel,
+		savingsHolder = parts.savingsHolder,
+		savingsBar = parts.savingsBar,
 		buy = buy,
 		buySlot = parts.buySlot,
 		compactLabel = compactLabel,
@@ -823,7 +848,8 @@ local function currentModel(): CardModel?
 	if v == nil then
 		return nil
 	end
-	return GripController.cardModel(v, serverNow(), StateController.get("pen"), StateController.coins())
+	local gear = StateController.get("gear") -- big job item 8: the savings bar also saves for gear
+	return GripController.cardModel(v, serverNow(), StateController.get("pen"), StateController.coins(), gear)
 end
 
 -- The card's own scale (its UIScale "Scale" on the root, UI FINAL R4: the row's squash; 1 without it), so its measured
@@ -922,6 +948,12 @@ local function refreshCard()
 	setLabel(k.chipLabel, model.boost)
 	-- Foam fix 2: the goal line reads the short form (cardGoal), so it keeps to one line.
 	setLabel(k.goalLabel, if compactLayout then nil else model.cardGoal)
+	-- Big job item 8: the savings bar (the regular row only: the compact one has no room for it).
+	local saving = if compactLayout then nil else model.saving
+	k.savingsHolder.Visible = saving ~= nil
+	if saving ~= nil and math.abs(k.savingsBar:get() - saving) > BAR_EPSILON then
+		k.savingsBar:set(saving, k.barSet)
+	end
 	setLabel(k.compactLabel, model.levelCompact)
 	-- The first value is set at once; later changes ease (the bar variant's fillMs, Config.UI.Sticker.bars; at once
 	-- under ReducedMotion).
@@ -1580,7 +1612,7 @@ end
 -- 66,000 reads about two thirds full; full at the top), the Double Grip chip and the next goal (pens3 phase 1: the
 -- next pen spot first when `pen` is given; foam fix 2: and its short form for the regular card, CARD_GOAL_KEYS; UI
 -- FINAL R4: the bare row's chip, boost).
-function GripController.cardModel(v: GripView, now: number, pen: any?, coins: number?): CardModel
+function GripController.cardModel(v: GripView, now: number, pen: any?, coins: number?, gear: any?): CardModel
 	local progress = GripMath.progress(v.total)
 	local lv = progress.level
 	local rank = GripMath.rankFor(lv)
@@ -1589,6 +1621,18 @@ function GripController.cardModel(v: GripView, now: number, pen: any?, coins: nu
 	local goal = GripMath.nextGoal({ total = v.total, pen = pen, coins = coins })
 	local goalArgs = if goal then GripController.goalArgs(goal) else nil
 	local minutes = restedMinutes(v, now)
+	-- Big job item 8 (2026-11-10): the savings bar. What the Coins are saved for (SavingsMath: the cheapest of the next
+	-- pen spot and the next gear steps); a gear step takes the goal line over (the pen spot keeps its own texts).
+	local saving = SavingsMath.goal(coins, pen, gear)
+	local goalKey = if goal then goal.textKey else nil
+	local goalText = if goal then text(goal.textKey, goalArgs) else nil
+	local cardGoal = if goal then text(CARD_GOAL_KEYS[goal.textKey] or goal.textKey, goalArgs) else nil
+	if saving and saving.kind ~= "pen" then
+		goalKey = if saving.ready then "savings.goalReady" else "savings.goal"
+		goalArgs = { thing = text("savings.things." .. saving.kind), need = Format.coins(saving.price) }
+		goalText = text(goalKey, goalArgs)
+		cardGoal = goalText
+	end
 	return {
 		level = lv,
 		levelText = text("grip.hudLevel", { level = lv, rank = rankText }),
@@ -1600,10 +1644,11 @@ function GripController.cardModel(v: GripView, now: number, pen: any?, coins: nu
 		fraction = math.clamp(fraction, 0, 1),
 		chip = GripController.restedChip(v, now),
 		boost = if minutes > 0 then text("hud.gripBoost", { minutes = minutes }) else nil, -- UI FINAL R4 (H:89)
-		goal = if goal then text(goal.textKey, goalArgs) else nil,
-		cardGoal = if goal then text(CARD_GOAL_KEYS[goal.textKey] or goal.textKey, goalArgs) else nil,
-		goalKey = if goal then goal.textKey else nil,
+		goal = goalText,
+		cardGoal = cardGoal,
+		goalKey = goalKey,
 		goalArgs = goalArgs,
+		saving = if saving then saving.share else nil,
 	}
 end
 
@@ -1678,7 +1723,7 @@ function GripController.init()
 	}))
 	c:add(StateController.changed("grip"):connect(onGrip))
 	-- Pens3 phase 1: the next goal follows the pen and the Coins.
-	for _, field in { "pen", "coins" } do
+	for _, field in { "pen", "coins", "gear" } do -- gear: big job item 8 (the savings bar)
 		c:add(StateController.changed(field):connect(function()
 			refreshCard()
 			refreshPanel()

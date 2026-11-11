@@ -89,6 +89,7 @@ local SERVICE_ORDER = {
 	"DailyRewardService",
 	"PerkService", -- 2026-11-10: the group members' pen boost and gift (asks Roblox on join)
 	"CodeService", -- 2026-11-10: the redeem codes (reads the live codes through SwitchService)
+	"UpdateClockService", -- 2026-11-10 (big job item 8): the update countdown's date (config next_update -> Workspace)
 	"TipService",
 	"PreferencesService",
 	"ShowOffService",

@@ -1345,6 +1345,17 @@ local Strings = {
 	-- its line ({x} = a step's power, "2" or "1.4"), MAX, the Coins still missing in place of the line ({coins} =
 	-- Format.coins), the toast of a buy ({name}). Names: the launchers the owner's (2026-10-15), arm gear and armor the owner's pick of
 	-- Claude's (2026-10-26); one a tier, zone 1 to 7.
+	-- Big job item 8 (2026-11-10): the savings bar (the HUD goal line names what the Coins are saved for when a gear
+	-- step is the cheapest next buy; pen space keeps grip.goalPen / goalPenReady; short, the line is about 21 characters:
+	-- {thing} = the gear line's word, {need} = Format.coins of its price) and the update countdown (the event pill takes
+	-- turns with it while a date is set; {time} = "2d 05h", "5h 12m", "12:05").
+	savings = {
+		goal = "Next: {thing} {need}",
+		goalReady = "Buy {thing} · READY!",
+		things = { held = "launcher", platform = "launcher", arm = "arm gear", armor = "armor" },
+		update = "Update in {time}",
+		updateLive = "NEW UPDATE!",
+	},
 	gear = {
 		tabShop = "SHOP",
 		tabGear = "GEAR",

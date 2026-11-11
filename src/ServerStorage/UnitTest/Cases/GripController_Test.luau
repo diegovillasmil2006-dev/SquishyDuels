@@ -232,6 +232,54 @@ return function(t: Context)
 		expect.falsy(GripController.shouldSquash(rise, 150, 150))
 	end)
 
+	-- Big job item 8 (2026-11-10): the savings bar under the goal line.
+	t.test("the savings bar: Coins / the cheapest next buy; a gear step takes the goal line over", function()
+		local GearMath = t.requireShared("GearMath")
+		local PenMath = t.requireShared("PenMath")
+		local Format = t.requireShared("Util/Format")
+		local firstSpot: number?, lastSpot: number? = nil, nil
+		for spot = 1, 100 do
+			if PenMath.spotPrice(spot) ~= nil then
+				firstSpot = firstSpot or spot
+				lastSpot = spot
+			end
+		end
+		-- no pen, no gear known (the older calls): no bar, the goal line as before
+		expect.equal(GripController.cardModel(view(0), NOW).saving, nil)
+		-- the pen spot: its own texts, the bar at Coins / price
+		local penPrice = PenMath.spotPrice(firstSpot)
+		local pen = GripController.cardModel(view(0), NOW, { spots = (firstSpot :: number) - 1 }, penPrice / 2)
+		expect.equal(pen.goalKey, "grip.goalPen")
+		expect.near(pen.saving, 0.5, 1e-9)
+		-- a full pen: the cheapest gear step is the goal, named by its line's word
+		local cheapest, line = math.huge, ""
+		for _, l in GearMath.LINES do
+			if GearMath.price(l, 1) < cheapest then
+				cheapest, line = GearMath.price(l, 1), l
+			end
+		end
+		local fullPen = { spots = lastSpot :: number }
+		local args = { thing = Strings.savings.things[line], need = Format.coins(cheapest) }
+		local saving = GripController.cardModel(view(0), NOW, fullPen, cheapest / 4, {})
+		expect.equal(saving.goalKey, "savings.goal")
+		expect.equal(saving.goal, s("savings.goal", args))
+		expect.equal(saving.cardGoal, saving.goal)
+		expect.near(saving.saving, 0.25, 1e-9)
+		local ready = GripController.cardModel(view(0), NOW, fullPen, cheapest, {})
+		expect.equal(ready.goalKey, "savings.goalReady")
+		expect.equal(ready.goal, s("savings.goalReady", args))
+		expect.equal(ready.saving, 1)
+		expect.truthy(#ready.goal <= 24) -- one line of the card
+		-- everything bought: no bar, the Grip goal again
+		local fullGear: { [string]: number } = {}
+		for _, l in GearMath.LINES do
+			fullGear[l] = GearMath.maxStep(l)
+		end
+		local done = GripController.cardModel(view(0), NOW, fullPen, 1e12, fullGear)
+		expect.equal(done.saving, nil)
+		expect.equal(done.goalKey, "grip.goalRank")
+	end)
+
 	t.test("a new player's card: Lv 1, the bar toward Lv 2 and Firm Grip as the next goal", function()
 		local model = GripController.cardModel(view(0, GRIP.Rested.burst), NOW)
 		expect.equal(model.level, 1)
