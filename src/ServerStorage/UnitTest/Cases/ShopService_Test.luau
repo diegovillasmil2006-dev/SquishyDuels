@@ -146,6 +146,9 @@ return function(t: Context)
 			publishStock = function(text: string)
 				table.insert(w.published, text)
 			end,
+			seasonOn = function(): boolean
+				return w.seasonOn == true -- big job item 11
+			end,
 		})
 		return w
 	end
@@ -193,6 +196,32 @@ return function(t: Context)
 		expect.equal(#profile.pen.items, 3) -- Kitty Bread and two Toasts
 		expect.equal(#profile.shopLog, 2)
 		expect.equal(w.saves, 2)
+	end)
+
+	-- Big job item 11 (2026-11-10): the seasonal squishies (Catalog `event`, Config/Christmas.prices).
+	t.test("a seasonal squishy is for sale only while its event is on, at the event's own price", function()
+		local Christmas = t.requireShared("Config/Christmas")
+		local price = Christmas.prices.gingersnap_elk
+		local w = setup()
+		local p, profile = readyPlayer(w, price + 5)
+		-- the event is off: not for sale, whatever the price sent
+		refused(ShopService.buy(p, "gingersnap_elk", price, REQ_A), "shop.notForSale")
+		refused(ShopService.buy(p, "peppermint_puffin", 0, REQ_A), "shop.notForSale")
+		expect.equal(profile.coins, price + 5)
+		expect.equal(profile.owned.gingersnap_elk, nil)
+		-- the event is on: sold at its price (no Welcome price), added like any squishy
+		w.seasonOn = true
+		refused(ShopService.buy(p, "gingersnap_elk", price - 1, REQ_A), "shop.priceChanged")
+		local result = ShopService.buy(p, "gingersnap_elk", price, REQ_A)
+		expect.deepEqual(result, { ok = true, data = { squishyId = "gingersnap_elk", charged = true, savePending = false } })
+		expect.equal(profile.coins, 5)
+		expect.deepEqual(profile.owned.gingersnap_elk, { at = NOW, src = "shop" })
+		expect.equal(profile.pen.items[2].kind, "gingersnap_elk") -- it walks in the pen
+		-- the event ends: it stays owned, and no more are sold
+		w.seasonOn = false
+		w.clock.advance(5)
+		refused(ShopService.buy(p, "gingersnap_elk", price, REQ_B), "shop.notForSale")
+		expect.deepEqual(profile.owned.gingersnap_elk, { at = NOW, src = "shop" })
 	end)
 
 	t.test("refusals in order, each with charged = false and no Coin change", function()

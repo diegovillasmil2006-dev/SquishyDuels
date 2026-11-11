@@ -1504,6 +1504,15 @@ local Strings = {
 		gift = "You got a {name} coating! Put it on a squishy in MY PEN.",
 	},
 
+	-- Big job item 11 (2026-11-10): the Christmas event (Config/Christmas, Shared/Seasons; [P] texts). {time} the time
+	-- left ("5d 03h"). `note`: the BUY confirm of a Christmas squishy (seasonal, not exclusive: it comes back).
+	season = {
+		christmas = {
+			pill = "Christmas: {time} left",
+			note = "A Christmas squishy: it comes back every Christmas.",
+		},
+	},
+
 	-- Big job item 10: the forever item (Config/Jumbo; the pen window's JUMBO step, UI/PenFormat; [P] texts: a
 	-- stand-in). {name} the squishy, {x} the coin boost, {price} its Coins, {n} of {max} the Jumbo squishies owned.
 	jumbo = {

@@ -178,7 +178,7 @@ end
 function InventoryService.ownedIds(player: any): { string }
 	local profile = getDeps().data.getProfile(player)
 	local list: { string } = {}
-	for _, def in Catalog.list() do
+	for _, def in Catalog.all() do -- big job item 11: an owned seasonal squishy counts all year
 		if ownsIn(profile, def.id) then
 			table.insert(list, def.id)
 		end

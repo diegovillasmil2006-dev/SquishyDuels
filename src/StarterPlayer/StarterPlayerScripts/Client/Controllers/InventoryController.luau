@@ -137,6 +137,7 @@
 local GuiService = game:GetService("GuiService")
 local HttpService = game:GetService("HttpService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
 
 -- Requires
 
@@ -147,6 +148,7 @@ local Config = require(Shared.Config)
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
 local Pricing = require(Shared.Pricing)
+local Seasons = require(Shared.Seasons) -- big job item 11
 local RarityStyle = require(Shared.Art.RarityStyle)
 local Strings = require(Shared.Strings)
 
@@ -337,9 +339,14 @@ local popConfirmBack: (() -> ())? = nil
 local congrats: CongratsOverlay.CongratsOverlay? = nil
 local popCongratsBack: (() -> ())? = nil
 
+-- Big job item 11: whether the seasonal event is on now (Shared/Seasons; the server's clock).
+local function seasonOn(): boolean
+	return Seasons.isOn(Workspace:GetAttribute(Seasons.ATTRIBUTE), Workspace:GetServerTimeNow())
+end
+
 local function currentEntries(): { InventoryFormat.Entry }
 	return InventoryFormat.entries(
-		Catalog.list(),
+		Seasons.defs(StateController.owned(), seasonOn()), -- a seasonal squishy: only on sale or owned
 		StateController.owned(),
 		StateController.equipped(),
 		StateController.isNewOwned
@@ -478,7 +485,7 @@ local function applyCardSize()
 		return
 	end
 	local nameWidth, footer = 0, 0
-	for _, def in Catalog.list() do
+	for _, def in Catalog.all() do
 		nameWidth = math.max(nameWidth, Theme.textWidth(nameOf(def.id), TEXT_KIND) + MEASURE_MARGIN_PX)
 		footer = math.max(footer, RarityTag.measurePill(def.rarity, "card").pillHeight)
 	end
@@ -616,7 +623,7 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 		pending = pendingEquip,
 		confirmed = confirmedEquip,
 	})
-	d.find.root.Visible = state == "notOwned"
+	d.find.root.Visible = state == "notOwned" and def.event == nil -- big job item 11: a seasonal one is in no box
 	d.equipped.root.Visible = state == "equipped"
 	d.equip.root.Visible = state ~= "notOwned" and state ~= "equipped"
 	if state == "notOwned" then
@@ -630,7 +637,7 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 		d.equip:setState("loading") -- keeps its text and its place
 	end
 	-- The coin BUY (owner 2026-10-22): the old shop's BUY for this squishy, under the button row.
-	local price = Pricing.shopPrice(entry.id, entry.owned)
+	local price = Pricing.shopPrice(entry.id, entry.owned, seasonOn())
 	local coins = StateController.coins() or 0
 	local block =
 		ShopFormat.spendBlock(StateController.dataStatus(), StateController.isLobbyLocked(), StateController.get("pen"))
@@ -725,6 +732,13 @@ local function refreshGrid(list: { InventoryFormat.Entry })
 		visibleIds[entry.id] = index
 	end
 	local bySlot: { [number]: Card } = {}
+	-- Big job item 11: a seasonal squishy's card shows only while it is in the list (on sale, or owned).
+	for _, def in Catalog.seasonal(Seasons.EVENT) do
+		local card = cards[def.id]
+		if card then
+			card.root.Visible = false
+		end
+	end
 	for _, entry in list do
 		local card = cards[entry.id]
 		if card then
@@ -975,7 +989,7 @@ local function openBuy()
 	if id == nil or view == nil or view.mode ~= "buy" or buying ~= nil or confirmDialog ~= nil then
 		return -- "off" or disabled: the Button played ui.error and the shake (P11)
 	end
-	local price = Pricing.shopPrice(id, StateController.owns(id))
+	local price = Pricing.shopPrice(id, StateController.owns(id), seasonOn())
 	if price == nil then
 		return
 	end
@@ -983,7 +997,9 @@ local function openBuy()
 	local dialog = ConfirmDialog.open({
 		layer = promptLayer(),
 		title = nameOf(squishyId),
-		description = ConfirmDialog.balanceText(StateController.coins() or 0, cost),
+		-- Big job item 11: a seasonal squishy says so before the buy (it is not exclusive: it comes back).
+		description = (if (Catalog.get(squishyId) :: any).event ~= nil then Strings.season.christmas.note .. " " else "")
+			.. ConfirmDialog.balanceText(StateController.coins() or 0, cost),
 		price = cost,
 		catalogId = squishyId,
 		scale = UIController.scale(),
@@ -1834,7 +1850,7 @@ local function build(parent: Instance): GuiObject
 		Parent = gridFrame,
 	})
 	grid = gridFrame
-	for _, def in Catalog.list() do
+	for _, def in Catalog.all() do -- big job item 11: the seasonal ones too (refreshGrid hides them)
 		buildCard(c, gridFrame, def.id)
 	end
 	local empty = StatePill.new({ name = "Empty", text = "", parent = left })
@@ -2022,6 +2038,7 @@ function InventoryController.init()
 		end))
 	end
 	c:add(StateController.Loaded:connect(refresh))
+	c:add(Workspace:GetAttributeChangedSignal(Seasons.ATTRIBUTE):Connect(refresh)) -- big job item 11
 	c:add(StateController.NewOwnedChanged:connect(refresh))
 	c:add(StateController.LobbyLockChanged:connect(refresh))
 	-- Fix batch: the Collected pill hides while another screen is over Squishies (after the stack changes).

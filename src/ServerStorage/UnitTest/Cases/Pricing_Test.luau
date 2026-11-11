@@ -161,4 +161,19 @@ return function(t: Context)
 			end
 		end
 	end)
+
+	-- Big job item 11 (2026-11-10): the seasonal squishies.
+	t.test("shopPrice: a seasonal squishy costs its event's price while the event is on, and is not sold otherwise", function()
+		local Christmas = t.requireShared("Config/Christmas")
+		for id, price in Christmas.prices do
+			expect.equal(Pricing.shopPrice(id, {}), nil)
+			expect.equal(Pricing.shopPrice(id, {}, false), nil)
+			expect.equal(Pricing.shopPrice(id, {}, "yes"), nil) -- only true turns it on
+			expect.equal(Pricing.shopPrice(id, {}, true), price) -- no Welcome price: the first one costs the same
+			expect.equal(Pricing.shopPrice(id, { [id] = { at = 1, src = "shop" } }, true), price)
+			expect.equal(Pricing.ceiling(id), nil) -- in no box
+		end
+		-- a year-round squishy's price does not follow the event
+		expect.equal(Pricing.shopPrice("toast", { toast = { at = 1, src = "shop" } }, true), Pricing.shopPrice("toast", { toast = { at = 1, src = "shop" } }))
+	end)
 end

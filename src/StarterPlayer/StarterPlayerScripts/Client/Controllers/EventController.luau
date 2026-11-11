@@ -34,9 +34,13 @@ local Config = require(Shared.Config)
 local EVENTS = require(Shared.Config.Events)
 local EventSchedule = require(Shared.EventSchedule)
 local UpdateClock = require(Shared.UpdateClock)
+local Seasons = require(Shared.Seasons) -- big job item 11
+local AssetTable = require(Shared.AssetTable)
+local SNOW = require(Shared.Config.Christmas).snow
 local Strings = require(Shared.Strings)
 
 local Client = script.Parent.Parent
+local MeshQuality = require(Client.Anim.MeshQuality)
 local Tweens = require(Client.Anim.Tweens)
 local WellPill = require(Client.UI.Components.WellPill)
 local Waypoint = require(Client.UI.Waypoint)
@@ -141,6 +145,51 @@ local function refreshBoosts()
 	placePill()
 end
 
+-- Big job item 11: snow while the Christmas event is on (Config/Christmas.snow): one emitter that follows the camera.
+local snow: Part? = nil
+
+local function refreshSnow(t: number)
+	local camera = Workspace.CurrentCamera
+	local wanted = camera ~= nil
+		and Seasons.isOn(Workspace:GetAttribute(Seasons.ATTRIBUTE), t)
+		and HudController.isShown()
+		and not Tweens.reducedMotion()
+		and MeshQuality.forCamera(camera) ~= "Low"
+	if wanted and snow == nil then
+		local part = Instance.new("Part")
+		part.Name = "SD_Snow"
+		part.Anchored = true
+		part.CanCollide, part.CanQuery, part.CanTouch = false, false, false
+		part.Transparency = 1
+		part.Size = Vector3.new(SNOW.areaStuds, 1, SNOW.areaStuds)
+		local flakes = Instance.new("ParticleEmitter")
+		flakes.Name = "Flakes"
+		flakes.Texture = AssetTable.image("img.kit.puff") or ""
+		flakes.EmissionDirection = Enum.NormalId.Bottom
+		flakes.Rate = SNOW.rate
+		flakes.Lifetime = NumberRange.new(SNOW.lifetime[1], SNOW.lifetime[2])
+		flakes.Speed = NumberRange.new(SNOW.speed[1], SNOW.speed[2])
+		flakes.SpreadAngle = Vector2.new(SNOW.spreadDeg, SNOW.spreadDeg)
+		flakes.Acceleration = SNOW.drift
+		flakes.Size = NumberSequence.new(SNOW.sizeStuds[1], SNOW.sizeStuds[2])
+		flakes.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0, 1),
+			NumberSequenceKeypoint.new(0.1, 0.1),
+			NumberSequenceKeypoint.new(0.85, 0.1),
+			NumberSequenceKeypoint.new(1, 1),
+		})
+		flakes.Rotation = NumberRange.new(0, 360)
+		flakes.RotSpeed = NumberRange.new(-40, 40)
+		flakes.LightInfluence = 0
+		flakes.Parent = part
+		part.Parent = camera
+		snow = part
+	elseif not wanted and snow ~= nil then
+		snow:Destroy()
+		snow = nil
+	end
+end
+
 local function refresh()
 	local current = pill
 	local t = Workspace:GetServerTimeNow()
@@ -149,9 +198,12 @@ local function refresh()
 		-- Big job item 8 (2026-11-10): while an update date is set (Workspace SD_NextUpdateAt, from the experience config
 		-- next_update) and no event is live, "Update in 2d 05h" takes turns with the event's line (UpdateClock.pill).
 		local nextUpdate = Workspace:GetAttribute(UpdateClock.ATTRIBUTE)
-		current:setText(UpdateClock.pill(EventSchedule.pillText(t), state.live, nextUpdate, t))
+		local text = UpdateClock.pill(EventSchedule.pillText(t), state.live, nextUpdate, t)
+		-- Big job item 11: while the Christmas event is on, its line takes a few seconds of every turn too.
+		current:setText(Seasons.pill(text, state.live, Workspace:GetAttribute(Seasons.ATTRIBUTE), t))
 		placePill()
 	end
+	refreshSnow(t) -- big job item 11
 	local wanted = state.live and state.kind == "candyRain" and HudController.isShown()
 	if wanted and waypoint == nil then
 		waypoint = Waypoint.show(CANDY.centre)
@@ -173,6 +225,10 @@ end
 local function animate()
 	local t = Workspace:GetServerTimeNow()
 	local still = Tweens.reducedMotion()
+	local camera = Workspace.CurrentCamera
+	if snow and camera then
+		snow.Position = camera.CFrame.Position + Vector3.new(0, SNOW.heightStuds, 0)
+	end
 	for model, drop in drops do
 		if model.Parent == nil then
 			drops[model] = nil
@@ -261,6 +317,10 @@ function EventController.init()
 			waypoint = nil
 		end
 		table.clear(drops)
+		if snow then
+			snow:Destroy()
+			snow = nil
+		end
 		pill = nil
 		table.clear(boosts)
 		table.clear(boostPills)

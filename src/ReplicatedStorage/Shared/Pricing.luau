@@ -16,6 +16,9 @@
 --                                      Plan "50 squishies": only a squishy with no boxMult (the Soft Box's Commons) has
 --                                      a Welcome price; a zone box's Common costs its full price from the first one.
 --                                      Config/ValidatePen keeps every Welcome price at or below the shopPrice.
+--                                      Big job item 11: shopPrice(id, owned, seasonOn): a SEASONAL squishy (Catalog
+--                                      `event`) costs Config/Christmas.prices[id] while seasonOn == true, and is not
+--                                      sold (nil) otherwise; it has no Welcome price.
 -- Pens3 phase 5: copies replaced the duplicate refund (Pricing.duplicateRefund is gone).
 --
 -- Integer math only: floor(a / b) of whole numbers is (a // b), and the floor of a minimum is the minimum of the
@@ -26,6 +29,7 @@
 local Boxes = require(script.Parent.Boxes)
 local Catalog = require(script.Parent.Catalog)
 local Config = require(script.Parent.Config)
+local SEASON = require(script.Parent.Config.Christmas) -- big job item 11: the seasonal squishies' prices
 
 -- Module table
 
@@ -51,8 +55,12 @@ function Pricing.ceiling(id: string): number?
 	return best
 end
 
-function Pricing.shopPrice(id: unknown, owned: unknown): number?
+function Pricing.shopPrice(id: unknown, owned: unknown, seasonOn: unknown): number?
 	local def = Catalog.get(id)
+	if def ~= nil and def.event ~= nil then
+		-- Big job item 11: a seasonal squishy is sold only while its event is on, at the event's own price.
+		return if seasonOn == true and def.event == SEASON.event then SEASON.prices[def.id] else nil
+	end
 	local price = if def then def.shopPrice else nil
 	if def == nil or price == nil then
 		return nil

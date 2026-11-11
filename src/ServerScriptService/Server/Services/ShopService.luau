@@ -54,6 +54,7 @@ local EventSchedule = require(Shared.EventSchedule)
 local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
 local Pricing = require(Shared.Pricing)
+local Seasons = require(Shared.Seasons) -- big job item 11
 local Types = require(Shared.Types)
 local Validate = require(Shared.Util.Validate)
 local Services = script.Parent
@@ -91,6 +92,8 @@ export type Deps = {
 	clock: () -> number, -- os.clock: the per-player spacing
 	serverNow: () -> number, -- Workspace:GetServerTimeNow: which restock is live
 	publishStock: (text: string) -> (), -- the SD_RestockStock attribute
+	-- Big job item 11: whether the seasonal event is on now (Shared/Seasons); absent in older fakes = off.
+	seasonOn: (() -> boolean)?,
 }
 
 -- Constants
@@ -154,6 +157,9 @@ local function defaultDeps(): Deps
 		publishStock = function(text: string)
 			Workspace:SetAttribute(ATTR_STOCK, text)
 		end,
+		seasonOn = function(): boolean
+			return Seasons.isOn(Workspace:GetAttribute(Seasons.ATTRIBUTE), os.time())
+		end,
 	}
 end
 
@@ -216,7 +222,9 @@ local function buyLocked(player: any, squishyId: unknown, expectedPrice: unknown
 		return refuse(CODE_INVALID)
 	end
 	local id = def.id
-	if def.shopPrice == nil or disabled[id] ~= nil then
+	-- Big job item 11: a seasonal squishy is on sale only while its event is on (Pricing.shopPrice decides).
+	local seasonOn = d.seasonOn ~= nil and d.seasonOn() == true
+	if Pricing.shopPrice(id, nil, seasonOn) == nil or disabled[id] ~= nil then
 		return refuse(CODE_NOT_FOR_SALE)
 	end
 	if Validate.coins(expectedPrice) == nil then
@@ -233,7 +241,7 @@ local function buyLocked(player: any, squishyId: unknown, expectedPrice: unknown
 		local stored = if type(prior.squishy) == "string" then prior.squishy else id
 		return NetService.ok(resultFrom(stored, true, data.savePending(player)))
 	end
-	local price = Pricing.shopPrice(id, profile.owned) :: number -- sold (step 2), so never nil
+	local price = Pricing.shopPrice(id, profile.owned, seasonOn) :: number -- sold (step 2), so never nil
 	if expectedPrice ~= price then
 		return refuse(CODE_PRICE_CHANGED)
 	end
