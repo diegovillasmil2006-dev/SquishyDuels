@@ -489,7 +489,9 @@ local function settle(player: any, session: Session, fire: boolean)
 	end
 	local rings = HighwayMath.ringsHit(plan)
 	local sv = PenMath.squeezeValue(profile.pen)
-	local coins = deps.grantCoins(player, HighwayMath.landingCoins(sv, studs, #rings), COIN_REASON)
+	-- "ball": the BOUNCY BALL toy (big job item 10; Config/Income) multiplies a landing's Coins (whole Coins).
+	local landing = math.floor(HighwayMath.landingCoins(sv, studs, #rings) * PenMath.incomeMult(profile.pen, "ball"))
+	local coins = deps.grantCoins(player, landing, COIN_REASON)
 	local grip = deps.addGrip(player, H.pay.grip)
 
 	local before = savedHighway(profile)

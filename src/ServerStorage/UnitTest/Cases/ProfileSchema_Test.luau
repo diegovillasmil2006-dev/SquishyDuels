@@ -1609,6 +1609,28 @@ return function(t: Context)
 		expect.equal(n, 0)
 	end)
 
+	-- Big job item 10 (2026-11-10): the 4 toys (Config/Income's toy lines, saved in pen.income) --------------------
+
+	t.test("toy levels join pen.income without a new version: a pen saved before has none, unlogged", function()
+		local older = load(FIXTURE_V1).profile :: any
+		older.pen.income = { coins = 3, all = 1 } -- saved before the toys
+		local result = load(older)
+		expect.deepEqual(result.problems, {})
+		expect.deepEqual(result.profile.pen.income, { coins = 3, all = 1 }) -- no toy line is written
+		local kept = load(FIXTURE_V1).profile :: any
+		kept.pen.income = { coins = 3, all = 1, duck = 4, ball = 10, ring = 0, top = 2 }
+		local again = load(kept)
+		expect.deepEqual(again.problems, {})
+		expect.deepEqual(again.profile.pen.income, { coins = 3, all = 1, duck = 4, ball = 10, ring = 0, top = 2 })
+		-- a broken toy level is fixed and logged like the others
+		local broken = load(FIXTURE_V1).profile :: any
+		broken.pen.income = { coins = 0, all = 0, duck = 99, top = "x" }
+		local fixed, problems = ProfileSchema.sanitize(broken, { now = NOW })
+		expect.equal(fixed.pen.income.duck, 10)
+		expect.equal(fixed.pen.income.top, 0)
+		expect.equal(notesAbout(problems, "pen.income"), 2)
+	end)
+
 	-- Big job item 10 (2026-11-10): the Gear Box's cards and Golden gear ------------------------------------------
 
 	t.test("gear cards and Golden join without a new version: an older gear gets none, unlogged; a saved one is kept", function()

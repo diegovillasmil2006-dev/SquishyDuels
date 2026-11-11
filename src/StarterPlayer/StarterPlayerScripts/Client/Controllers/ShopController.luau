@@ -158,6 +158,7 @@ local REMOTE_INCOME = "PenBuyIncome" -- INCOME step 2
 local REMOTE_GRIP = "GripBuy" -- 2026-10-31 buy Grip: the INCOME tab's third card
 local REMOTE_RESTOCK = "ShopRestockBuy" -- 2026-10-31 shop restock
 local PAGE_SHOP, PAGE_GEAR, PAGE_INCOME, PAGE_RESTOCK = "shop", "gear", "income", "restock"
+local PAGE_TOYS = "toys" -- big job item 10: the 4 toys (IncomeFormat.toyCards; bought like INCOME levels)
 local ATTR_STOCK = "SD_RestockStock" -- ShopService's stock of the live restock (EventSchedule.stockText)
 local RESTOCK = require(Shared.Config.Events).ShopRestock
 local RESTOCK_SLOTS = RESTOCK.goldenOffers + RESTOCK.rareOffers
@@ -205,6 +206,9 @@ local gearBusy: string? = nil
 -- INCOME step 2: the INCOME page and its 2 cards (gearBusy holds their line while one is bought: no line is shared).
 local incomePage: Frame? = nil
 local incomeCards: { GearCard } = {}
+-- Big job item 10: the TOYS page and its 4 cards.
+local toysPage: Frame? = nil
+local toyCards: { GearCard } = {}
 -- 2026-10-31 shop restock: the RESTOCK page, its cards, its wait line, and the slots bought (slot -> restock index).
 local restockPage: Frame? = nil
 local restockCards: { GearCard } = {}
@@ -715,6 +719,14 @@ local function paintGear()
 			paintGearCard(card, view)
 		end
 	end
+	-- Big job item 10: the 4 toys' cards.
+	local toyViews = IncomeFormat.toyCards(StateController.get("pen"), if type(coins) == "number" then coins else nil, gearBusy)
+	for index, card in toyCards do
+		local view = toyViews[index]
+		if view then
+			paintGearCard(card, view)
+		end
+	end
 	-- 2026-10-31 shop restock: the live restock's cards, else the wait line.
 	local now = Workspace:GetServerTimeNow()
 	local index = EventSchedule.restockAt(now)
@@ -909,7 +921,11 @@ local function buildCardPage(
 	remote: string,
 	list: { GearCard }
 ): Frame
-	local pageName = if id == PAGE_GEAR then "Gear" elseif id == PAGE_RESTOCK then "Restock" else "Income"
+	local pageName = if id == PAGE_GEAR
+		then "Gear"
+		elseif id == PAGE_RESTOCK then "Restock"
+		elseif id == PAGE_TOYS then "Toys"
+		else "Income"
 	local pageFrame: Frame = Create("Frame", {
 		Name = pageName .. "Page",
 		BackgroundTransparency = 1,
@@ -1010,7 +1026,10 @@ end
 
 -- Shows a page and paints the picked tab (the cards rise in on GEAR and INCOME, like the shop's on open).
 local function setPage(id: string)
-	page = if id == PAGE_GEAR or id == PAGE_INCOME or id == PAGE_RESTOCK then id else PAGE_SHOP
+	page = if id == PAGE_GEAR or id == PAGE_INCOME or id == PAGE_RESTOCK or id == PAGE_TOYS then id else PAGE_SHOP
+	if toysPage then
+		toysPage.Visible = page == PAGE_TOYS
+	end
 	if shopPage then
 		shopPage.Visible = page == PAGE_SHOP
 	end
@@ -1028,7 +1047,11 @@ local function setPage(id: string)
 		picker:select(page)
 	end
 	if page ~= PAGE_SHOP then
-		local cards = if page == PAGE_GEAR then gearCards elseif page == PAGE_RESTOCK then restockCards else incomeCards
+		local cards = if page == PAGE_GEAR
+			then gearCards
+			elseif page == PAGE_RESTOCK then restockCards
+			elseif page == PAGE_TOYS then toyCards
+			else incomeCards
 		for index, card in cards do
 			MotionTrack.play(
 				card.rise,
@@ -1076,6 +1099,14 @@ local function buildTabs(c: Cleanup.Cleanup): SegmentedTabs.SegmentedTabs
 				chip = "",
 				short = Strings.income.tab,
 				stops = stops(spec.income),
+				rotation = spec.rotation,
+			},
+			{
+				id = PAGE_TOYS, -- big job item 10: the 4 toys
+				label = Strings.income.toysTab,
+				chip = "",
+				short = Strings.income.toysTab,
+				stops = stops(spec.toys),
 				rotation = spec.rotation,
 			},
 			{
@@ -1835,6 +1866,18 @@ local function build(parent: Instance): GuiObject
 			card.remote = REMOTE_GRIP -- 2026-10-31 buy Grip: its own remote
 		end
 	end
+	toysPage = buildCardPage( -- big job item 10: the 4 toys, bought like INCOME levels
+		c,
+		body,
+		columnLeft,
+		columnW,
+		bodyH,
+		PAGE_TOYS,
+		Strings.income.toysSection,
+		IncomeFormat.TOYS,
+		REMOTE_INCOME,
+		toyCards
+	)
 	restockPage = buildRestockPage(c, body, columnLeft, columnW, bodyH) -- 2026-10-31 shop restock
 	setPage(page)
 
@@ -1901,7 +1944,7 @@ function ShopController.debugState(): { [string]: any }
 		gear = (function(): { any }
 			local list = {}
 			-- INCOME step 2: then coins, all; 2026-10-31: then the RESTOCK cards shown (1..4)
-			for _, cards in { gearCards, incomeCards, restockCards } do
+			for _, cards in { gearCards, incomeCards, restockCards, toyCards } do
 				for _, card in cards do
 					local view = card.view
 					if view and card.root.Visible then
@@ -2002,6 +2045,8 @@ function ShopController.init()
 		tabs, shopPage, gearPage, gearPower, gearBusy, page = nil, nil, nil, nil, nil, PAGE_SHOP
 		table.clear(incomeCards) -- INCOME step 2
 		incomePage = nil
+		table.clear(toyCards) -- big job item 10
+		toysPage = nil
 		for _, card in restockCards do -- 2026-10-31 shop restock
 			if card.image then
 				card.image:destroy()

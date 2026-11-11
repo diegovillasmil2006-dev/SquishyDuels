@@ -520,11 +520,21 @@ end
 
 function PenMath.incomeMult(pen: any, line: string): number
 	local def = INCOME[line]
-	return if def then def.boost ^ PenMath.incomeLevel(pen, line) else 1
+	if def == nil then
+		return 1
+	end
+	local level = PenMath.incomeLevel(pen, line)
+	local full = (def :: any).full
+	if full then
+		-- a toy (big job item 10): from its full boost, so the last level is exactly that (boost ^ 10 is 1.9999999...)
+		return full ^ (level / #def.prices)
+	end
+	return def.boost ^ level
 end
 
 function PenMath.rateBoost(pen: any): number
-	return PenMath.incomeMult(pen, "coins") * PenMath.incomeMult(pen, "all")
+	-- "duck": the RUBBER DUCK toy (big job item 10; Config/Income), on top of SQUISHY COINS
+	return PenMath.incomeMult(pen, "coins") * PenMath.incomeMult(pen, "all") * PenMath.incomeMult(pen, "duck")
 end
 
 function PenMath.incomePrice(line: any, level: any): number?
@@ -552,7 +562,8 @@ function PenMath.incomeDecision(pen: any, line: any, expectedPrice: any): (Incom
 end
 
 function PenMath.squeezeGrip(pen: any): number
-	return math.floor(PenMath.squeezeValue(pen))
+	-- "ring": the SQUEAKY RING toy (big job item 10; Config/Income) multiplies every Grip gain
+	return math.floor(PenMath.squeezeValue(pen) * PenMath.incomeMult(pen, "ring"))
 end
 
 function PenMath.rewardCoins(squeezes: number, value: number): number

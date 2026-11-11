@@ -6,7 +6,7 @@
 -- prices a non-empty list of whole Coins in [1, maxCoins], strictly rising.
 
 local I = "Config.Economy.Income"
-local LINES = { "coins", "all" }
+local LINES = { "coins", "all", "duck", "ball", "ring", "top" } -- the last four: the toys (big job item 10)
 
 local function isWhole(v: unknown): boolean
 	return type(v) == "number" and v == v and v ~= math.huge and v ~= -math.huge and math.floor(v) == v

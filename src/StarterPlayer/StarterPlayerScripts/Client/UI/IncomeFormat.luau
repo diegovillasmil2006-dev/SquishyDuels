@@ -40,6 +40,9 @@ local LINES = { "coins", "all" }
 
 local IncomeFormat = {}
 
+-- Big job item 10: the toys' lines, in the TOYS tab's order (squishy coins, highway coins, Grip, duel coins).
+IncomeFormat.TOYS = table.freeze({ "duck", "ball", "ring", "top" })
+
 -- Public
 
 function IncomeFormat.multText(x: number): string
@@ -48,41 +51,56 @@ function IncomeFormat.multText(x: number): string
 	return (string.gsub(text, "%.$", ""))
 end
 
+-- One line's card (an INCOME line or a toy): its next level, the boost now -> after, its price and state.
+local function lineCard(pen: any, line: string, have: number, busyLine: string?): GearFormat.Card
+	local def = INCOME[line]
+	local levels = #def.prices
+	local level = PenMath.incomeLevel(pen, line)
+	local max = level >= levels
+	local price = PenMath.incomePrice(line, level + 1)
+	local state: GearFormat.CardState = if max
+		then "max"
+		elseif busyLine == line then "busy"
+		elseif have >= (price :: number) then "buy"
+		else "needCoins"
+	return {
+		line = line,
+		name = (S.names :: any)[line],
+		tier = math.min(level + 1, levels),
+		stars = 0,
+		steps = 0,
+		desc = if max
+			then S.maxLine
+			else Strings.format(
+				(S.lines :: any)[line],
+				{
+					now = IncomeFormat.multText(def.boost ^ level),
+					next = IncomeFormat.multText(def.boost ^ (level + 1)),
+				}
+			),
+		price = price,
+		state = state,
+		missing = if state == "needCoins" then (price :: number) - have else 0,
+		color = (GearShop.income.colors :: any)[line],
+		icon = (GearShop.income.icons :: any)[line],
+	}
+end
+
+-- Big job item 10 (2026-11-10): the shop's TOYS tab: the 4 toys (Config/Income's toy lines), each for its next level.
+function IncomeFormat.toyCards(pen: any, coins: number?, busyLine: string?): { GearFormat.Card }
+	local have = if type(coins) == "number" and coins == coins then coins else 0
+	local list: { GearFormat.Card } = {}
+	for _, line in IncomeFormat.TOYS do
+		table.insert(list, lineCard(pen, line, have, busyLine))
+	end
+	return list
+end
+
 function IncomeFormat.cards(pen: any, coins: number?, busyLine: string?, grip: number?): { GearFormat.Card }
 	local have = if type(coins) == "number" and coins == coins then coins else 0
 	local list: { GearFormat.Card } = {}
 	for _, line in LINES do
-		local def = INCOME[line]
-		local levels = #def.prices
-		local level = PenMath.incomeLevel(pen, line)
-		local max = level >= levels
-		local price = PenMath.incomePrice(line, level + 1)
-		local state: GearFormat.CardState = if max
-			then "max"
-			elseif busyLine == line then "busy"
-			elseif have >= (price :: number) then "buy"
-			else "needCoins"
-		table.insert(list, {
-			line = line,
-			name = (S.names :: any)[line],
-			tier = math.min(level + 1, levels),
-			stars = 0,
-			steps = 0,
-			desc = if max
-				then S.maxLine
-				else Strings.format(
-					(S.lines :: any)[line],
-					{
-						now = IncomeFormat.multText(def.boost ^ level),
-						next = IncomeFormat.multText(def.boost ^ (level + 1)),
-					}
-				),
-			price = price,
-			state = state,
-			missing = if state == "needCoins" then (price :: number) - have else 0,
-			color = (GearShop.income.colors :: any)[line],
-			icon = (GearShop.income.icons :: any)[line],
-		})
+		table.insert(list, lineCard(pen, line, have, busyLine))
 	end
 	if type(grip) == "number" then
 		local level = GripMath.levelFor(grip)

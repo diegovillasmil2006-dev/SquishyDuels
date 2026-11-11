@@ -1169,6 +1169,23 @@ return function(t: Context)
 		finish()
 	end)
 
+	-- Big job item 10: the BOUNCY BALL toy (Config/Income's `ball` line, saved in pen.income) multiplies a landing's Coins.
+	t.test("the Bouncy Ball toy multiplies a landing's Coins (whole Coins); no ball = as before", function()
+		local plain = fresh()
+		throwAndLand(plain, plain.a)
+		local base = lastLanding(plain).coins
+		expect.truthy(base > 0)
+		finish()
+		local w = fresh()
+		w.profiles[w.a].pen.income = { coins = 0, all = 0, ball = 10 } -- a full ball: x2
+		throwAndLand(w, w.a)
+		local landing = lastLanding(w)
+		expect.equal(landing.studs, lastLanding(plain).studs) -- the same throw
+		expect.equal(landing.coins, math.floor(base * PenMath.incomeMult(w.profiles[w.a].pen, "ball")))
+		expect.near(landing.coins, base * 2, 1)
+		finish()
+	end)
+
 	t.test("Golden armor goes through the traps of one more zone", function()
 		expect.equal(GearMath.armor({ armor = 2 }), 2)
 		expect.equal(GearMath.armor({ armor = 2, gold = { armor = 2 } }), 3)

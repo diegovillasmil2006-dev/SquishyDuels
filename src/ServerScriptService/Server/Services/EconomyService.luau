@@ -630,7 +630,9 @@ function EconomyService.grantDuelResult(
 			addStat(profile, "eliminations", eliminations)
 		end
 		if squeezes > 0 then
-			grant.coins = addCoinsTo(profile, EconomyService.rewardCoins(profile, squeezes), reason)
+			-- "top": the SPINNING TOP toy (big job item 10; Config/Income) multiplies a duel's or a match's Coins.
+			local pay = math.floor(EconomyService.rewardCoins(profile, squeezes) * PenMath.incomeMult(profile.pen, "top"))
+			grant.coins = addCoinsTo(profile, pay, reason)
 			after = profile.coins
 		end
 	end)

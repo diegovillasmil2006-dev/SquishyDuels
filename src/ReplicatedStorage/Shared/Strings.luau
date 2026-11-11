@@ -1435,8 +1435,27 @@ local Strings = {
 	income = {
 		tab = "INCOME",
 		section = "INCOME",
-		names = { coins = "Squishy Coins", all = "All Earnings", grip = "Grip" },
-		lines = { coins = "x{now} -> x{next} squishy coins", all = "x{now} -> x{next} on everything" },
+		-- Big job item 10 (2026-11-10): the 4 toys (the owner's names, 2026-10-15) share this table: duck, ball, ring,
+		-- top; `toysTab` / `toysSection` name their shop tab.
+		names = {
+			coins = "Squishy Coins",
+			all = "All Earnings",
+			grip = "Grip",
+			duck = "Rubber Duck",
+			ball = "Bouncy Ball",
+			ring = "Squeaky Ring",
+			top = "Spinning Top",
+		},
+		lines = {
+			coins = "x{now} -> x{next} squishy coins",
+			all = "x{now} -> x{next} on everything",
+			duck = "x{now} -> x{next} squishy coins",
+			ball = "x{now} -> x{next} highway coins",
+			ring = "x{now} -> x{next} Grip",
+			top = "x{now} -> x{next} duel coins",
+		},
+		toysTab = "TOYS",
+		toysSection = "TOYS",
 		maxLine = "Fully upgraded!",
 		bought = "{name} is now level {level}!",
 		-- 2026-10-31 buy Grip: the GRIP card (IncomeFormat), its line and its max line.

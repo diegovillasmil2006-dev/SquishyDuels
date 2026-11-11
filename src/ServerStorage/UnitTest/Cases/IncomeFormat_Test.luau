@@ -126,4 +126,46 @@ return function(t: Context)
 		expect.equal(top.tier, Config.Grip.maxLevel)
 		expect.equal(top.desc, S.gripMax)
 	end)
+
+	-- Big job item 10 (2026-11-10): the shop's TOYS tab: the 4 toys, in the gear card's shape.
+	t.test("toyCards: Rubber Duck, Bouncy Ball, Squeaky Ring, Spinning Top, each for its next level", function()
+		expect.deepEqual(IncomeFormat.TOYS, { "duck", "ball", "ring", "top" })
+		local AssetTable = t.requireShared("AssetTable")
+		local step = 2 ^ (1 / 10)
+		local cards = IncomeFormat.toyCards(pen(), 2_000_000, nil)
+		expect.equal(#cards, 4)
+		local names = {}
+		for index, card in cards do
+			names[index] = card.name
+			expect.equal(card.line, IncomeFormat.TOYS[index])
+			expect.equal(card.tier, 1) -- the level it buys
+			expect.equal(card.price, 2_000_000)
+			expect.equal(card.state, "buy")
+			expect.truthy(Palette[card.color] ~= nil)
+			expect.truthy(AssetTable.image(card.icon) ~= nil) -- a picture the game has
+		end
+		expect.deepEqual(names, { "Rubber Duck", "Bouncy Ball", "Squeaky Ring", "Spinning Top" })
+		expect.equal(cards[1].desc, "x1 -> x" .. IncomeFormat.multText(step) .. " squishy coins")
+		expect.equal(cards[2].desc, "x1 -> x1.07 highway coins")
+		expect.equal(cards[3].desc, "x1 -> x1.07 Grip")
+		expect.equal(cards[4].desc, "x1 -> x1.07 duel coins")
+		-- a toy with levels: the boost now -> after, the next price; short of Coins; busy; full
+		local owned = pen()
+		owned.income.ring = 9
+		owned.income.top = 10
+		local later = IncomeFormat.toyCards(owned, 5, "duck")
+		expect.equal(later[1].state, "busy")
+		expect.equal(later[2].state, "needCoins")
+		expect.equal(later[2].missing, 2_000_000 - 5)
+		expect.equal(later[3].tier, 10)
+		expect.equal(later[3].desc, "x" .. IncomeFormat.multText(step ^ 9) .. " -> x2 Grip")
+		expect.equal(later[3].price, INCOME.ring.prices[10])
+		expect.equal(later[4].state, "max")
+		expect.equal(later[4].price, nil)
+		expect.equal(later[4].desc, S.maxLine)
+		-- the INCOME tab keeps its own cards: no toy on it
+		for _, card in IncomeFormat.cards(pen(), 1e30, nil, nil) do
+			expect.equal(table.find(IncomeFormat.TOYS, card.line), nil)
+		end
+	end)
 end

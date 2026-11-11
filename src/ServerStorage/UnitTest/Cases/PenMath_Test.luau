@@ -1219,4 +1219,58 @@ return function(t: Context)
 		refused(incomePen(20, 0, {}), "coins", 1, "pen.incomeMax")
 		refused(incomePen(0, 0, {}), "coins", 499_999, "pen.priceChanged")
 	end)
+
+	-- Big job item 10 (2026-11-10): the 4 toys (Config/Income's toy lines: duck, ball, ring, top) ----------------------
+	-- Each is 10 levels of x 2^(1/10) (a full toy is x2) on one price list (2M x9 a level), bought and saved like an
+	-- INCOME line. The duck boosts what the squishies earn, the ring every Grip gain; the ball and the top are applied
+	-- by HighwayService and EconomyService (their own tests).
+	local TOY_PRICES = { 2e6, 18e6, 160e6, 1.5e9, 13e9, 120e9, 1.1e12, 9.6e12, 86e12, 770e12 }
+	local TOYS = { "duck", "ball", "ring", "top" }
+
+	t.test("toys: 10 levels each on one price list, x2 when full; a pen saved before the toys has none", function()
+		for _, toy in TOYS do
+			for level, price in TOY_PRICES do
+				expect.equal(PenMath.incomePrice(toy, level), price)
+			end
+			expect.equal(PenMath.incomePrice(toy, #TOY_PRICES + 1), nil)
+			expect.equal(Config.Economy.Income[toy].toy, true)
+			local old = incomePen(3, 2, {}) -- income = {coins, all}: no toy line
+			expect.equal(PenMath.incomeLevel(old, toy), 0)
+			expect.equal(PenMath.incomeMult(old, toy), 1)
+			local full = incomePen(0, 0, {})
+			full.income[toy] = #TOY_PRICES
+			expect.near(PenMath.incomeMult(full, toy), 2, 1e-9)
+			full.income[toy] = 99 -- past the last level counts as the last
+			expect.near(PenMath.incomeMult(full, toy), 2, 1e-9)
+			-- bought like an INCOME line: the next level at its price
+			expect.deepEqual(PenMath.incomeDecision(old, toy, 2e6), { line = toy, level = 1, price = 2e6 })
+			local none, why = PenMath.incomeDecision(full, toy, 1)
+			expect.equal(none, nil)
+			expect.equal(why, "pen.incomeMax")
+		end
+		-- the two INCOME lines are not toys
+		expect.equal(Config.Economy.Income.coins.toy, nil)
+		expect.equal(Config.Economy.Income.all.toy, nil)
+	end)
+
+	t.test("toys: the Rubber Duck boosts what the squishies earn, the Squeaky Ring every Grip gain", function()
+		local step = 2 ^ (1 / 10)
+		local dragon = incomePen(2, 3, { item("dragon") })
+		dragon.income.duck = 4
+		expect.near(PenMath.rate(dragon), 2560 * 1.07 ^ 2 * 1.05 ^ 3 * step ^ 4, 1e-6)
+		expect.near(PenMath.rateBoost(dragon), 1.07 ^ 2 * 1.05 ^ 3 * step ^ 4, 1e-12)
+		-- the duck never touches the squeeze value (what rewards counted in squeezes pay)
+		expect.near(PenMath.squeezeValue(dragon), 2560 * 1.05 ^ 3, 1e-6)
+		-- the ring: Grip only
+		local ringed = incomePen(0, 0, { item("dragon") })
+		ringed.income.ring = 10
+		expect.equal(PenMath.squeezeGrip(ringed), math.floor(2560 * 2 + 1e-6))
+		expect.equal(PenMath.squeezeValue(ringed), 2560)
+		expect.equal(PenMath.rate(ringed), 2560)
+		-- the ball and the top change neither (their services apply them)
+		local other = incomePen(0, 0, { item("dragon") })
+		other.income.ball, other.income.top = 10, 10
+		expect.equal(PenMath.rate(other), 2560)
+		expect.equal(PenMath.squeezeGrip(other), 2560)
+	end)
 end

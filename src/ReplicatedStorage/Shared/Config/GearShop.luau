@@ -10,15 +10,34 @@ local GearShop = {
 		shop = { top = "StickerPinkTop", bottom = "StickerPinkEnd" },
 		gear = { top = "StickerGoldTop", bottom = "StickerGoldEnd" },
 		income = { top = "StickerMintTop", bottom = "StickerMintEnd" }, -- INCOME step 2
+		toys = { top = "StickerPinkTop", bottom = "StickerPinkEnd" }, -- big job item 10: the TOYS tab
 		restock = { top = "StickerGoldTop", bottom = "StickerGoldEnd" }, -- 2026-10-31 shop restock
 		rotation = 90,
 	},
 	-- INCOME step 2: the INCOME cards' tile colours (Palette tokens; UI/IncomeFormat), SQUISHY COINS and ALL EARNINGS.
 	-- 2026-11-01 (restyle part 2, owner "All 3 cards"): each card's picture (AssetTable keys, Diego's hud-icons: the
 	-- coin, the coin stack, the Grip blob) on its tile, the level in a badge (`tile.badge`).
+	-- Big job item 10 (2026-11-10): the 4 toys' cards on the TOYS tab share these tables; their pictures are stand-ins
+	-- from the game's own icons (what each toy boosts) until the toys get their own drawings.
 	income = {
-		colors = { coins = "Lemon", all = "UIMint", grip = "StickerGripTop" }, -- grip: 2026-10-31 buy Grip
-		icons = { coins = "img.coin", all = "img.pack.1000", grip = "img.icon.grip" },
+		colors = {
+			coins = "Lemon",
+			all = "UIMint",
+			grip = "StickerGripTop", -- grip: 2026-10-31 buy Grip
+			duck = "Lemon",
+			ball = "CandyCyan",
+			ring = "StickerGripTop",
+			top = "CandyLavender",
+		},
+		icons = {
+			coins = "img.coin",
+			all = "img.pack.1000",
+			grip = "img.icon.grip",
+			duck = "img.coin",
+			ball = "img.icon.gift",
+			ring = "img.icon.grip",
+			top = "img.icon.gift",
+		},
 	},
 	-- 2026-10-31 shop restock: the RESTOCK cards' tile colours by deal (Palette tokens; UI/RestockFormat).
 	restock = { colors = { golden = "StickerGoldTop", rainbow = "StickerBoxSweetTop", rare = "UIMint" } },

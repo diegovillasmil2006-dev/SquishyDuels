@@ -500,7 +500,10 @@ local function fixPen(d: any, catalog: CatalogLike, now: number, problems: { str
 	if pen.income ~= nil then
 		local income = ensureTable(pen, "income", noIncome, "pen.income", problems)
 		for line, def in INCOME do
-			fixInt(income, line, 0, #def.prices, 0, `pen.income.{line}`, problems)
+			-- Big job item 10: a toy's line joined later; a pen saved before has none (it reads 0: nothing is broken).
+			if not ((def :: any).toy and income[line] == nil) then
+				fixInt(income, line, 0, #def.prices, 0, `pen.income.{line}`, problems)
+			end
 		end
 	end
 	local rate = pen.awayRate -- nil only before reconcile (it fills 0)

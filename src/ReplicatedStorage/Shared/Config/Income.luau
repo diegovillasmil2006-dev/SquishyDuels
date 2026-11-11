@@ -63,4 +63,35 @@ local Income = {
 	},
 }
 
+-- Big job item 10 (2026-11-10): the 4 TOYS (the owner 2026-10-15: "Toys: Bouncy Ball, Squeaky Ring, Rubber Duck,
+-- Spinning Top"; 2026-10-18: "Toys come in BOTH kinds: some boost a squishy (coins), some boost you (throws, Grip,
+-- duel pay)"). The old plan's paper is lost (it only survives as "Squeaky Ring 2" in Config/Grip), so the rest is
+-- Claude's call (vault page "Big job 2026-11" > My calls): each toy is one more line of this table (`toy = true`),
+-- bought and saved exactly like the two above (PenBuyIncome, profile.pen.income; a line a save does not have reads
+-- 0), one for each kind of earning:
+-- * duck (RUBBER DUCK): what the squishies earn (PenMath.rate), on top of SQUISHY COINS;
+-- * ball (BOUNCY BALL): the Coins of a highway landing (HighwayService);
+-- * ring (SQUEAKY RING): Grip from squeezes, matches and the highway (PenMath.squeezeGrip);
+-- * top (SPINNING TOP): the Coins of a duel or a match (EconomyService's duel grant).
+-- 10 levels of x 2^(1/10) each, so a full toy is x2 (the old "Ring 2"), on one price list: 2M x9 a level. Dearer per
+-- percent than the lines above on purpose: a toy is a luxury sink, and no toy moves the tuned gear and zone times
+-- by more than its x2 at the very end (LihFolk vault: derive prices from one income model; cap each boost bucket).
+local TOY_BOOST = 2 ^ (1 / 10)
+local TOY_PRICES = {
+	2_000_000,
+	18_000_000,
+	160_000_000,
+	1_500_000_000,
+	13_000_000_000,
+	120_000_000_000,
+	1_100_000_000_000,
+	9_600_000_000_000,
+	86_000_000_000_000,
+	770_000_000_000_000,
+}
+for _, toy in { "duck", "ball", "ring", "top" } do
+	-- `full`: the boost with every level bought (PenMath.incomeMult counts a toy from it, so it is exactly x2)
+	(Income :: any)[toy] = { boost = TOY_BOOST, full = 2, prices = table.clone(TOY_PRICES), toy = true }
+end
+
 return Income

@@ -695,6 +695,24 @@ return function(t: Context)
 		expect.equal(EconomyService.rewardCoins({}, 100), 1_000)
 	end)
 
+	-- Big job item 10 (2026-11-10): the SPINNING TOP toy (Config/Income's `top` line, saved in pen.income) multiplies a
+	-- duel's or a match's Coins; every other reward counted in squeezes stays as it is.
+	t.test("the Spinning Top toy multiplies a duel's Coins (whole Coins), and only those", function()
+		local w = setup()
+		local player, profile = readyPlayer(w, 0)
+		table.insert(profile.pen.items, penItem(2, "butter", 0, 1, 0, 2)) -- 30 a squeeze
+		profile.pen.income = { coins = 0, all = 0, top = 5 }
+		local half = 2 ^ (5 / 10)
+		local grant = EconomyService.grantDuelResult(player, "m-top", "win", duelResult("win", 600, 7, "m-top"))
+		expect.equal(grant.coins, math.floor(600 * 30 * half))
+		expect.equal(profile.coins, math.floor(600 * 30 * half))
+		expect.equal(EconomyService.rewardCoins(profile, 600), 600 * 30) -- a daily reward, a quest, a code: no top
+		-- a full top doubles it
+		profile.pen.income.top = 10
+		local full = EconomyService.grantDuelResult(player, "m-top2", "win", duelResult("win", 600, 8, "m-top2"))
+		expect.near(full.coins, 600 * 30 * 2, 1)
+	end)
+
 	t.test("at the top squeeze value a duel win still pays in full, and Coins stop at maxCoins", function()
 		local w = setup()
 		local player, profile = readyPlayer(w, 0)
