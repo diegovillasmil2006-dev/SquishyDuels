@@ -5,8 +5,9 @@
 --   * cards(gear, coins, busyLine?): one card a line (held, platform, arm, armor) for the NEXT step: its piece's name
 --     ("Lolli Sling", then "Lolli Sling ★2" for a star), its tier, the stars bought in that tier and the tier's steps
 --     (the tile's pips; armor: none), its line ("x2 throw power", tiers 6-7 "x1.4 throw power", armor "Go through
---     traps"), its price, the tier's zone colour token and the state: buy / needCoins (with the Coins missing) / busy (a
---     buy of that line on its way) / max (all bought: the last piece, no price);
+--     traps"), its price, the tier's zone colour token, the name of the tier's 3D model (big job item 9, 2026-11-10:
+--     the tile pictures it) and the state: buy / needCoins (with the Coins missing) / busy (a buy of that line on its
+--     way) / max (all bought: the last piece, no price);
 --   * powerText(gear): the gear's throw power multiplier ("x16");
 --   * trailTier(gear): the held launcher's tier (0 = none): the throw's trail colour;
 --   * every gear piece has its decided name (Decisions 2026-10-15 and 2026-10-26).
@@ -76,6 +77,7 @@ return function(t: Context)
 				state = "buy",
 				missing = 0,
 				color = BIOMES[1].nameColor,
+				model = "held_1", -- big job item 9: the piece's own 3D model on the tile
 			})
 			expect.equal(c.platform.name, "Gumdrop Catapult")
 			expect.equal(c.platform.price, 18_000)
@@ -92,6 +94,7 @@ return function(t: Context)
 				state = "buy",
 				missing = 0,
 				color = BIOMES[1].nameColor,
+				model = "armor_1",
 			})
 		end
 	)
@@ -113,6 +116,11 @@ return function(t: Context)
 		expect.equal(c.arm.price, 6e12 / 2)
 		expect.equal(c.armor.name, "Ice Shell")
 		expect.equal(c.armor.tier, 4)
+		-- big job item 9: each card pictures the model of the tier it sells (a star keeps its tier's model)
+		expect.equal(c.held.model, "held_1")
+		expect.equal(c.platform.model, "platform_2")
+		expect.equal(c.arm.model, "arm_6")
+		expect.equal(c.armor.model, "armor_4")
 	end)
 
 	t.test("cards: short of Coins says how many are missing; a buy on its way is busy", function()

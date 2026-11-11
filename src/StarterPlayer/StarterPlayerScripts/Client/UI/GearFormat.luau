@@ -5,7 +5,8 @@
 --   cards(gear, coins, busyLine?) -> { Card }  one card a GearMath line, in GearMath.LINES order, for its NEXT step:
 --                                             the piece's name (with "★n" on a star step), its tier, the stars bought
 --                                             in that tier and the tier's steps (the tile's pips; armor: none), its
---                                             line, its price and the tier's zone colour token; state buy /
+--                                             line, its price, the tier's zone colour token and its 3D model's
+--                                             name (Shared/GearLooks.modelName, big job item 9); state buy /
 --                                             needCoins (missing = the Coins still short; no Coins known = none) /
 --                                             busy (busyLine's buy on its way) / max (all bought: the last piece, no
 --                                             price, Strings.gear.maxLine)
@@ -21,6 +22,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local GearLooks = require(Shared.GearLooks) -- big job item 9: the models' names
 local GearMath = require(Shared.GearMath)
 local Strings = require(Shared.Strings)
 local WorldLayout = require(Shared.World.WorldLayout)
@@ -43,6 +45,7 @@ export type Card = {
 	squishy: string?, -- 2026-10-31 RESTOCK tab: this squishy's picture on the tile instead of the tier number
 	maxText: string?, -- 2026-10-31 RESTOCK tab: the "max" chip's text (SOLD OUT / BOUGHT), else Strings.gear.max
 	icon: string?, -- 2026-11-01 INCOME tab: a picture (AssetTable key) on the tile, the tier in a badge
+	model: string?, -- 2026-11-10 (big job item 9): the piece's 3D model on the tile (its name in SD_Gear), the tier in a badge
 }
 
 -- Constants
@@ -97,6 +100,7 @@ local function card(gear: any, line: string, coins: number, busyLine: string?): 
 		state = state,
 		missing = if state == "needCoins" then (price :: number) - coins else 0,
 		color = BIOMES[tier].nameColor,
+		model = GearLooks.modelName(line, tier),
 	}
 end
 

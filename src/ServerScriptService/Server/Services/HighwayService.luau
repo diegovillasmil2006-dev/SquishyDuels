@@ -54,6 +54,9 @@
 --   server starts empty.
 -- * Gear step 2 (2026-10-26; owner: "Build the gear next", "Traps + armor now", the prices of Config/Gear): a throw's
 --   power is also x GearMath.multiplier(profile.gear) (before PERFECT).
+-- * The gear's looks (big job item 9, 2026-11-10): the tiers a player owns are public as the Player attribute SD_Gear
+--   (Shared/GearLooks.pack: one number), written when the player joins, when the profile loads or changes status and
+--   after every gear buy; every client dresses that player from it (Client/Controllers/GearLooksController).
 -- * The course (2026-11-06, owner: "investigate hit a golf ball and do it like them"; Config.Economy.Highway.course;
 --   replaces the trap and booster rolls of 2026-10-26 / 10-31): the traps and boosters stand on the lane all the time
 --   (start(): deps.buildCourse: Workspace.SD_HighwayCourse from Art/HighwayTraps and Art/HighwayBoosters, Persistent: the
@@ -87,6 +90,7 @@ local Shared = ReplicatedStorage.Shared
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
 local Format = require(Shared.Util.Format)
+local GearLooks = require(Shared.GearLooks) -- big job item 9: the public SD_Gear attribute
 local GearMath = require(Shared.GearMath)
 local HighwayMath = require(Shared.HighwayMath)
 local HighwayBoosters = require(Shared.Art.HighwayBoosters)
@@ -139,6 +143,8 @@ export type Deps = {
 	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
 	spots: () -> { HighwayMath.Spot }, -- the course: Config's spots
 	buildCourse: () -> (), -- the course: stands them on the lane
+	showGear: (player: any, tiers: number) -> (), -- item 9: writes the Player attribute SD_Gear (GearLooks.pack)
+	watchProfiles: (handler: (player: any) -> ()) -> (), -- item 9: the data port's onLoaded and onStatusChanged
 }
 
 -- What the remote answers: NetService.ok(Types.HighwayPlan) or NetService.err(reason, false).
@@ -350,10 +356,26 @@ local function defaultDeps(): Deps
 			return H.course.spots
 		end,
 		buildCourse = standCourse,
+		showGear = function(player: any, tiers: number)
+			if typeof(player) == "Instance" then
+				(player :: Instance):SetAttribute(GearLooks.ATTRIBUTE, tiers)
+			end
+		end,
+		watchProfiles = function(handler: (player: any) -> ())
+			local port = StateService.dataPort()
+			port.onLoaded(handler)
+			port.onStatusChanged(handler)
+		end,
 	}
 end
 
 local deps: Deps = defaultDeps()
+
+-- Big job item 9: what everyone sees this player wear: the tiers owned, as one public number (no profile yet: none).
+local function publishGear(player: any)
+	local profile = deps.profileOf(player)
+	deps.showGear(player, GearLooks.pack(if type(profile) == "table" then profile.gear else nil))
+end
 
 local function sessionOf(player: any): Session
 	local session = sessions[player]
@@ -696,6 +718,7 @@ function HighwayService.buyGear(player: any, line: any, expectedPrice: any): Gea
 	end
 	log:info(`user {userIdOf(player)} bought {line} step {decision.step} for {decision.price} Coins`)
 	deps.markDirty(player, FIELD_GEAR)
+	publishGear(player) -- item 9: a new tier shows on the player at once
 	local data: Types.GearResult = {
 		gear = table.clone(deps.profileOf(player).gear), -- copied before the save yields
 		charged = true,
@@ -742,6 +765,7 @@ function HighwayService.init()
 	NetService.onInvoke(GEAR_REMOTE, function(player: Player, line: any, expectedPrice: any): any
 		return HighwayService.buyGear(player, line, expectedPrice)
 	end)
+	deps.watchProfiles(publishGear) -- item 9
 end
 
 function HighwayService.start()
@@ -751,6 +775,7 @@ end
 
 function HighwayService.playerAdded(player: Player)
 	sessionOf(player)
+	publishGear(player) -- item 9: a profile that finished loading before this hook ran
 end
 
 -- An open flight lands at once (paid, no HighwayLanded: the player is leaving), then the session goes.

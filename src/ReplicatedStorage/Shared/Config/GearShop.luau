@@ -28,7 +28,12 @@ local GearShop = {
 	-- A gear card's tile: the tier number (a Sticker text role) over the stars bought (dots `pipPx`, a tier of 8 steps
 	-- the smaller ones, `pipGap` apart, `pipBottom` up from the tile's bottom), the zone colour darkened by `endShade`
 	-- towards ink at the bottom. A tile with a picture (INCOME) shows the tier in a small CountBadge (`badge`: its accent,
-	-- base px its corner sits outside the tile's bottom right).
+	-- base px its corner sits outside the tile's bottom right). Big job item 9 (2026-11-10): a gear card's tile shows
+	-- the piece's own 3D model (ReplicatedStorage.SD_Gear, a still ViewportFrame) with the tier in that badge; `model`:
+	-- the camera's turn and height round the model in degrees (UI/Components/StaticIcon.viewDirection), a little from
+	-- the side and above so a flat launcher shows its shape, and `fill`: the share of the tile the model's bounds
+	-- take (the vault's icon rule: fill computed from bounds, about 82%). No model in the place: the tier number as
+	-- before.
 	tile = {
 		numberRole = "packAmount",
 		pipPx = 9,
@@ -37,6 +42,7 @@ local GearShop = {
 		pipBottom = 10,
 		endShade = 0.25,
 		badge = { accent = "plum", out = 6 },
+		model = { yaw = 35, pitch = 18, fill = 0.86 },
 	},
 	-- The page's power line under the cards (a Sticker text role).
 	powerRole = "confirmDesc",

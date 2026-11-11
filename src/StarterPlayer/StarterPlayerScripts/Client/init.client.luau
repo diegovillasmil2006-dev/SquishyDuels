@@ -115,6 +115,7 @@ local CONTROLLER_ORDER = {
 	"MatchController",
 	"MatchHudController",
 	"MatchLooksController", -- 2026-11-10 (big job item 7): team tags and rings, power-ups and spawn protection on fighters
+	"GearLooksController", -- 2026-11-10 (big job item 9): every player's launcher, arm gear and armor models
 	"AbilityBarController", -- Duel HUD part 2 (2026-10-24): the Catch / Ultimate / Dash bar of duels, TDM and FFA
 	"UltReadyTagController",
 	"PerfController", -- 2026-10-31: the small ping + FPS number (LihFolk check)

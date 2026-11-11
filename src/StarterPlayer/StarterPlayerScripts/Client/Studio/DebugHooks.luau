@@ -1125,6 +1125,16 @@ local COMMANDS: { [string]: (...any) -> Reply } = {
 		state.ok = true
 		return state
 	end,
+	-- Big job item 9 (2026-11-10): "gearLooks" -> GearLooksController.debugState(): the gear every player shows here.
+	gearLooks = function(): Reply
+		local read = functionOf(optionalModule("Controllers", "GearLooksController"), "debugState")
+		if read == nil then
+			return missing("GearLooksController.debugState")
+		end
+		local state = read()
+		state.ok = true
+		return state
+	end,
 }
 
 local function onInvoke(command: unknown, ...: any): Reply

@@ -91,6 +91,8 @@ return function(t: Context)
 		spends: { { player: any, amount: number, reason: string } },
 		nowSaves: number,
 		saveOk: boolean,
+		shown: { [any]: number }, -- item 9: what deps.showGear wrote last, by player
+		watch: ((player: any) -> ())?, -- item 9: the handler deps.watchProfiles was given
 	}
 
 	local function noFood(): any
@@ -150,9 +152,17 @@ return function(t: Context)
 			spends = {},
 			nowSaves = 0,
 			saveOk = true,
+			shown = {},
+			watch = nil,
 		}
 		HighwayService.reset()
 		HighwayService.useDeps({
+			showGear = function(player: any, tiers: number)
+				w.shown[player] = tiers
+			end,
+			watchProfiles = function(handler: (player: any) -> ())
+				w.watch = handler
+			end,
 			statusOf = function(player: any): string
 				return w.status[player] or "loading"
 			end,
@@ -1008,6 +1018,43 @@ return function(t: Context)
 		expect.equal(w.profiles[w.a].coins, 100_000 - 18_000 - 9_000 - 9_000 - 40_000)
 		-- Another player's gear is never touched.
 		expect.deepEqual(w.profiles[w.b].gear, { held = 0, platform = 0, arm = 0, armor = 0 })
+		finish()
+	end)
+
+	-- Big job item 9 (2026-11-10): the gear's looks. What a player owns is public as one number (GearLooks.pack: a
+	-- digit a line, the tier owned), so every client can dress that player.
+	t.test("the gear a player owns is shown to everyone: on join, on a profile load and after every buy", function()
+		local GearLooks = t.requireShared("GearLooks")
+		local w = fresh()
+		expect.equal(w.shown[w.a], 0) -- playerAdded: nothing owned
+		w.profiles[w.a].coins = 100_000
+		expect.equal(HighwayService.buyGear(w.a, "held", 18_000).ok, true)
+		expect.equal(w.shown[w.a], 1000) -- held tier 1
+		expect.equal(HighwayService.buyGear(w.a, "armor", 9_000).ok, true)
+		expect.equal(w.shown[w.a], 1001)
+		expect.equal(w.shown[w.b], 0)
+		-- a refused buy shows nothing new
+		expectRefused(HighwayService.buyGear(w.a, "held", 1), "gear.priceChanged")
+		expect.equal(w.shown[w.a], 1001)
+		-- init hands the data port a handler: a profile that loads (or changes status) later is shown too
+		local NetService: any = t.requireServer("Services/NetService")
+		local real = NetService.onInvoke
+		NetService.onInvoke = function(): () -> ()
+			return function() end
+		end
+		local ok, why = pcall(HighwayService.init)
+		NetService.onInvoke = real
+		expect.truthy(ok, why)
+		expect.truthy(w.watch ~= nil)
+		w.profiles[w.b].gear = { held = 5, platform = 36, arm = 0, armor = 7 }
+		local watch = w.watch :: (player: any) -> ()
+		watch(w.b)
+		expect.equal(w.shown[w.b], GearLooks.pack(w.profiles[w.b].gear))
+		expect.equal(w.shown[w.b], 2707)
+		-- no profile in memory: no gear
+		w.profiles[w.b] = nil
+		watch(w.b)
+		expect.equal(w.shown[w.b], 0)
 		finish()
 	end)
 end

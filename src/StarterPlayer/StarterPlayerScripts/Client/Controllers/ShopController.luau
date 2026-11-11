@@ -23,7 +23,8 @@
 --   GEAR in the gold band (his picker well, UI/Components/SegmentedTabs; Config/GearShop). GEAR swaps the right column
 --   for the GEAR page: GEAR over 4 gear cards (his pass cards, a little taller, the text stacked over the chip:
 --   UI/GearFormat's next step of each line, the tile in the tier's zone colour with the tier number and the stars
---   bought), then the gear's throw power. A tap buys (GearBuy with the shown price, one at a time: the chip reads …
+--   bought; big job item 9, 2026-11-10: the tile shows the piece's own 3D model from ReplicatedStorage.SD_Gear, the
+--   tier in a badge), then the gear's throw power. A tap buys (GearBuy with the shown price, one at a time: the chip reads …
 --   meanwhile); short of Coins the chip greys, the line says how many are missing and a tap shakes the coin pill
 --   (HudController.denyCoins); all bought = the lilac MAX chip. open({tab = "gear"}) opens on GEAR.
 -- * INCOME step 2 (2026-10-26; owner "An INCOME tab in the shop"; [P] a stand-in until Diego draws it): a third tab
@@ -56,6 +57,7 @@ local Cleanup = require(Shared.Util.Cleanup)
 local Config = require(Shared.Config)
 local EventSchedule = require(Shared.EventSchedule) -- 2026-10-31 shop restock
 local Format = require(Shared.Util.Format)
+local GearLooks = require(Shared.GearLooks) -- big job item 9: the gear models' folder
 local GearShop = require(Shared.Config.GearShop) -- gear step 3
 local Log = require(Shared.Util.Log)
 local Palette = require(Shared.Art.Palette)
@@ -75,6 +77,7 @@ local RestockFormat = require(Client.UI.RestockFormat) -- 2026-10-31 shop restoc
 local SegmentedTabs = require(Client.UI.Components.SegmentedTabs)
 local ShopFormat = require(Client.UI.ShopFormat)
 local SquishyImage = require(Client.UI.Components.SquishyImage)
+local StaticIcon = require(Client.UI.Components.StaticIcon) -- big job item 9: its camera maths, for the gear pictures
 local Theme = require(Client.UI.Theme)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
@@ -113,6 +116,7 @@ type GearCard = {
 	squishy: string?, -- 2026-10-31 RESTOCK: the squishy pictured on the tile
 	image: SquishyImage.SquishyImage?,
 	icon: string?, -- 2026-11-01 INCOME: the picture on the tile (AssetTable key)
+	model: string?, -- 2026-11-10 (big job item 9): the 3D model on the tile (its name in SD_Gear)
 }
 type Featured = {
 	root: Frame,
@@ -157,6 +161,7 @@ local RESTOCK_SLOTS = RESTOCK.goldenOffers + RESTOCK.rareOffers
 local SOUND_PURCHASE = "ui.purchase" -- §18.6: a server purchase result
 local GEAR_CARD = GearShop.card
 local GEAR_TILE = GearShop.tile
+local INSPECT = Config.Inspect -- big job item 9: the gear pictures' camera and light (the squishy icons' own)
 
 -- A text role's kind (Theme.Sticker.text; any: the roles table is untyped).
 local function roleKind(role: string): any
@@ -461,7 +466,71 @@ local function setChip(chip: Frame, label: TextLabel, text: string)
 	)
 end
 
--- The tile in the tier's zone colour (H:342's look): the tier number over a dot a step of the tier (none for armor).
+-- The tier in a small badge on a tile's bottom right corner (a tile with a picture has no room for the big number).
+local function tierBadge(tile: Frame, tier: number)
+	local badgeSpec = GEAR_TILE.badge
+	local badge = CountBadge.new({ name = "Level", small = true, accent = badgeSpec.accent, parent = tile })
+	badge.root.AnchorPoint = Vector2.new(1, 1)
+	badge.root.Position = UDim2.new(1, badgeSpec.out, 1, badgeSpec.out)
+	badge:setText(tostring(tier))
+end
+
+-- Big job item 9 (2026-11-10): a gear piece's own 3D model on its card's tile: a still ViewportFrame (never animated),
+-- framed by the model's bounds and lit like the squishy icons (StaticIcon's maths, Config.Inspect). It goes with the
+-- tile (a child). False when the place has no such model: the tile keeps its tier number.
+local function gearPicture(tile: Frame, name: string, px: number): boolean
+	local folder = ReplicatedStorage:FindFirstChild(GearLooks.FOLDER)
+	local template = if folder then folder:FindFirstChild(name) else nil
+	if template == nil or not template:IsA("Model") then
+		return false
+	end
+	local fov = INSPECT.Framing.vFovDeg
+	-- a soft white glow behind the model: a tier's piece and its tile share the zone's colour (pink on pink)
+	picture(tile, "img.fx.glow", px, "Glow")
+	local frame: ViewportFrame = Create("ViewportFrame", {
+		Name = "Model",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(px, px),
+		Ambient = INSPECT.Lighting.ambient,
+		LightColor = INSPECT.Lighting.lightColor,
+		ZIndex = 2,
+		Parent = tile,
+	})
+	local camera: Camera = Create("Camera", { Name = "Camera", FieldOfView = fov, Parent = frame })
+	frame.CurrentCamera = camera
+	local model = template:Clone()
+	local hull = model:FindFirstChild("Outline")
+	if hull then
+		hull:Destroy() -- at a tile's size the ink hull is thinner than a pixel: it shows as dark specks, not a line
+	end
+	local center, size = model:GetBoundingBox()
+	local turn = GEAR_TILE.model
+	local direction = model:GetPivot().Rotation:VectorToWorldSpace(StaticIcon.viewDirection(turn.yaw, turn.pitch))
+	-- The camera's distance from the model's own bounds (the vault: fill computed from bounds, never by hand): the
+	-- nearest distance at which every corner of the box, as the camera sees it, stays within `fill` of the picture.
+	local axes = CFrame.lookAt(direction, Vector3.zero)
+	local half = size / 2
+	local slope = turn.fill * math.tan(math.rad(fov) / 2)
+	local distance = 0
+	for _, sx in { -1, 1 } do
+		for _, sy in { -1, 1 } do
+			for _, sz in { -1, 1 } do
+				local corner = center:VectorToWorldSpace(Vector3.new(sx * half.X, sy * half.Y, sz * half.Z))
+				local seen = axes:VectorToObjectSpace(corner) -- +Z: toward the camera
+				distance = math.max(distance, math.max(math.abs(seen.X), math.abs(seen.Y)) / slope + seen.Z)
+			end
+		end
+	end
+	camera.CFrame = CFrame.lookAt(center.Position + direction * distance, center.Position)
+	frame.LightDirection = camera.CFrame:VectorToWorldSpace(INSPECT.Lighting.lightDirection.Unit)
+	model.Parent = frame
+	return true
+end
+
+-- The tile in the tier's zone colour (H:342's look): the piece's 3D model with the tier in a badge (item 9; without
+-- the model the tier number), over a dot a step of the tier (none for armor).
 local function gearTile(card: GearCard, view: GearFormat.Card)
 	local old = card.tile
 	if old then
@@ -493,6 +562,7 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 		spec.inset
 	)
 	card.tile, card.tier, card.steps, card.squishy, card.icon = tile, view.tier, view.steps, view.squishy, view.icon
+	card.model = view.model
 	local icon = view.icon
 	if icon then -- 2026-11-01 INCOME: the picture bobbing like a pass card's (H:342), the tier in a badge
 		local bob = holder("SD_Bob", tile)
@@ -500,11 +570,7 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 		bob.ZIndex = 2
 		picture(bob, icon, PASSES.art.px, "Picture")
 		UiIdle.add(bob, "bob", { periodS = PASSES.art.bobS }) -- ends with the tile (Destroying)
-		local badgeSpec = GEAR_TILE.badge
-		local badge = CountBadge.new({ name = "Level", small = true, accent = badgeSpec.accent, parent = tile })
-		badge.root.AnchorPoint = Vector2.new(1, 1)
-		badge.root.Position = UDim2.new(1, badgeSpec.out, 1, badgeSpec.out)
-		badge:setText(tostring(view.tier))
+		tierBadge(tile, view.tier)
 		return
 	end
 	local squishy = view.squishy
@@ -516,19 +582,24 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 		card.image = image
 		return
 	end
-	local number = Theme.label({
-		Name = "Tier",
-		Text = tostring(view.tier),
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, if view.steps > 0 then 0.42 else 0.5),
-		Size = UDim2.fromScale(1, 0.6),
-		AutomaticSize = Enum.AutomaticSize.None,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		TextWrapped = false,
-		ZIndex = 2,
-		Parent = tile,
-	}, roleKind(GEAR_TILE.numberRole))
-	Theme.stickerText(number, GEAR_TILE.numberRole)
+	local model = view.model
+	if model and gearPicture(tile, model, spec.px - 2 * spec.border) then
+		tierBadge(tile, view.tier) -- item 9: the piece's own model; the stars still sit along the tile's bottom
+	else
+		local number = Theme.label({
+			Name = "Tier",
+			Text = tostring(view.tier),
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.fromScale(0.5, if view.steps > 0 then 0.42 else 0.5),
+			Size = UDim2.fromScale(1, 0.6),
+			AutomaticSize = Enum.AutomaticSize.None,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextWrapped = false,
+			ZIndex = 2,
+			Parent = tile,
+		}, roleKind(GEAR_TILE.numberRole))
+		Theme.stickerText(number, GEAR_TILE.numberRole)
+	end
 	if view.steps > 0 then
 		local px = if view.steps > 4 then GEAR_TILE.pipPxSmall else GEAR_TILE.pipPx
 		local row: Frame = Create("Frame", {
@@ -573,6 +644,7 @@ local function paintGearCard(card: GearCard, view: GearFormat.Card)
 		or card.steps ~= view.steps
 		or card.squishy ~= view.squishy
 		or card.icon ~= view.icon
+		or card.model ~= view.model
 	then
 		gearTile(card, view)
 	end
