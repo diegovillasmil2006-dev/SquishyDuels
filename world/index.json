@@ -12,6 +12,12 @@
 		"container": "Workspace"
 	},
 	{
+		"file": "ReplicatedStorage/SD_Gear.rbxm",
+		"class": "Folder",
+		"name": "SD_Gear",
+		"container": "ReplicatedStorage"
+	},
+	{
 		"file": "ReplicatedStorage/SD_KillVfx.rbxm",
 		"class": "Folder",
 		"name": "SD_KillVfx",

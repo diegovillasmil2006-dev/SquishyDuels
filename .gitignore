@@ -5,3 +5,4 @@
 sourcemap.json
 node_modules/
 .claude/settings.local.json
+__pycache__/
