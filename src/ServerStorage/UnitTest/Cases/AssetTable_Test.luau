@@ -850,6 +850,7 @@ return function(t: Context)
 				"img.kit.ring",
 				"img.kit.starGold", -- the candy kit (big job 2026-11-10): the gold star and the heart
 				"img.kit.heart",
+				"img.kit.mintSwirl", -- big job item 11: Mint Whirl's peppermint swirl
 				"img.kit.speedline",
 				"img.kit.footprint",
 				-- Restyle part 2 (2026-11-01): the Friends pill's icon.

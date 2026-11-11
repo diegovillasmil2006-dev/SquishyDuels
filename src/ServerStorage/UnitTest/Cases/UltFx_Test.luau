@@ -157,4 +157,36 @@ return function(t: Context)
 		end
 		expect.truthy(soundKnown)
 	end)
+
+	-- Big job item 11 (the Christmas Puffin's Mint Whirl; design: sd/lab50.js:424-437) --------------------------------
+
+	t.test("the mint swirl: 2 -> the zone's radius on the design's ease, spinning faster, then it fades 10% bigger", function()
+		local span, zone = 1.2, 6
+		local r0, a0, o0 = UltFx.mintSwirl(0, span, zone)
+		expect.near(r0, FX.mintStartRadius, 1e-9)
+		expect.near(a0, 0, 1e-9)
+		expect.near(o0, FX.mintSwirlOpacity, 1e-9)
+		expect.near((UltFx.mintSwirl(span / 2, span, zone)), (FX.mintStartRadius + zone) / 2, 1e-9) -- halfway on cos01
+		local r1, a1, o1 = UltFx.mintSwirl(span, span, zone)
+		expect.near(r1, zone, 1e-9)
+		expect.near(a1, FX.mintSpin * span + FX.mintSpinGain * span / 2, 1e-9) -- the design's dt·(3 + 6u), summed
+		expect.near(o1, FX.mintSwirlOpacity, 1e-9)
+		-- Before the pop the swirl never passes the ring: the ring is the promise ("walk out before it reaches the ring").
+		for i = 0, 24 do
+			expect.truthy((UltFx.mintSwirl(span * i / 24, span, zone)) <= zone + 1e-9)
+		end
+		local r2, a2, o2 = UltFx.mintSwirl(span + FX.mintFadeSeconds / 2, span, zone)
+		expect.near(r2, zone * (1 + FX.mintFadeGrow / 2), 1e-9)
+		expect.near(o2, FX.mintSwirlOpacity / 2, 1e-9)
+		expect.near(a2 - a1, (FX.mintSpin + FX.mintSpinGain) * FX.mintFadeSeconds / 2, 1e-9) -- it keeps its top speed
+		local r3, _, o3 = UltFx.mintSwirl(span + FX.mintFadeSeconds + 5, span, zone)
+		expect.near(r3, zone * (1 + FX.mintFadeGrow), 1e-9)
+		expect.equal(o3, 0)
+		expect.near((UltFx.mintSwirl(-1, span, zone)), FX.mintStartRadius, 1e-9) -- before the release: as at the start
+		expect.equal(A.mint_whirl.radius, zone) -- the design's "2 to 6 st radius"
+		expect.truthy(FX.mintStartRadius < A.mint_whirl.radius)
+		local AssetTable = t.requireShared("AssetTable")
+		expect.truthy(AssetTable.image("img.kit.mintSwirl") ~= nil)
+		expect.truthy(AssetTable.image("img.kit.ring") ~= nil)
+	end)
 end

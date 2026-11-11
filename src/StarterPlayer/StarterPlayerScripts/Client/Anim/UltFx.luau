@@ -20,6 +20,11 @@
 --     (UltWellZone, pulsing) until the pop, Cosmo flying to wellHoverStuds over the centre in wellLobSeconds and
 --     spinning there, 6 beads (its colours) spiralling in from the ring to the centre, and at the pop 40 stars, a gold
 --     and a lilac ring and sfx.ultBubblePop.
+--   Mint Whirl (Peppermint Puffin, Christmas, big job item 11; design: sd/lab50.js:424-437): a one-drop rain drawn as
+--     a swirl: no zone disc and no hovering toy; a red ring of the zone's size (the kit ring picture, pulsing) and a
+--     peppermint swirl picture growing inside it from mintStartRadius, spinning faster, until the pop: 40 stars in the
+--     Puffin's colours, a white ring and sfx.ultBubblePop; the swirl then fades. Not drawn: the Puffin spinning in the
+--     caster's hand and the design's rising tick tones (no new sounds).
 --   Geyser Line (Gelato Narwhal, Frosty Box 2026-11-10; design: sd/lab50.js:295-307): a 3-drop rain in a line drawn as
 --     geysers: no zone and no hovering toy; each drop's frost circle (UltGeyserFrost, its dropHitRadius, pulsing) from
 --     shadowAt until it erupts at landAt, then an ice column rising and sinking (geyserColumnSeconds), 18 ice cubes, a
@@ -46,7 +51,7 @@
 -- * ReducedMotion: no pulse, roll, wobble or bob (FxPool halves the particles).
 -- API (VfxController): onEvent(event, ultimateId, ability, deps), projectile(projId) -> ProjInfo?, impact(impact),
 -- step(now), clear(), counts(); pure helpers (unit-tested): glidePoint, arcPoint, bouncePassed, rollerScale, lanePlate,
--- dropPoint, pulse.
+-- dropPoint, pulse, mintSwirl.
 
 -- Services
 
@@ -154,6 +159,12 @@ type Rain = {
 	-- Campfire Ring (Lava Box): no zone and no toy; the slam ring, then each drop an ember glow and a flame.
 	campfire: boolean,
 	slammed: boolean,
+	-- Mint Whirl (Christmas Puffin): no zone disc and no toy; a red ring of the zone's size and a peppermint swirl
+	-- growing inside it until the pop (its one drop's landAt, zoneSeconds after the release), then the swirl fades.
+	mint: boolean,
+	mintRadius: number,
+	mintRing: ImageHandleAdornment?,
+	mintSwirl: ImageHandleAdornment?,
 }
 
 -- Layer Cake Shockwave (Frosty Box, 2026-11-10): the landing spot, the leaping wyvern and the cake rings of one cast.
@@ -218,6 +229,12 @@ local HALO_ID = "halo_toss" -- Souffle Seraph's (Config.Abilities): a boomerang 
 local HALO_NAME = "SD_UltHalo"
 local STAMP_ID = "bread_stamp" -- Divine Loaf's (Config.Abilities): a one-drop rain whose area is a bread slice
 local STAMP_NAME = "SD_UltStamp"
+local MINT_ID = "mint_whirl" -- Peppermint Puffin's (Config.Abilities, Christmas): a one-drop rain drawn as a swirl
+local MINT_NAME = "SD_UltMint"
+local MINT_RING_IMAGE = "img.kit.ring"
+local MINT_SWIRL_IMAGE = "img.kit.mintSwirl"
+local MINT_COLORS = { Palette.KillMintRed, Palette.White, Palette.KillMintGreen } -- design: sd/lab50.js:436 (the Puffin's own red and green)
+local FLOOR_UP = CFrame.Angles(math.rad(90), 0, 0) -- an adornment's picture shows from one side: this turns it up
 local SLICE_SHOULDER = 0.55 -- UltRules.circleInSlice (lab50.js:409)
 local SLICE_CROWN_STUDS = 0.1 / 0.28
 local FLAME_COLORS = { Palette.UltFlame, Palette.UltFlameHot, Palette.UltFlameCore } -- design: sd/lab50.js:355
@@ -330,6 +347,20 @@ end
 -- 0..1, a sine pulse at `hz` (0.5 at t = 0).
 function UltFx.pulse(t: number, hz: number): number
 	return 0.5 + 0.5 * math.sin(2 * math.pi * hz * t)
+end
+
+-- Mint Whirl's swirl t seconds after the release (design: sd/lab50.js:432-437): its radius, the angle it has turned
+-- and its opacity. Until the pop (`span` seconds in) it grows FX.mintStartRadius -> `radius` (the zone's) on the
+-- design's cos01 ease, turning at mintSpin + mintSpinGain·u rad/s; after it, it keeps that top speed and fades over
+-- FX.mintFadeSeconds while it grows FX.mintFadeGrow more.
+function UltFx.mintSwirl(t: number, span: number, radius: number): (number, number, number)
+	local s = math.max(span, 1e-3)
+	local before = math.clamp(t, 0, s)
+	local after = math.max(t - s, 0)
+	local k = math.clamp(after / FX.mintFadeSeconds, 0, 1)
+	local grown = FX.mintStartRadius + (radius - FX.mintStartRadius) * (0.5 - 0.5 * math.cos(math.pi * before / s))
+	local angle = FX.mintSpin * (before + after) + FX.mintSpinGain * (before * before / (2 * s) + after)
+	return if after > 0 then radius * (1 + FX.mintFadeGrow * k) else grown, angle, FX.mintSwirlOpacity * (1 - k)
 end
 
 -- Private ----------------------------------------------------------------------------------------------------------
@@ -795,13 +826,61 @@ local function makeDisc(name: string, center: Vector3, radius: number, color: Co
 	return part
 end
 
+-- Mint Whirl: a flat picture lying on the floor, its picture side up, hidden until its first step. nil with no picture.
+local function floorImage(key: string, at: Vector3, radius: number, color: Color3): ImageHandleAdornment?
+	local image = AssetTable.image(key)
+	if image == nil then
+		return nil
+	end
+	local picture = Instance.new("ImageHandleAdornment")
+	picture.Name = MINT_NAME
+	picture.Adornee = Workspace.Terrain -- Terrain sits at the origin: the adornment's CFrame is a place in the world
+	picture.Image = image
+	picture.Color3 = color
+	picture.Size = Vector2.new(2 * radius, 2 * radius)
+	picture.CFrame = CFrame.new(at) * FLOOR_UP
+	picture.Transparency = 1
+	picture.AlwaysOnTop = false
+	picture.Parent = fxFolder()
+	return picture
+end
+
+-- Mint Whirl's ring and swirl, t seconds after the release (design: sd/lab50.js:426-437): the ring pulses until the
+-- pop; the swirl grows, spins and fades (UltFx.mintSwirl).
+local function stepMint(rain: Rain, t: number, reduced: boolean)
+	local span = rain.zoneSeconds
+	local ring = rain.mintRing
+	if ring then
+		if t >= span then
+			rain.mintRing = nil
+			ring:Destroy()
+		else
+			local s = if reduced then 0.5 else UltFx.pulse(t, FX.zonePulseHz)
+			ring.Transparency = 1 - FX.mintRingOpacity * (0.55 + 0.45 * s)
+		end
+	end
+	local swirl = rain.mintSwirl
+	if swirl then
+		if t >= span + FX.mintFadeSeconds then
+			rain.mintSwirl = nil
+			swirl:Destroy()
+		else
+			local radius, angle, opacity = UltFx.mintSwirl(t, span, rain.mintRadius)
+			swirl.Size = Vector2.new(2 * radius, 2 * radius)
+			swirl.CFrame = CFrame.new(swirl.CFrame.Position) * CFrame.Angles(0, if reduced then 0 else angle, 0) * FLOOR_UP
+			swirl.Transparency = 1 - opacity
+		end
+	end
+end
+
 local function startRain(
 	event: Types.UltimateEventPayload,
 	ability: any,
 	squishyId: string,
 	well: boolean,
 	geyser: boolean,
-	campfire: boolean
+	campfire: boolean,
+	mint: boolean
 )
 	local center = event.center
 	local drops = event.drops
@@ -817,14 +896,14 @@ local function startRain(
 	local lobSeconds = if well then FX.wellLobSeconds else (top - from).Magnitude / math.max(ability.speed, 1)
 	local def = Catalog.get(squishyId)
 	local bunnyScale = flightScaleOf(squishyId, if def then def.throw.radius else 1) -- the toy at its flight size
-	-- The well's zone and hover last until its pop (its one drop's landAt).
-	local popIn = if well and drops[1] then math.max(drops[1].landAt - releaseAt, 0) else 0
+	-- The well's zone and hover last until its pop (its one drop's landAt); so do Mint Whirl's ring and growing swirl.
+	local popIn = if (well or mint) and drops[1] then math.max(drops[1].landAt - releaseAt, 0) else 0
 	local rain: Rain = {
 		casterId = event.casterId,
 		center = center,
 		floorY = floorY,
 		releaseAt = releaseAt,
-		zone = if geyser or campfire
+		zone = if geyser or campfire or mint
 			then nil
 			else makeDisc(
 				ZONE_NAME,
@@ -833,7 +912,7 @@ local function startRain(
 				if well then Palette.UltWellZone else Palette.UltRainZone,
 				1
 			),
-		bunny = if geyser or campfire then nil else newModel(squishyId, bunnyScale),
+		bunny = if geyser or campfire or mint then nil else newModel(squishyId, bunnyScale),
 		bunnyScale = bunnyScale,
 		from = from,
 		lobSeconds = lobSeconds,
@@ -842,16 +921,27 @@ local function startRain(
 		drops = {},
 		endsAt = releaseAt + math.max(FX.zoneSeconds, lobSeconds + FX.hoverSeconds),
 		well = well,
-		zoneSeconds = if well then popIn else FX.zoneSeconds,
+		zoneSeconds = if well or mint then popIn else FX.zoneSeconds,
 		hoverSeconds = if well then math.max(popIn - lobSeconds, 0) else FX.hoverSeconds,
 		beads = {},
 		geyser = geyser,
 		geyserRadius = ability.dropHitRadius or ability.radius,
 		campfire = campfire,
 		slammed = false,
+		mint = mint,
+		mintRadius = ability.radius,
+		mintRing = nil,
+		mintSwirl = nil,
 	}
 	if geyser or campfire then
 		rain.endsAt = releaseAt -- no zone and no toy over it (design: sd/lab50.js:295-307): only circles and geysers
+	end
+	if mint then
+		-- design: sd/lab50.js:424-437. No zone disc and no toy over it: the ring and the swirl lie on the floor.
+		rain.endsAt = releaseAt + popIn + FX.mintFadeSeconds
+		local floor = Vector3.new(center.X, floorY, center.Z)
+		rain.mintSwirl = floorImage(MINT_SWIRL_IMAGE, floor + Vector3.new(0, FX.laneLift, 0), FX.mintStartRadius, Palette.White)
+		rain.mintRing = floorImage(MINT_RING_IMAGE, floor + Vector3.new(0, FX.laneLift * 2, 0), ability.radius, Palette.KillMintRed)
 	end
 	if well then
 		rain.endsAt = releaseAt + popIn + FX.wellRingLilacSeconds
@@ -900,6 +990,9 @@ end
 local function stepRain(rain: Rain, now: number): boolean
 	local t = now - rain.releaseAt
 	local reduced = isReduced()
+	if rain.mint then
+		stepMint(rain, t, reduced)
+	end
 	local zone = rain.zone
 	local zoneSeconds = math.max(rain.zoneSeconds, 1e-3)
 	if zone then
@@ -1126,6 +1219,32 @@ local function stepRain(rain: Rain, now: number): boolean
 			continue
 		end
 		if drop.landed then
+			continue
+		end
+		if rain.mint then
+			-- design: sd/lab50.js:436. The pop: stars in the Puffin's colours, a white ring a little past the zone, the sound.
+			if now >= drop.landAt then
+				drop.landed = true
+				local at = Vector3.new(drop.position.X, rain.floorY, drop.position.Z)
+				FxShapes.ring(
+					at,
+					Vector3.yAxis,
+					2 * rain.mintRadius * FX.mintRingTo,
+					FX.mintRingSeconds,
+					Palette.White,
+					FX.mintRingTransparencyFrom
+				)
+				burst(
+					at + Vector3.new(0, 0.3 / 0.28, 0),
+					FX.mintPopStars,
+					MINT_COLORS,
+					FX.mintPopSize,
+					FX.mintPopLifetime,
+					FX.mintPopSpeed,
+					FX.mintPopGravity
+				)
+				play(SOUND_POP, at, rain.casterId)
+			end
 			continue
 		end
 		if rain.well then
@@ -2037,7 +2156,15 @@ function UltFx.onEvent(event: Types.UltimateEventPayload, ultimateId: string, ab
 		elseif ultimateId == STAMP_ID then
 			startStamp(event, ability)
 		else
-			startRain(event, ability, squishyId, ultimateId == WELL_ID, ultimateId == GEYSER_ID, ultimateId == CAMPFIRE_ID)
+			startRain(
+				event,
+				ability,
+				squishyId,
+				ultimateId == WELL_ID,
+				ultimateId == GEYSER_ID,
+				ultimateId == CAMPFIRE_ID,
+				ultimateId == MINT_ID
+			)
 		end
 		local drops: { Types.UltimateDrop } = event.drops or {}
 		for _, drop in drops do
@@ -2100,6 +2227,12 @@ function UltFx.step(now: number)
 			end
 			if rain.drizzle then
 				FxPool.default():release(rain.drizzle)
+			end
+			if rain.mintRing then
+				rain.mintRing:Destroy()
+			end
+			if rain.mintSwirl then
+				rain.mintSwirl:Destroy()
 			end
 			for _, drop in rain.drops do
 				if drop.shadow then

@@ -631,8 +631,7 @@ local Abilities = {
 	-- opponent's spot a ring shows the final 6-stud size at once while a peppermint swirl grows from 2 to 6 studs in
 	-- 1.2 s, then it pops; inside the swirl at full size = out. Built like Gravity Well: the rain kind's one "drop" as
 	-- wide as the zone, its warning the design's 1.2 s.
-	-- shortcut: drawn with the rain kind's plain zone and drop shadow (UltFx), not the design's red and white swirl
-	-- disc yet; give it its own look when the Christmas event gets its design pass.
+	-- Its look is UltFx's Mint Whirl branch (the red ring, the growing swirl picture, the pop; Config.Vfx mint*).
 	mint_whirl = {
 		kind = "rain",
 		nameKey = "ability.mintWhirl.name",

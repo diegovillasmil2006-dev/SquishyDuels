@@ -2365,6 +2365,8 @@ local SLOTS: { AssetSlot } = {
 	candyKit("img.kit.ring", 95904093087396, "flat rings and shockwaves"),
 	candyKit("img.kit.starGold", 128878284283571, "a gold star, full colour: squeezes, level ups, pen coins"),
 	candyKit("img.kit.heart", 128532893389973, "a candy pink heart, full colour: big squeezes, new squishies"),
+	-- Big job item 11 (512 px, full colour): Claude Design's peppermint disc (sd/lab50.js:427-430), make_kit.mjs.
+	candyKit("img.kit.mintSwirl", 114215071574931, "the peppermint swirl on the floor: Mint Whirl (Christmas Puffin)"),
 	fxKit("img.kit.speedline", 81819232656092, "speed lines: wind, dash sparks, screen lines"),
 	-- Extra 6 (2026-10-28, NOT IN DESIGN): a cartoon shoe print drawn by Claude (scratchpad tools/make_footprint.mjs),
 	-- white to tint, for the lobby's fading footprints (MoveFxController).

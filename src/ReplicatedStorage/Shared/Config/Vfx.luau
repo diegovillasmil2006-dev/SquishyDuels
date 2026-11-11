@@ -384,6 +384,24 @@ local Vfx = {
 		wellRingLilacTo = 2 * 7 * 1.35, -- diameter: the lilac ring to 1.35 R in 0.6 s (lab50.js:290)
 		wellRingLilacSeconds = 0.6,
 		wellRingTransparencyFrom = 1 - 0.95,
+		-- Mint Whirl (Peppermint Puffin, Christmas, big job item 11; design: sd/lab50.js:424-437): no toy over the zone.
+		-- A red ring of the zone's final size shows from the release; a peppermint swirl grows inside it and spins
+		-- faster and faster until the pop (the ability's one drop); then stars, a white ring, and the swirl fades.
+		mintStartRadius = 2, -- studs: the swirl grows from 2 to the zone's 6 (lab50.js:425)
+		mintRingOpacity = 0.85, -- lab50.js:426 (pulsing at zonePulseHz, the design's 16 rad/s)
+		mintSwirlOpacity = 0.92, -- lab50.js:430
+		mintSpin = 3, -- rad/s at the release (lab50.js:434, dt·(3 + 6u))
+		mintSpinGain = 6, -- rad/s more by the pop
+		mintFadeSeconds = 0.6, -- lab50.js:437: after the pop the swirl fades over 0.6 s ...
+		mintFadeGrow = 0.1, -- ... while it grows 10%
+		mintPopStars = 40, -- lab50.js:436
+		mintPopSpeed = 4.2 / 0.28,
+		mintPopSize = 0.055 / 0.28,
+		mintPopLifetime = 0.85,
+		mintPopGravity = -2 / 0.28,
+		mintRingTo = 1.15, -- the pop's white ring opens to 1.15 × the zone in 0.4 s (lab50.js:436)
+		mintRingSeconds = 0.4,
+		mintRingTransparencyFrom = 1 - 0.95,
 		-- Geyser Line (Gelato Narwhal, Frosty Box 2026-11-10; design: sd/lab50.js:295-307, metres / 0.28 = studs): each
 		-- drop is a pulsing frost circle (its dropHitRadius) until it erupts, then an ice geyser column rises and sinks,
 		-- 18 ice cubes burst and a white ring opens.

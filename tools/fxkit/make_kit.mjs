@@ -126,4 +126,21 @@ writeFileSync(
   ),
 );
 
+// ---- peppermint swirl (Mint Whirl, the Christmas Puffin's ultimate; 512 x 512, full colour, no outline) -------------
+// Claude Design's own disc (sd/lab50.js:427-430): white, red where sin(4θ + 9r) > 0 (four spiral arms), r = 0..1.
+const SWIRL_R = 250;
+const swirlPoint = (r, a) => `${(256 + SWIRL_R * r * Math.cos(a)).toFixed(1)},${(256 + SWIRL_R * r * Math.sin(a)).toFixed(1)}`;
+const swirlArm = (m) => {
+  const pts = [];
+  const edge = (r, half) => (2 * Math.PI * m + (half ? Math.PI : 0) - 9 * r) / 4;
+  for (let i = 0; i <= 48; i++) pts.push(swirlPoint(i / 48, edge(i / 48, false)));
+  for (let i = 1; i < 8; i++) pts.push(swirlPoint(1, edge(1, false) + ((edge(1, true) - edge(1, false)) * i) / 8)); // along the rim
+  for (let i = 48; i >= 0; i--) pts.push(swirlPoint(i / 48, edge(i / 48, true)));
+  return `<polygon points="${pts.join(" ")}" fill="#F04A5E"/>`;
+};
+writeFileSync(
+  join(out, "mintSwirl.svg"),
+  `<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">\n<circle cx="256" cy="256" r="${SWIRL_R}" fill="#FFFFFF"/>\n${[0, 1, 2, 3].map(swirlArm).join("\n")}\n</svg>\n`,
+);
+
 console.log("svgs written to", out);
