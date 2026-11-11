@@ -1225,7 +1225,8 @@ return function(t: Context)
 		expect.equal(Viewmodel.ultGlowColour(nil), Config.FirstPerson.ult.glowColour)
 		expect.equal(Viewmodel.ultGlowColour("dragon_rush"), Config.FirstPerson.ult.glowColour)
 		local epic = RarityStyle.get("Epic").color
-		for _, id in { "flock_volley", "sprinkle_roller", "rain_check", "bubble_pop" } do
+		-- mint_whirl: a seasonal squishy's ultimate (big job item 11: the Christmas Puffin is in no year-round list)
+		for _, id in { "flock_volley", "sprinkle_roller", "rain_check", "bubble_pop", "mint_whirl" } do
 			expect.equal(Viewmodel.ultGlowColour(id), epic)
 		end
 	end)

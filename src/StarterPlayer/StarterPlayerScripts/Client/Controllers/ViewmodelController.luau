@@ -2286,7 +2286,7 @@ function ViewmodelController.ultGlowColour(ultimateId: string?): Color3
 	if id == "dragon_rush" then
 		return ULT.glowColour
 	end
-	for _, def in Catalog.list() do
+	for _, def in Catalog.all() do -- big job item 11: a seasonal squishy's ultimate too
 		if def.ultimateId == id then
 			local style = require(Shared.Art.RarityStyle).get(def.rarity)
 			return if style then style.color else ULT.glowColour

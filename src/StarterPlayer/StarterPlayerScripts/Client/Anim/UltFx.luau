@@ -361,7 +361,7 @@ local function rootOf(userId: number): BasePart?
 end
 
 local function squishyOf(ultimateId: string): string?
-	for _, def in Catalog.list() do
+	for _, def in Catalog.all() do -- big job item 11: a seasonal squishy's ultimate too (its wind-up sound)
 		if def.ultimateId == ultimateId then
 			return def.id
 		end
