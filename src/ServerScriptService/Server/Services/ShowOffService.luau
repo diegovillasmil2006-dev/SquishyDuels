@@ -227,10 +227,12 @@ function ShowOffService.liveStore(name: string, service: any?): (week: number) -
 		local store: WeekStore = {
 			increment = function(key: string, delta: number): number
 				spend(Enum.DataStoreRequestType.OrderedWrite)
+				-- lihfolk-ignore: datastore-no-pcall - a thin wrapper: every caller of deps.store runs it in a pcall
 				return ordered:IncrementAsync(key, delta)
 			end,
 			get = function(key: string): number?
 				spend(Enum.DataStoreRequestType.OrderedRead)
+				-- lihfolk-ignore: datastore-no-pcall - a thin wrapper: every caller of deps.store runs it in a pcall
 				return ordered:GetAsync(key)
 			end,
 			top = function(count: number): { Entry }

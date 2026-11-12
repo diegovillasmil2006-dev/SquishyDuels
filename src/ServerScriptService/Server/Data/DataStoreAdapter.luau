@@ -90,6 +90,7 @@ function DataStoreAdapter.open(name: string, options: OpenOptions?): Store
 		kind = "datastore",
 		persisted = true,
 		updateAsync = function(key: string, transform: Transform): (any, KeyInfo?)
+			-- lihfolk-ignore: datastore-no-pcall - a thin wrapper: Logic/KeyQueue runs every call in a pcall with back-off
 			local newValue, keyInfo = dataStore:UpdateAsync(key, function(value: any, keyInfo: DataStoreKeyInfo)
 				return transform(value, DataStoreAdapter.readKeyInfo(keyInfo))
 			end)

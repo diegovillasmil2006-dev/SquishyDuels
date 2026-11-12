@@ -9,7 +9,9 @@ local Data = {
 	studioMode = "memory" :: "memory" | "datastore", -- Studio default: InMemoryAdapter (persisted = false)
 	keyPrefix = "User_",
 
-	autosaveInterval = 120, -- seconds; the first autosave is at a random 0..autosaveInterval offset
+	-- seconds; the first autosave is at a random 0..autosaveInterval offset. Audit row 40 (2026-11-12): 100, at most a
+	-- third of lockStaleAfter (the vault's rule; was 120).
+	autosaveInterval = 100,
 	autosaveBudgetFloor = 10, -- StandardWrite / StandardRead budget below this delays the autosave ...
 	autosaveBudgetRetrySeconds = 15, -- ... by this many seconds
 	saveSoonDelay = 6, -- "soon" saves run at max(now + saveSoonDelay, lastWriteAt + minWriteGap)

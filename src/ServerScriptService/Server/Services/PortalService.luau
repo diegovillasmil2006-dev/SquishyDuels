@@ -5,7 +5,8 @@
 -- * Touching a portal's Markers.PortalTrigger (Shared/SquishyLobby/Portal.Links: the hub's Portal and HighwayPortal,
 --   the arena's ReturnPortal) fires PortalTrip("enter", link) to the traveller, whose client plays the pull-in movie
 --   (PortalController); after Portal.PullTime the character moves to the other portal's Markers.ArrivalSpawn and gets
---   PortalTrip("arrive", link). A player gets one trip per Portal.Cooldown.
+--   PortalTrip("arrive", link). A player gets one trip per Portal.Cooldown. A touch counts only with the body's root
+--   within TOUCH_MARGIN studs of the trigger (nearTrigger, pure; audit row 40: no trips from afar).
 -- * The HIGHWAY portal goes through HighwayAccessService, like the HUD's HIGHWAY button: its refusals (data not ready,
 --   no character, no deck, closing, in a duel or a queue) toast before any movie, and go() picks the free deck point
 --   (facing down the lane) after it; a refusal by then cancels the movie.
@@ -49,6 +50,9 @@ local CHECK_SECONDS = 0.25
 local CHECK_HALF_X = 80
 local CHECK_HALF_Z = 90
 local CHECK_DROP = 25
+-- Audit row 40 (2026-11-12): a touch counts only with the body's root within this many studs of the trigger's box (a
+-- cheat's touch from afar is ignored; a big avatar touching with a hand is still well inside it).
+local TOUCH_MARGIN = 10
 
 -- Module table
 
@@ -68,12 +72,28 @@ local function destination(link: any): CFrame?
 	return if spawn and spawn:IsA("BasePart") then spawn.CFrame * CFrame.new(0, 1.5, 0) else nil
 end
 
-local function playerFrom(hit: BasePart): (Player?, Model?)
+-- Whether a point lies within `margin` studs of a box (a trigger part's CFrame and Size).
+local function nearBox(point: Vector3, box: CFrame, size: Vector3, margin: number): boolean
+	local p = box:PointToObjectSpace(point)
+	local half = size / 2
+	local outside = Vector3.new(
+		math.max(math.abs(p.X) - half.X, 0),
+		math.max(math.abs(p.Y) - half.Y, 0),
+		math.max(math.abs(p.Z) - half.Z, 0)
+	)
+	return outside.Magnitude <= margin
+end
+
+local function playerFrom(hit: BasePart, trigger: BasePart): (Player?, Model?)
 	local char = hit:FindFirstAncestorOfClass("Model")
 	local player = char and Players:GetPlayerFromCharacter(char)
 	local hum = char and char:FindFirstChildOfClass("Humanoid")
 	if not player or busy[player] or not hum or hum.Health <= 0 then
 		return nil, nil
+	end
+	local root = (char :: Model):FindFirstChild("HumanoidRootPart")
+	if not (root and root:IsA("BasePart") and nearBox(root.Position, trigger.CFrame, trigger.Size, TOUCH_MARGIN)) then
+		return nil, nil -- audit row 40: a touch from afar
 	end
 	return player, char
 end
@@ -100,8 +120,8 @@ local function release(player: Player)
 end
 
 -- One trip through a hub or arena portal (zip :50-70); the highway's goes through HighwayAccessService.
-local function trip(name: string, link: any, hit: BasePart)
-	local player, char = playerFrom(hit)
+local function trip(name: string, link: any, hit: BasePart, trigger: BasePart)
+	local player, char = playerFrom(hit, trigger)
 	if not player or not char then
 		return
 	end
@@ -160,7 +180,7 @@ local function hookReturn(part: Instance)
 	part.CanTouch = true
 	local pm = portalModelOf(part)
 	part.Touched:Connect(function(hit: BasePart)
-		local player, char = playerFrom(hit)
+		local player, char = playerFrom(hit, part)
 		if not player or not char then
 			return
 		end
@@ -184,6 +204,9 @@ local function hookReturn(part: Instance)
 end
 
 -- Public: pure ------------------------------------------------------------------------------------------------------
+
+-- Audit row 40: whether a touch counts (the body's root within `margin` studs of the trigger's box).
+PortalService.nearTrigger = nearBox
 
 -- The arena height check (zip :133-135): inside the box round the arena centre and more than CHECK_DROP under its floor.
 function PortalService.fellOff(position: Vector3, center: Vector3, floorY: number): boolean
@@ -209,7 +232,7 @@ function PortalService.start()
 		end
 		trigger.CanTouch = true
 		trigger.Touched:Connect(function(hit: BasePart)
-			trip(name, link, hit)
+			trip(name, link, hit, trigger)
 		end)
 	end
 	for _, part in CollectionService:GetTagged(Portal.RETURN_TAG) do
