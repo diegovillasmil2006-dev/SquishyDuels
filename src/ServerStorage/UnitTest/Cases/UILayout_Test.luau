@@ -57,11 +57,13 @@ return function(t: Context)
 		expect.near(Layout.uiScale(768, 1366), 768 / 810, 1e-9) -- 0.948 (the height decides)
 		expect.near(Layout.uiScale(1080, 1920), UI.Scale.max, 1e-9) -- 1.333 capped at 1.25
 		expect.near(Layout.uiScale(768, 1024), UI.Scale.min, 1e-9) -- 0.711 (the width decides) floored at 0.85
-		-- 2026-10-26 (owner "Shrink everything"): phones (the compact class) floor at compactMin, under min.
-		expect.truthy(UI.Scale.compactMin < UI.Scale.min)
-		expect.near(Layout.uiScale(390, 844), UI.Scale.compactMin, 1e-9) -- a phone in landscape
-		expect.near(Layout.uiScale(844, 390), UI.Scale.compactMin, 1e-9) -- in portrait: the design's 0.27, floored
-		expect.near(Layout.uiScale(381, 750), UI.Scale.compactMin, 1e-9) -- Studio's iPhone 17 Pro in landscape
+		-- 2026-11-12 (owner "Everything bigger", after players said the phone HUD is too small): phones (the compact
+		-- class) floor at 0.85 again, as every other screen; 2026-10-26's "Shrink everything" (0.65) is reversed.
+		expect.equal(UI.Scale.compactMin, UI.Scale.min)
+		expect.near(Layout.uiScale(390, 844), 0.85, 1e-9) -- a phone in landscape (iPhone 14)
+		expect.near(Layout.uiScale(375, 667), 0.85, 1e-9) -- iPhone SE
+		expect.near(Layout.uiScale(844, 390), 0.85, 1e-9) -- in portrait: the design's 0.27, floored
+		expect.near(Layout.uiScale(381, 750), 0.85, 1e-9) -- Studio's iPhone 17 Pro in landscape
 		expect.near(Layout.uiScale(900, 1400), 1400 / 1440, 1e-9) -- 0.972: the width decides
 		-- A missing or bad width leaves the height alone to decide.
 		expect.near(Layout.uiScale(880, 0 / 0), 880 / 810, 1e-9)

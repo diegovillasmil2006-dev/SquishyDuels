@@ -42,9 +42,9 @@ local UI = {
 	-- UIScale = clamp(min(SD_Hud.AbsoluteSize.X / referenceWidth, AbsoluteSize.Y / referenceHeight), min, max),
 	-- recomputed on size change. UI FINAL R2 (PR1, decided 2026-10-15): the design's fit min(w / 1440, h / 810)
 	-- (H:624, its 1440 x 810 canvas H:73) inside the game's floor and cap. compactMin: the floor of the compact class
-	-- (phones; the owner 2026-10-26 "too big ... coins are soo big" -> "Shrink everything": text may drop under
-	-- minTextSize there; touch targets keep minTargetFloor through Layout.touchBase).
-	Scale = { referenceWidth = 1440, referenceHeight = 810, min = 0.85, max = 1.25, compactMin = 0.65 },
+	-- (phones). 2026-11-12, owner "Everything bigger" (players said the phone HUD is too small): 0.85 again, as every
+	-- screen; 2026-10-26's "Shrink everything" (0.65) is reversed.
+	Scale = { referenceWidth = 1440, referenceHeight = 810, min = 0.85, max = 1.25, compactMin = 0.85 },
 
 	-- Layout class "compact" if AbsoluteSize.Y < compactBelowHeight or X < compactBelowWidth, else "regular".
 	Breakpoints = { compactBelowHeight = 500, compactBelowWidth = 700 },

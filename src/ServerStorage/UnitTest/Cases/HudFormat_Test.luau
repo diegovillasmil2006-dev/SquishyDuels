@@ -1368,8 +1368,9 @@ return function(t: Context)
 	-- line drop there. Phone HUD B (2026-10-17): Daily beside Settings and the bare Grip row (its Double Grip chip
 	-- reserved) narrow that room further, so on this phone they drop at "99,999" coins too (flagged for the owner in
 	-- work/phonehudB/NOTES.md). Every other screen keeps them at the widest texts (the DUEL area case above).
-	-- 2026-10-26: phones floor at Scale.compactMin, so the 667x375 bar has room for its dots and second line again.
-	t.test("the search bar at 667x375 (UD5, Phone HUD B; the phone floor): its dots and second line fit", function()
+	-- 2026-10-26 to 2026-11-12 phones floored at 0.65 and the bar had room for both; since the owner's "Everything
+	-- bigger" (2026-11-12, phones at 0.85 again) they drop on this smallest phone as before.
+	t.test("the search bar at 667x375 (UD5, Phone HUD B): its dots and second line drop there", function()
 		local class = classOf(SMALL_PHONE)
 		local compact = class == "compact"
 		local origin = HudFormat.origins(compact)
@@ -1396,10 +1397,10 @@ return function(t: Context)
 		end
 		local worst = barFor(nil)
 		expect.truthy(worst > 0)
-		expect.deepEqual(HudFormat.barParts(worst), { dots = true, line2 = true })
+		expect.deepEqual(HudFormat.barParts(worst), { dots = false, line2 = false })
 		local texts = table.clone(HudFormat.worstCaseTexts())
 		texts.coins = Format.coins(99_999)
-		expect.deepEqual(HudFormat.barParts(barFor(texts)), { dots = true, line2 = true })
+		expect.deepEqual(HudFormat.barParts(barFor(texts)), { dots = false, line2 = false })
 		expect.truthy(barFor(texts) >= worst)
 	end)
 

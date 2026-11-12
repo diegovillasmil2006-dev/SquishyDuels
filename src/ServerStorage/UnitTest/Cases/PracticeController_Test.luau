@@ -279,8 +279,13 @@ return function(t: Context)
 				for _, touch in { false, true } do
 					local input = scene(actual, textScale, touch, false)
 					local place = PracticeController.panelPlacement(input)
-					-- 2026-10-26: at the phone floor (Scale.compactMin) the 667×375 phone has a free spot at the largest
-					-- text on touch too (foam fix 2's titled panel had none at 0.85; the crowded case is below).
+					if actual == SCREENS[1] and textScale == LARGEST and touch then
+						-- Foam fix 2: with its title, a 667×375 phone on touch at the largest text has no free spot at
+						-- 0.85 (phones are at 0.85 again since the owner's "Everything bigger", 2026-11-12; the 0.65
+						-- floor of 2026-10-26 had room); it stays on screen (the crowded case below).
+						expect.equal(place.fits, false)
+						continue
+					end
 					expect.equal(place.fits, true)
 					clear(input, place)
 				end
@@ -297,10 +302,10 @@ return function(t: Context)
 		expect.equal(place.slot, "left")
 		expect.equal(place.x, 16)
 		expect.near(place.y, big.left.y + big.left.h + 8, 1e-6)
-		-- 667×375 on touch at Medium text: at the phone floor (2026-10-26) the titled panel fits under the left column
-		-- above the thumbstick zone (at 0.85 it reached the zone and went right under the row).
+		-- 667×375 on touch at Medium text: at 0.85 (phones again since 2026-11-12) the titled panel (foam fix 2) reaches
+		-- the thumbstick zone under the left column, so it goes to the right under the row (at 0.65 it fitted left).
 		local phone = PracticeController.panelPlacement(scene(SCREENS[1], 1, true, false))
-		expect.equal(phone.slot, "left")
+		expect.equal(phone.slot, "right")
 	end)
 
 	t.test("practice panel (Part 8): with no free spot it stays on screen at the left, fits = false", function()

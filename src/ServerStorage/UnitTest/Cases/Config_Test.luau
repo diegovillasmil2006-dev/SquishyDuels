@@ -1414,7 +1414,7 @@ return function(t: Context)
 		-- UI FINAL R2 (PR1): the design's fit min(w / 1440, h / 810) (H:624) inside the floor and the cap.
 		expect.deepEqual(
 			Config.UI.Scale,
-			{ referenceWidth = 1440, referenceHeight = 810, min = 0.85, max = 1.25, compactMin = 0.65 }
+			{ referenceWidth = 1440, referenceHeight = 810, min = 0.85, max = 1.25, compactMin = 0.85 }
 		)
 		local sticker = Config.UI.Sticker
 		expect.deepEqual(sticker.border, { thin = 3, normal = 4, heavy = 5 })
