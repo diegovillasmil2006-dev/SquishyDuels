@@ -586,10 +586,11 @@ return function(t: Context)
 		end
 	end)
 
-	-- Access2 (owner 2026-10-18 "Both": a quick button to the highway's launch deck; the phone buttons are Diego's
-	-- decision, 2026-10-18: keep his one row). A stand-in until Diego draws and places one (his UI FINAL has no highway
-	-- item): right under the Settings gear in its look (place "right"), never in the tile plans, so his tile column,
-	-- his phone row of 4 and the DUEL area keep their room; not shown on phones (HudController.layoutRight).
+	-- Access2 (owner 2026-10-18 "Both": a quick button to the highway's launch deck). A stand-in until a design draws
+	-- and places one (Diego's UI FINAL has no highway item): right under the Settings gear in its look (place "right"),
+	-- never in the tile plans, so his tile column, his phone row and the DUEL area keep their room. Audit 2026-11-11
+	-- row 5 (owner "Yes, fix 5", 2026-11-12): phones show it too (highwaySticker); before, a phone had no HIGHWAY button
+	-- ("the phone buttons are Diego's call", 2026-10-18, ended when his open parts became ours, 2026-11-10).
 	t.test(
 		"access2: the HIGHWAY stand-in sits under Settings, outside the tile plans (Diego's phone row stays one row)",
 		function()
@@ -629,8 +630,7 @@ return function(t: Context)
 				end
 			end
 			-- Gamepad, focusLinks only: given HudController's PC right column (settings, highway, tracker: its order is
-			-- read in Studio, NOTES), HIGHWAY is a step under Settings and over the quest tracker. Phones show no
-			-- stand-in (their buttons are Diego's call), so their right column is unchanged.
+			-- read in Studio, NOTES), HIGHWAY is a step under Settings and over the quest tracker.
 			local pc = HudFormat.focusLinks({
 				left = { "coins", "grip" },
 				tiles = { "tile:squishies", "tile:boxes", "tile:shop", "tile:quests", "tile:daily" },
@@ -641,6 +641,39 @@ return function(t: Context)
 			expect.equal(pc.highway.up, "settings")
 			expect.equal(pc.highway.down, "tracker")
 			expect.equal(pc.tracker.up, "highway")
+			-- Its look on a layout (HudController.layoutRight draws it). Phones: an icon-only square of their Settings'
+			-- size, so it is a touch target at the phone scale like every phone sticker; a long label never widens it.
+			for _, screen in PHONES do
+				local plan = HudFormat.leftColumnPlan(screen, "compact", 1)
+				local side = Layout.touchBase(COLUMN.settingsSize, plan.scale)
+				expect.truthy(side * plan.scale >= TOUCH.minTargetFloor - 1e-6)
+				expect.deepEqual(
+					HudFormat.highwaySticker(true, true, side, 999),
+					{ width = side, role = "small", iconOnly = true }
+				)
+			end
+			-- PCs: Settings' labelled sticker, as wide as its own label needs (never narrower than Settings).
+			expect.deepEqual(
+				HudFormat.highwaySticker(false, true, 118, 140),
+				{ width = 140, role = "settingsLabel", iconOnly = false }
+			)
+			expect.deepEqual(
+				HudFormat.highwaySticker(false, true, 118, 90),
+				{ width = 118, role = "settingsLabel", iconOnly = false }
+			)
+			-- Hidden on every layout while its screen is not registered.
+			expect.equal(HudFormat.highwaySticker(true, false, 52, 90), nil)
+			expect.equal(HudFormat.highwaySticker(false, false, 118, 90), nil)
+			-- On a phone it joins the right group's gamepad links under Settings (Daily sits beside Settings there).
+			local phone = HudFormat.focusLinks({
+				left = { "coins", "grip" },
+				tiles = { "tile:squishies", "tile:boxes", "tile:shop", "tile:quests", "tile:income" },
+				tileColumns = 5,
+				right = { "tile:daily", "settings", "highway" },
+				cta = "cta",
+			})
+			expect.equal(phone.highway.up, "settings")
+			expect.equal(phone.settings.down, "highway")
 		end
 	)
 

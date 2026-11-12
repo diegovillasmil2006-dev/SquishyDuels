@@ -8,7 +8,7 @@
 --                              each with the screen it opens, its stable button name (Hud_<Id>Button, §2.11), its
 --                              place, accent and icon (UI/Components/IconGlyph)
 --                              Access2 (2026-10-18): then Highway, a stand-in sticker under Settings (place "right";
---                              not on phones)
+--                              on phones too since 2026-11-12, highwaySticker)
 --   PHONE_RIGHT                Phone HUD B (the owner's pick, 2026-10-17): the tiles that sit in the top-right group
 --                              beside Settings on phones (the compact class; UI/PhoneHud moves them): Daily
 --   visibleNav(isRegistered)   the items whose screen exists (a button never opens nothing, §7.6 / acceptance 5)
@@ -187,6 +187,9 @@ export type NavItem = {
 	icon: string, -- IconGlyph name
 	fx: string?, -- UI FINAL R2: its design hover kind (Button spec.fx) when not its Button kind's own
 }
+
+-- The HIGHWAY stand-in's look on a layout (highwaySticker): its width in base px, its label's text role, no label.
+export type HighwaySticker = { width: number, role: string, iconOnly: boolean }
 
 export type BannerKind = "info" | "warn"
 export type Banner = { text: string, kind: BannerKind }
@@ -432,8 +435,8 @@ local NAV: { NavItem } = {
 	-- IconGlyph "highway" (v6's launch-spot arrow, LK:39) while img.nav.highway is nil, the "yellow" accent (reading:
 	-- v6's Lemon launch spot). Under Settings, not in the tile column / row: there it would change Diego's layouts (a
 	-- 6th column sticker turns the Grip card compact at 1280 x 720; a 5th phone tile breaks his one row of 4; beside
-	-- Daily it narrows the DUEL area). Its screen is HighwayController's non-modal one, which sends GoHighway. Not on
-	-- phones (HudController.layoutRight): they stay as in the game until Diego places it.
+	-- Daily it narrows the DUEL area). Its screen is HighwayController's non-modal one, which sends GoHighway. On
+	-- phones too since 2026-11-12 (audit row 5, owner "Yes, fix 5"), in the phone stickers' look (highwaySticker).
 	{
 		id = "highway",
 		screen = "highway",
@@ -614,6 +617,27 @@ function HudFormat.navAt(place: NavPlace): { NavItem }
 		end
 	end
 	return list
+end
+
+-- The HIGHWAY stand-in's look under Settings (NAV place "right") on a layout, nil while it is hidden (its screen is
+-- not registered). `settingsWidth` = the Settings sticker's width there, `labelWidth` = what its own label needs
+-- (base px). PCs: Settings' labelled sticker, as wide as its label needs. Phones (the compact class; audit 2026-11-11
+-- row 5, owner "Yes, fix 5" 2026-11-12: a phone had no HIGHWAY button, the walk to the portal was the only way to the
+-- game's best pay): an icon-only square like the phone's Settings (a touch target, Layout.touchBase), still under
+-- Settings, so the row of tiles and the DUEL area keep their room.
+function HudFormat.highwaySticker(
+	compact: boolean,
+	registered: boolean,
+	settingsWidth: number,
+	labelWidth: number
+): HighwaySticker?
+	if not registered then
+		return nil
+	end
+	if compact then
+		return { width = settingsWidth, role = "small", iconOnly = true }
+	end
+	return { width = math.max(settingsWidth, labelWidth), role = "settingsLabel", iconOnly = false }
 end
 
 -- True when the data status is Studio memory mode (progress is not saved): never shown to players, only logged.

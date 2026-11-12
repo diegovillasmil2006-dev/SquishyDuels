@@ -57,7 +57,9 @@ function PhoneHud.placeTiles(
 	local list = right:FindFirstChildOfClass("UIListLayout")
 	if list then
 		list.FillDirection = if isCompact then Enum.FillDirection.Horizontal else Enum.FillDirection.Vertical
-		list.VerticalAlignment = if isCompact then Enum.VerticalAlignment.Center else Enum.VerticalAlignment.Top
+		-- Top on every layout: on phones the tile and Settings are the same square, and since 2026-11-12 the HIGHWAY
+		-- stand-in hangs under Settings (centring would pull Daily down between the two).
+		list.VerticalAlignment = Enum.VerticalAlignment.Top
 	end
 end
 

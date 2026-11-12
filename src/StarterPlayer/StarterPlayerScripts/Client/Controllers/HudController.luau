@@ -80,7 +80,9 @@
 --   with it (Hud_SettingsColumn in Hud_Right; Diego's tile column keeps its 5 and the quest tracker follows under
 --   both), in Settings' sticker look and size, while its screen is registered (layoutRight); it opens the non-modal
 --   "highway" screen (HighwayController sends GoHighway) and is in the right column's gamepad links under Settings.
---   Not on phones (the compact class): their buttons are Diego's call (owner 2026-10-18), so they stay as in the game.
+--   On phones too (audit 2026-11-11 row 5, owner "Yes, fix 5" 2026-11-12; "the phone buttons are Diego's call",
+--   2026-10-18, ended 2026-11-10): an icon-only square under the phone's Settings (HudFormat.highwaySticker), Daily
+--   still beside Settings (UI/PhoneHud keeps the row's top line).
 -- Public: leftColumn(), LEFT_ORDER, setFocusEntry(object?), setFocusTarget(key, object?), element(name), coinsAnchor(),
 -- isShown(), VisibilityChanged, LayoutChanged, layoutRects(), flyCoins(from, amount, count?), denyCoins(),
 -- setGainSource(label?), debugCoinFlight(amount), columnPlan(), ColumnPlanChanged, setColumnItem(key, present),
@@ -914,18 +916,23 @@ local function layoutRight(compact: boolean)
 		setIfChanged(slot, "Size", UDim2.fromOffset(width, height))
 		setIfChanged(slot, "Visible", settings.root.Visible)
 		-- Access2: the HIGHWAY stand-in under it in the same look, as wide as its own label needs, while its screen is
-		-- registered. Not on phones: their buttons are Diego's call (owner 2026-10-18), so they stay as in the game.
+		-- registered. On phones too (audit row 5, owner "Yes, fix 5" 2026-11-12): an icon-only square like their
+		-- Settings (HudFormat.highwaySticker); before, a phone's only way to the highway was the walk to the portal.
 		local highway, highwayHolder, highwayItem = highwayButton, highwaySlot, HudFormat.navAt("right")[1]
 		if highway and highwayHolder and highwayItem then
-			local on = not compact and UIController.isRegistered(highwayItem.screen)
-			if on then
-				applyStickerLook(highway, iconPx, pull, "settingsLabel", false)
-				local highwayWidth = math.max(width, Button.widthFor(Strings.hud.nav.highway, nil, kind, "tile"))
-				setIfChanged(highway.root, "Size", UDim2.fromOffset(highwayWidth, height))
-				setIfChanged(highwayHolder, "Size", UDim2.fromOffset(highwayWidth, height))
+			local sticker = HudFormat.highwaySticker(
+				compact,
+				UIController.isRegistered(highwayItem.screen),
+				width,
+				Button.widthFor(Strings.hud.nav.highway, nil, kind, "tile")
+			)
+			if sticker then
+				applyStickerLook(highway, iconPx, pull, sticker.role, sticker.iconOnly)
+				setIfChanged(highway.root, "Size", UDim2.fromOffset(sticker.width, height))
+				setIfChanged(highwayHolder, "Size", UDim2.fromOffset(sticker.width, height))
 			end
-			setIfChanged(highway.root, "Visible", on)
-			setIfChanged(highwayHolder, "Visible", on)
+			setIfChanged(highway.root, "Visible", sticker ~= nil)
+			setIfChanged(highwayHolder, "Visible", sticker ~= nil)
 		end
 		local stack = slot.Parent
 		local stackList = if stack then stack:FindFirstChildOfClass("UIListLayout") else nil
@@ -1883,7 +1890,7 @@ local function buildRight(c: Cleanup.Cleanup, gui: ScreenGui)
 	settingsButton = settings
 	settingsSlot = slot
 	-- Access2: Settings and the HIGHWAY stand-in in one column (Hud_SettingsColumn takes the slot's place in Hud_Right;
-	-- on phones, a row, it holds the gear alone: the stand-in is not shown there).
+	-- on phones, a row, the column sits at its right end: the gear, the stand-in under it).
 	local stack: Frame = Create("Frame", {
 		Name = "Hud_SettingsColumn",
 		BackgroundTransparency = 1,
