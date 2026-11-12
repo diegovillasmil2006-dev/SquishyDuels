@@ -30,7 +30,9 @@
 -- now = os.time() (the duelLog clock, §2.11), also the new entry's `at`. cfg = a table with Config's Economy section and
 -- optionally its Data section (caps.samePair) (a test's copy); nil = the live Config (also for a missing Data).
 --
--- Readings: too few own throws reports duel.tooShort (DESIGN lists no separate code). Every win, loss or draw of a real
+-- Readings: too few own throws reports duel.tooFewThrows (audit row 29, 2026-11-12: "too short" read like the game
+-- cheated a player who lost fast); too little Active time, or a draw whose partner threw too few:
+-- duel.tooShort. Every win, loss or draw of a real
 -- player with a ready profile returns a `logEntry` (eligible or not: it is the matchId idempotency key and the
 -- duelsPlayed stat). The entry's `full` is true only for a fully rewarded result (eligible, multiplier 1).
 -- A test dummy's reward is always 0 with no reason and no log entry.
@@ -82,6 +84,7 @@ export type Reward = {
 -- Constants
 
 local REASON_TOO_SHORT = "duel.tooShort"
+local REASON_TOO_FEW_THROWS = "duel.tooFewThrows" -- audit row 29 (2026-11-12)
 local REASON_OFFLINE = "duel.noRewardsOffline"
 local REASON_REDUCED = "duel.rewardsReduced"
 local KEY_FORMAT = "%d"
@@ -318,10 +321,11 @@ function DuelRewards.compute(
 		elseif result == "loss" then rewards.lossMinActiveSeconds
 		else 0
 	local longEnough = RESULT_FROM[outcome.endedFrom] == true and outcome.activeSeconds >= minActive
-	local enoughThrows = throws >= rewards.minOwnThrows
-		and (result ~= "draw" or opponent.throws >= rewards.minOwnThrows)
+	local ownThrows = throws >= rewards.minOwnThrows
+	local enoughThrows = ownThrows and (result ~= "draw" or opponent.throws >= rewards.minOwnThrows)
 	if not (longEnough and enoughThrows) then
-		reward.coinsBlockedReason = REASON_TOO_SHORT
+		-- Audit row 29: too few own throws says so (a time or the draw partner's throws stay "too short").
+		reward.coinsBlockedReason = if ownThrows then REASON_TOO_SHORT else REASON_TOO_FEW_THROWS
 		return reward
 	end
 

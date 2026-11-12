@@ -189,20 +189,25 @@ return function(t: Context)
 
 	-- Accepted throws -------------------------------------------------------------------------------------------------
 
-	t.test("fewer than 3 accepted own throws pays nothing (duel.tooShort)", function()
+	t.test("fewer than 3 accepted own throws pays nothing (duel.tooFewThrows, audit row 29)", function()
 		local s = forfeitAt(60, 2, 3)
 		local reward = DuelRewards.compute(s, "A", {}, NOW_UNIX, Config)
 		expect.equal(reward.coins, 0)
-		expect.equal(reward.coinsBlockedReason, "duel.tooShort")
+		expect.equal(reward.coinsBlockedReason, "duel.tooFewThrows")
 		expect.equal(DuelRewards.compute(s, "B", {}, NOW_UNIX, Config).coins, 350)
+		-- Its text names the real minimum.
+		local Strings = t.requireShared("Strings")
+		local minimum = tostring(Config.Economy.DuelRewards.minOwnThrows)
+		expect.truthy(string.find(Strings.reason.duel.tooFewThrows, minimum, 1, true) ~= nil)
 	end)
 
 	t.test("a draw needs both players at 3 throws", function()
 		local s = drawMatch(5, 2)
 		local all = DuelRewards.computeAll(s, nil, NOW_UNIX, Config)
 		expect.equal(all.A.coins, 0)
-		expect.equal(all.A.coinsBlockedReason, "duel.tooShort")
+		expect.equal(all.A.coinsBlockedReason, "duel.tooShort") -- A threw enough: the partner did not
 		expect.equal(all.B.coins, 0)
+		expect.equal(all.B.coinsBlockedReason, "duel.tooFewThrows")
 	end)
 
 	t.test("stats report throws, hits and accuracy as a rounded percentage (Types.DuelStats)", function()

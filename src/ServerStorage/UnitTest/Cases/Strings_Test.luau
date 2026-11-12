@@ -84,6 +84,7 @@ local REASON_CODES = {
 	"duel.noRewardsOffline",
 	"duel.rewardsReduced",
 	"duel.tooShort",
+	"duel.tooFewThrows", -- audit row 29
 	"throw.cooldown",
 	"throw.context",
 	"throw.direction",
@@ -335,6 +336,7 @@ local PART5_CODES = {
 	"duel.noRewardsOffline",
 	"duel.rewardsReduced",
 	"duel.tooShort",
+	"duel.tooFewThrows", -- audit row 29
 	"server.restartSoon",
 	"data.loaded",
 	"grip.levelUp",

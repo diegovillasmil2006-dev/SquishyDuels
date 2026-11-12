@@ -114,6 +114,8 @@ local Strings = {
 			noRewardsOffline = "Your progress didn't load, so duels can't earn rewards right now.",
 			rewardsReduced = "Reduced reward: you've played this opponent a lot in the last hour.",
 			tooShort = "Match too short for rewards.",
+			-- Audit row 29: fewer than Config.Economy.DuelRewards.minOwnThrows own throws (a test keeps the number in step).
+			tooFewThrows = "Throw at least 3 times to earn rewards.",
 		},
 		throw = {
 			cooldown = "Not ready to throw yet.",

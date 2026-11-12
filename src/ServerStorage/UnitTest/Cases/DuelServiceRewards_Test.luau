@@ -5,7 +5,7 @@
 -- recorder or the real one on a fake data port (useDeps). Cases run in order: the first ones run before any profile
 -- system is wired (setHooks), the later ones after.
 -- Contract (DESIGN §2.8 DuelResult, §3.11, §6.7, §12 #14):
---   * DuelResult.coins is what EconomyService really paid; when it is 0 the blocked reason is shown (tooShort, ...);
+--   * DuelResult.coins is what EconomyService really paid; when it is 0 the blocked reason is shown (tooFewThrows...);
 --     duel.noRewardsOffline only once a profile system is wired (§0.3 #9); a same-pair reduction rides along;
 --   * a reward without a duelLog entry asks EconomyService nothing; a matchId already paid pays 0 with no reason;
 --   * through the real EconomyService a match pays once, however often it is settled (duelLog.matchId), and unpaid
@@ -204,12 +204,12 @@ return function(t: Context)
 		})
 	end)
 
-	t.test("a too-short result is recorded with 0 Coins and shows duel.tooShort", function()
-		local s = forfeitMatch(60, 2, true) -- fewer than 3 accepted throws
+	t.test("a result with too few throws is recorded with 0 Coins and shows duel.tooFewThrows", function()
+		local s = forfeitMatch(60, 2, true) -- fewer than 3 accepted throws (audit row 29: its own reason)
 		local reward = DuelRewards.compute(s, "A", {}, NOW_UNIX, Config)
 		local payer, calls = recorder({ coins = 0, recorded = true, alreadyGranted = false })
 		local settled = DuelService.settleReward({ UserId = USER_A }, MATCH_ID, "win", reward, 0, payer)
-		expect.deepEqual(settled, { coins = 0, coinsBlockedReason = "duel.tooShort" })
+		expect.deepEqual(settled, { coins = 0, coinsBlockedReason = "duel.tooFewThrows" })
 		expect.equal(#calls, 1)
 	end)
 
@@ -293,7 +293,7 @@ return function(t: Context)
 		for i = 1, REWARDS.samePairFullRewards + 2 do
 			local id = "short-" .. i
 			local reward = DuelRewards.compute(forfeitMatch(60, 2, true, id), "A", historyOf(winner), NOW_UNIX, Config)
-			expect.equal(reward.coinsBlockedReason, "duel.tooShort")
+			expect.equal(reward.coinsBlockedReason, "duel.tooFewThrows")
 			DuelService.settleReward(winner, id, "win", reward, 0)
 		end
 		expect.equal(profiles[winner].coins, 0)
