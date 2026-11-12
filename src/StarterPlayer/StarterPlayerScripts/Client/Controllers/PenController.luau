@@ -174,6 +174,7 @@ local Timeline = require(Client.Anim.Timeline)
 local Tweens = require(Client.Anim.Tweens)
 local SquishyCache = require(Client.Models.SquishyCache)
 local CongratsOverlay = require(Client.UI.CongratsOverlay)
+local ConfirmButton = require(Client.UI.Components.ConfirmButton) -- audit row 12: its press-twice steps
 local PenFormat = require(Client.UI.PenFormat)
 local PenScreen = require(Client.UI.PenScreen)
 local Theme = require(Client.UI.Theme)
@@ -367,6 +368,7 @@ local picking = false -- MOVE / SWAP: the next pen spot tapped takes the selecte
 local busy = false -- a PenPlace / PenLock (pens3 phases 7-8: or a sell, buy-back or fuse) is running
 local soldId: number? = nil -- pens3 phase 7: the selected sold card
 local confirm: PenFormat.ConfirmKind? = nil -- the confirm step open
+local shelfArm: ConfirmButton.State? = nil -- audit row 12: the shelf BUY waiting for its second tap
 local holdAt: number? = nil -- os.clock() of a hold action's press
 local soldMinute = -1 -- the server minute the screen was last drawn in (the sold cards' minutes)
 local foodId: string? = nil -- pens3 phase 9: the selected BUY FOOD card
@@ -1156,6 +1158,14 @@ local function render()
 			foodId = nil -- pens3 phase 9: no longer on sale, or another card was picked
 		end
 		confirm = view.confirm -- a confirm that cannot open any more is closed
+		local arm = shelfArm
+		if arm ~= nil then -- audit row 12: the shelf BUY after its first tap
+			for _, action in view.actions do
+				if action.id == "buyShelf" and action.reason == nil and action.price == arm.price then
+					action.text = Strings.format(Strings.spend.sure, { price = Format.coins(arm.price) })
+				end
+			end
+		end
 		s:render(view, busy)
 	end
 end
@@ -1380,7 +1390,26 @@ local function onAction(id: string)
 	if id == "buyShelf" then
 		local remote, price = PenController.shelfCall(currentView())
 		if remote and price then
-			task.spawn(sendShelf, remote, price)
+			-- Audit row 12: it asks first, like the boxes' ConfirmButton ("Sure? {price}" for Config.UI.confirmSeconds).
+			local held = shelfArm
+			local state = if held ~= nil and held.price == price
+				then held
+				else ConfirmButton.initial(price, StateController.get("coins") or 0)
+			local nextState, action = ConfirmButton.step(state, { kind = "press" }, os.clock())
+			if action == "arm" then
+				shelfArm = nextState
+				task.delay(Config.UI.confirmSeconds, function()
+					if shelfArm == nextState then
+						shelfArm = nil
+						render()
+					end
+				end)
+				render()
+			elseif action == "confirm" then
+				shelfArm = nil
+				render()
+				task.spawn(sendShelf, remote, price)
+			end
 		end
 		return
 	end

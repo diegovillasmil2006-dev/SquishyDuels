@@ -45,6 +45,8 @@
 --   right), GAME PASSES, COINS; GEAR = its 5 cards and the throw power; INCOME, TOYS; RESTOCK = the offers, or the
 --   wait line on its card. The cards stand: the picture over the name and the line on a coloured panel, the price
 --   button across the bottom (44 px drawn). PC and tablets keep the window above, unchanged.
+-- * Audit row 12 (2026-11-12, owner "do everything"): every card's tap above asks first (ConfirmButton's press-twice
+--   steps): the first tap shows "Sure? {price}" on the chip for Config.UI.confirmSeconds, the second sends.
 -- Stable names: Shop_CloseButton, Shop_BuyButton (the featured BUY), Shop_Pass_<key>, Shop_Pack_<key>,
 -- Shop_Bundle_<key>Button (a pack's price bar), Shop_Tabs (Tab_shop / Tab_gear / Tab_income / Tab_restock),
 -- Shop_Gear_<line> (Shop_Gear_coins / Shop_Gear_all on INCOME, Shop_Gear_1..4 on RESTOCK).
@@ -73,6 +75,7 @@ local Strings = require(Shared.Strings)
 local Client = script.Parent.Parent
 local Button = require(Client.UI.Components.Button)
 local CoinIcon = require(Client.UI.Components.CoinIcon)
+local ConfirmButton = require(Client.UI.Components.ConfirmButton) -- audit row 12: its press-twice steps
 local CountBadge = require(Client.UI.Components.CountBadge)
 local Create = require(Client.UI.Create)
 local GearFormat = require(Client.UI.GearFormat)
@@ -218,6 +221,8 @@ local gearCards: { GearCard } = {}
 local gearPower: TextLabel? = nil
 local page = PAGE_SHOP
 local gearBusy: string? = nil
+-- Audit row 12: the card waiting for its second tap and its ConfirmButton state (nil = none).
+local armed: { card: GearCard, state: ConfirmButton.State }? = nil
 -- INCOME step 2: the INCOME page and its 2 cards (gearBusy holds their line while one is bought: no line is shared).
 local incomePage: GuiObject? = nil
 local incomeCards: { GearCard } = {}
@@ -692,7 +697,12 @@ local function paintChip(card: GearCard, view: GearFormat.Card): Frame
 		setChip(card.maxChip, card.maxText, view.maxText or Strings.gear.max, card.chipSize)
 		return card.maxChip
 	end
-	local price = if view.state == "busy" then Strings.shop.robuxLoading else Format.coins(view.price :: number)
+	local held = armed
+	local price = if view.state == "busy"
+		then Strings.shop.robuxLoading
+		elseif held ~= nil and held.card == card and view.state ~= "needCoins"
+			then Strings.format(Strings.spend.sure, { price = Format.coins(view.price :: number) })
+		else Format.coins(view.price :: number)
 	setChip(card.buyChip, card.buyText, price, card.chipSize)
 	card.buyText.TextColor3 = if view.state == "needCoins" then Palette.StickerPriceShort else WHITE
 	return card.buyChip
@@ -875,6 +885,28 @@ local function buyGear(card: GearCard)
 		UIController.toast(Strings.common.lockedInDuel, "warn")
 		return
 	end
+	-- Audit row 12: a spend asks first, like the boxes' ConfirmButton: the first tap shows "Sure? {price}" on the chip
+	-- for Config.UI.confirmSeconds, the second buys; a double tap (ConfirmButton.GUARD_SECONDS) is never a confirm.
+	local held = armed
+	local state = if held ~= nil and held.card == card and held.state.price == view.price
+		then held.state
+		else ConfirmButton.initial(view.price :: number, StateController.get("coins") or 0)
+	local nextState, action = ConfirmButton.step(state, { kind = "press" }, os.clock())
+	if action == "arm" then
+		local mine = { card = card, state = nextState }
+		armed = mine
+		task.delay(Config.UI.confirmSeconds, function()
+			if armed == mine then
+				armed = nil
+				ShopController.refresh()
+			end
+		end)
+		ShopController.refresh()
+		return
+	elseif action ~= "confirm" then
+		return -- the double-tap guard (or short of Coins: handled above)
+	end
+	armed = nil
 	gearBusy = card.line
 	ShopController.refresh()
 	task.spawn(function()

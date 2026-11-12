@@ -1252,6 +1252,7 @@ local Strings = {
 	spend = {
 		confirm = "Confirm: {price} Coins",
 		balanceAfter = "Balance after: {balance}",
+		sure = "Sure? {price}", -- audit row 12: a shop card's chip or the pen space BUY after the first tap (fits phones)
 	},
 
 	-- Boxes: names (Boxes `nameKey`), signs, odds disclosure, open flow and reveal (§6.4, §6.10, §7.7, §9.11).
