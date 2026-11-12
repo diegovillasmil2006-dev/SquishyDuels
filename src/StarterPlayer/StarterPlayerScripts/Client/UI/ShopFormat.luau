@@ -307,19 +307,21 @@ function ShopFormat.before(a: Entry, b: Entry): boolean
 end
 
 -- One entry per squishy in `defs` (Catalog.list()), only those in `onlyIds` when given (a box filter), sorted.
--- `owned` = the owned map; `buying` = the id a ShopBuy is running for.
+-- `owned` = the owned map; `buying` = the id a ShopBuy is running for; `seasonOn` = the seasonal event is on (a
+-- seasonal squishy is sold only then, big job item 11).
 function ShopFormat.entries(
 	defs: { Types.SquishyDef },
 	owned: { [string]: any },
 	coins: number,
 	buying: string?,
-	onlyIds: { [string]: boolean }?
+	onlyIds: { [string]: boolean }?,
+	seasonOn: boolean?
 ): { Entry }
 	local list: { Entry } = {}
 	for _, def in defs do
 		if onlyIds == nil or onlyIds[def.id] == true then
 			local isOwned = owned[def.id] ~= nil
-			local price = Pricing.shopPrice(def.id, owned)
+			local price = Pricing.shopPrice(def.id, owned, seasonOn)
 			local state, missing = ShopFormat.cardState(price, isOwned, coins, buying == def.id)
 			local cardState: CardState = state :: CardState -- (cast: a multi-value return widens its literals)
 			local welcome = price ~= nil and def.shopPrice ~= nil and price < def.shopPrice

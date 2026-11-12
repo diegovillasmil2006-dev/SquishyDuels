@@ -188,6 +188,34 @@ return function(t: Context)
 		end
 	end)
 
+	-- Audit 2026-11-11 (P0, fixed 2026-11-12): the Squishies window's BUY asked 789K for a new player's 1,000-coin
+	-- first squishy. It built its entry by hand and gave Pricing.shopPrice a yes/no where the owned map goes. It
+	-- reads entries() now, with the season (a seasonal squishy is sold only while its event is on, big job item 11).
+	t.test("the Squishies window's BUY: a new save sees the Welcome price; a seasonal squishy only in its event", function()
+		local Christmas = t.requireShared("Config/Christmas")
+		local newSave = { kitty_bread = { at = 0 } }
+		local function buy(id: string, owned: { [string]: any }, coins: number, seasonOn: boolean)
+			local entry = ShopFormat.entries({ Catalog.get(id) }, owned, coins, nil, nil, seasonOn)[1]
+			return entry, ShopFormat.featuredView(entry, nil, nil)
+		end
+		-- The 6 Soft Box Commons: 1,000 Coins until you own one, affordable from the first second (5,000 Coins).
+		for _, id in { "toast", "banana", "boba_bear", "pancake_pup", "berry_jelly", "peachy" } do
+			local entry, view = buy(id, newSave, 5_000, false)
+			expect.equal(entry.price, Config.Economy.Pen.welcomePrice.Common)
+			expect.deepEqual(view, { mode = "buy", priceText = ShopFormat.priceNumber(1_000), reason = nil })
+		end
+		-- Owned: the Catalog price again (one more copy), out of reach on a new save.
+		local again, short = buy("toast", { kitty_bread = { at = 0 }, toast = { at = 1 } }, 5_000, false)
+		expect.equal(again.price, 789_000)
+		expect.equal(short.mode, "short")
+		-- A seasonal squishy: not sold while its event is off, its event's price while it is on.
+		local off = buy("gingersnap_elk", newSave, 5_000_000, false)
+		expect.equal(off.price, nil)
+		local on, onView = buy("gingersnap_elk", newSave, 5_000_000, true)
+		expect.equal(on.price, Christmas.prices.gingersnap_elk)
+		expect.equal(onView.mode, "buy")
+	end)
+
 	t.test("the box filter keeps only that box's items (the restricted shortcut, §6.10)", function()
 		local snack = ShopFormat.boxItemIds("snack")
 		expect.truthy(snack ~= nil)

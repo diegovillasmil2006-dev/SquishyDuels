@@ -637,23 +637,16 @@ local function refreshDetail(list: { InventoryFormat.Entry })
 		d.equip:setState("loading") -- keeps its text and its place
 	end
 	-- The coin BUY (owner 2026-10-22): the old shop's BUY for this squishy, under the button row.
-	local price = Pricing.shopPrice(entry.id, entry.owned, seasonOn())
 	local coins = StateController.coins() or 0
 	local block =
 		ShopFormat.spendBlock(StateController.dataStatus(), StateController.isLobbyLocked(), StateController.get("pen"))
 	if block == nil and buying ~= nil and buying ~= entry.id then
 		block = Strings.common.loading -- another buy is still running (one in flight)
 	end
-	local view = ShopFormat.featuredView({
-		id = entry.id,
-		def = def,
-		name = entry.name,
-		rarity = entry.rarity,
-		price = price,
-		owned = entry.owned,
-		state = "buy",
-		missing = if price then math.max(0, price - coins) else 0,
-	}, block, buying)
+	-- Its price needs the owned MAP, not a yes/no: the Welcome price asks "do you own this one?" (audit 2026-11-11:
+	-- a yes/no here showed 789K for a new player's 1,000-coin first squishy, and the server refused the buy).
+	local shopEntry = ShopFormat.entries({ def }, StateController.owned(), coins, nil, nil, seasonOn())[1]
+	local view = ShopFormat.featuredView(shopEntry, block, buying)
 	buyView = view
 	local shown = view.mode ~= "owned" and view.mode ~= "notSold"
 	d.buy.root.Visible = shown
@@ -989,7 +982,7 @@ local function openBuy()
 	if id == nil or view == nil or view.mode ~= "buy" or buying ~= nil or confirmDialog ~= nil then
 		return -- "off" or disabled: the Button played ui.error and the shake (P11)
 	end
-	local price = Pricing.shopPrice(id, StateController.owns(id), seasonOn())
+	local price = Pricing.shopPrice(id, StateController.owned(), seasonOn()) -- the owned MAP (see refreshDetail)
 	if price == nil then
 		return
 	end
