@@ -38,12 +38,20 @@
 --   the discount, the stock left from the Workspace attribute SD_RestockStock, SOLD OUT / BOUGHT); a tap sends
 --   ShopRestockBuy(slot, price, a new requestId). Between restocks only the head and "Next restock in ...". The tab
 --   repaints every second while it is shown and whenever the stock changes. open({tab = "restock"}) opens on it.
+-- * Phone Shop (owner 2026-11-12 "Yes, build this one": Claude's design canvas "Squishy Duels phone screens", the
+--   PhoneShop board; Config.UI.Shop.phone): on a phone in landscape (the compact class when the Shop is first built)
+--   the window fills the phone under Roblox's buttons, its band slimmer (chromeK), and each tab is ONE row of big
+--   cards swiped sideways, each group under a gold label chip: SHOP = the Dragon Bundle (the text left, the Dragon
+--   right), GAME PASSES, COINS; GEAR = its 5 cards and the throw power; INCOME, TOYS; RESTOCK = the offers, or the
+--   wait line on its card. The cards stand: the picture over the name and the line on a coloured panel, the price
+--   button across the bottom (44 px drawn). PC and tablets keep the window above, unchanged.
 -- Stable names: Shop_CloseButton, Shop_BuyButton (the featured BUY), Shop_Pass_<key>, Shop_Pack_<key>,
 -- Shop_Bundle_<key>Button (a pack's price bar), Shop_Tabs (Tab_shop / Tab_gear / Tab_income / Tab_restock),
 -- Shop_Gear_<line> (Shop_Gear_coins / Shop_Gear_all on INCOME, Shop_Gear_1..4 on RESTOCK).
 
 -- Services
 
+local GuiService = game:GetService("GuiService") -- 2026-11-12 phone Shop: Roblox's top bar
 local HttpService = game:GetService("HttpService")
 local MarketplaceService = game:GetService("MarketplaceService")
 local Players = game:GetService("Players")
@@ -118,6 +126,12 @@ type GearCard = {
 	icon: string?, -- 2026-11-01 INCOME: the picture on the tile (AssetTable key)
 	model: string?, -- 2026-11-10 (big job item 9): the 3D model on the tile (its name in SD_Gear)
 	golden: boolean?, -- 2026-11-10 (big job item 10): that model shows gold
+	-- 2026-11-12 phone Shop: a standing card (paintPhoneCard): its coloured panel (the tile and the text sit in it), its
+	-- height, the tile's size (smaller when the text needs the room) and the chip's fixed size (the card's width).
+	panel: Frame?,
+	cardH: number?,
+	tilePx: number?,
+	chipSize: Vector2?,
 }
 type Featured = {
 	root: Frame,
@@ -165,6 +179,7 @@ local RESTOCK_SLOTS = RESTOCK.goldenOffers + RESTOCK.rareOffers
 local SOUND_PURCHASE = "ui.purchase" -- §18.6: a server purchase result
 local GEAR_CARD = GearShop.card
 local GEAR_TILE = GearShop.tile
+local PHONE = SHOP.phone -- 2026-11-12 phone Shop
 local INSPECT = Config.Inspect -- big job item 9: the gear pictures' camera and light (the squishy icons' own)
 
 -- A text role's kind (Theme.Sticker.text; any: the roles table is untyped).
@@ -197,24 +212,28 @@ local promptToken = 0
 local lastFit: ShopFormat.WindowFit? = nil
 -- Gear step 3: the tabs, the two pages, the gear cards, the power line, the page shown and the line being bought.
 local tabs: SegmentedTabs.SegmentedTabs? = nil
-local shopPage: Frame? = nil
-local gearPage: Frame? = nil
+local shopPage: GuiObject? = nil -- a Frame, or on a phone a ScrollingFrame (the pages below too)
+local gearPage: GuiObject? = nil
 local gearCards: { GearCard } = {}
 local gearPower: TextLabel? = nil
 local page = PAGE_SHOP
 local gearBusy: string? = nil
 -- INCOME step 2: the INCOME page and its 2 cards (gearBusy holds their line while one is bought: no line is shared).
-local incomePage: Frame? = nil
+local incomePage: GuiObject? = nil
 local incomeCards: { GearCard } = {}
 -- Big job item 10: the TOYS page and its 4 cards.
-local toysPage: Frame? = nil
+local toysPage: GuiObject? = nil
 local toyCards: { GearCard } = {}
 -- 2026-10-31 shop restock: the RESTOCK page, its cards, its wait line, and the slots bought (slot -> restock index).
-local restockPage: Frame? = nil
+local restockPage: GuiObject? = nil
 local restockCards: { GearCard } = {}
 local restockWait: TextLabel? = nil
 local restockGrid: GuiObject? = nil -- hidden between restocks, so the wait line sits under the head
 local restockBought: { [number]: number } = {}
+-- 2026-11-12 phone Shop: built for a phone (decided at the first build), the tabs' rows, and RESTOCK's wait card.
+local phone = false
+local phonePages: { ScrollingFrame } = {}
+local restockBox: GuiObject? = nil
 
 -- A design surface as a foam face (`top` -> `bottom`, the ink border inside the box, the inset highlight, the lip).
 local function sticker(
@@ -463,10 +482,14 @@ local function gearChip(
 	return chip, text
 end
 
-local function setChip(chip: Frame, label: TextLabel, text: string)
+local function setChip(chip: Frame, label: TextLabel, text: string, fixed: Vector2?)
 	local spec = PASSES.chip
 	label.Text = text
 	fitLabel(label, CHIP_KIND)
+	if fixed then -- 2026-11-12 phone Shop: the button across the card's width
+		chip.Size = UDim2.fromOffset(fixed.X, fixed.Y)
+		return
+	end
 	chip.Size = UDim2.fromOffset(
 		2 * spec.border + spec.padLeft + spec.coinPx + spec.gap + label.Size.X.Offset + spec.padRight,
 		spec.height + spec.lip
@@ -548,15 +571,22 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 	end
 	table.clear(card.dots)
 	local spec = PASSES.tile
+	-- 2026-11-12 phone Shop: a standing card's tile sits at the top of its panel, card.tilePx big
+	local size = card.tilePx or spec.px
+	local artPx = math.round(PASSES.art.px * size / spec.px)
+	local panel = card.panel
 	local found = (Palette :: any)[view.color]
 	local color: Color3 = if typeof(found) == "Color3" then found else WHITE
 	local tile: Frame = Create("Frame", {
 		Name = "Tile",
 		BorderSizePixel = 0,
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, PASSES.border + PASSES.padLeft, 0.5, 0),
-		Size = UDim2.fromOffset(spec.px, spec.px),
-		Parent = card.content,
+		AnchorPoint = if panel then Vector2.new(0.5, 0) else Vector2.new(0, 0.5),
+		Position = if panel
+			then UDim2.new(0.5, 0, 0, PHONE.artTop)
+			else UDim2.new(0, PASSES.border + PASSES.padLeft, 0.5, 0),
+		Size = UDim2.fromOffset(size, size),
+		ZIndex = if panel then 2 else 1,
+		Parent = panel or card.content,
 	})
 	sticker(
 		tile,
@@ -571,9 +601,9 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 	local icon = view.icon
 	if icon then -- 2026-11-01 INCOME: the picture bobbing like a pass card's (H:342), the tier in a badge
 		local bob = holder("SD_Bob", tile)
-		bob.Size = UDim2.fromOffset(PASSES.art.px, PASSES.art.px)
+		bob.Size = UDim2.fromOffset(artPx, artPx)
 		bob.ZIndex = 2
-		picture(bob, icon, PASSES.art.px, "Picture")
+		picture(bob, icon, artPx, "Picture")
 		UiIdle.add(bob, "bob", { periodS = PASSES.art.bobS }) -- ends with the tile (Destroying)
 		if view.tier > 0 then -- item 10: the Gear Box's card has no tier
 			tierBadge(tile, view.tier)
@@ -582,7 +612,7 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 	end
 	local squishy = view.squishy
 	if squishy then -- 2026-10-31 RESTOCK: the squishy's picture instead of the tier number
-		local image = SquishyImage.new(squishy, { name = "Squishy", size = spec.px - 2 * spec.border, parent = tile })
+		local image = SquishyImage.new(squishy, { name = "Squishy", size = size - 2 * spec.border, parent = tile })
 		image.root.AnchorPoint = Vector2.new(0.5, 0.5)
 		image.root.Position = UDim2.fromScale(0.5, 0.5)
 		image.root.ZIndex = 2
@@ -590,7 +620,7 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 		return
 	end
 	local model = view.model
-	if model and gearPicture(tile, model, spec.px - 2 * spec.border, view.golden == true) then
+	if model and gearPicture(tile, model, size - 2 * spec.border, view.golden == true) then
 		tierBadge(tile, view.tier) -- item 9: the piece's own model; the stars still sit along the tile's bottom
 	else
 		local number = Theme.label({
@@ -641,43 +671,84 @@ local function gearTile(card: GearCard, view: GearFormat.Card)
 	end
 end
 
--- One card from its view: the tile, the stars, the name over the line over the chip (BUY with the price, pink when
--- short with the Coins missing on the line, … while buying; the lilac MAX once all is bought).
-local function paintGearCard(card: GearCard, view: GearFormat.Card)
-	card.view = view
-	if
-		card.tile == nil
+-- True when the card's tile no longer shows its view (another tier, stars, squishy, picture or model).
+local function tileStale(card: GearCard, view: GearFormat.Card): boolean
+	return card.tile == nil
 		or card.tier ~= view.tier
 		or card.steps ~= view.steps
 		or card.squishy ~= view.squishy
 		or card.icon ~= view.icon
 		or card.model ~= view.model
 		or card.golden ~= view.golden
-	then
+end
+
+-- The card's chip from its view (BUY with the price, pink when short, … while buying; the lilac MAX once all is
+-- bought). Returns the chip shown.
+local function paintChip(card: GearCard, view: GearFormat.Card): Frame
+	local max = view.state == "max"
+	card.maxChip.Visible = max
+	card.buyChip.Visible = not max
+	if max then
+		setChip(card.maxChip, card.maxText, view.maxText or Strings.gear.max, card.chipSize)
+		return card.maxChip
+	end
+	local price = if view.state == "busy" then Strings.shop.robuxLoading else Format.coins(view.price :: number)
+	setChip(card.buyChip, card.buyText, price, card.chipSize)
+	card.buyText.TextColor3 = if view.state == "needCoins" then Palette.StickerPriceShort else WHITE
+	return card.buyChip
+end
+
+-- The card's line: the Coins missing while short, else the view's line.
+local function cardLine(view: GearFormat.Card): string
+	return if view.state == "needCoins"
+		then Strings.format(Strings.gear.need, { coins = Format.coins(view.missing) })
+		else view.desc
+end
+
+-- 2026-11-12 phone Shop: a standing card from its view: the name over the line at its panel's bottom (centred), the
+-- tile over them as big as their room lets it (ShopFormat.phoneArtPx), the chip across the card's bottom.
+local function paintPhoneCard(card: GearCard, view: GearFormat.Card)
+	card.view = view
+	paintChip(card, view)
+	local textW = card.text.Size.X.Offset
+	card.name.Text = view.name
+	fitLabel(card.name, PASS_NAME_KIND, textW)
+	card.desc.Text = cardLine(view)
+	fitLabel(card.desc, PASS_DESC_KIND, textW)
+	local nameH = card.name.Size.Y.Offset
+	card.desc.Position = UDim2.fromOffset(0, nameH + PHONE.textGap)
+	local textH = nameH + PHONE.textGap + card.desc.Size.Y.Offset
+	card.text.Size = UDim2.fromOffset(textW, textH)
+	local px = ShopFormat.phoneArtPx(card.cardH :: number, PHONE.gearArtPx, textH)
+	if card.tilePx ~= px or tileStale(card, view) then
+		card.tilePx = px
 		gearTile(card, view)
 	end
 	for i, dot in card.dots do
 		dot.BackgroundTransparency = if i <= view.stars then 0 else 0.7
 	end
-	local max = view.state == "max"
-	local short = view.state == "needCoins"
-	card.maxChip.Visible = max
-	card.buyChip.Visible = not max
-	if max then
-		setChip(card.maxChip, card.maxText, view.maxText or Strings.gear.max)
-	else
-		local price = if view.state == "busy" then Strings.shop.robuxLoading else Format.coins(view.price :: number)
-		setChip(card.buyChip, card.buyText, price)
-		card.buyText.TextColor3 = if short then Palette.StickerPriceShort else WHITE
+end
+
+-- One card from its view: the tile, the stars, the name over the line over the chip (BUY with the price, pink when
+-- short with the Coins missing on the line, … while buying; the lilac MAX once all is bought).
+local function paintGearCard(card: GearCard, view: GearFormat.Card)
+	if card.panel then
+		paintPhoneCard(card, view)
+		return
 	end
-	local chip = if max then card.maxChip else card.buyChip
+	card.view = view
+	if tileStale(card, view) then
+		gearTile(card, view)
+	end
+	for i, dot in card.dots do
+		dot.BackgroundTransparency = if i <= view.stars then 0 else 0.7
+	end
+	local chip = paintChip(card, view)
 	local textLeft = PASSES.border + PASSES.padLeft + PASSES.tile.px + PASSES.gap
 	local textW = math.max(1, card.width - textLeft - PASSES.border - PASSES.padRight)
 	card.name.Text = view.name
 	fitLabel(card.name, PASS_NAME_KIND, textW)
-	card.desc.Text = if short
-		then Strings.format(Strings.gear.need, { coins = Format.coins(view.missing) })
-		else view.desc
+	card.desc.Text = cardLine(view)
 	fitLabel(card.desc, PASS_DESC_KIND, textW)
 	local y = 0
 	card.name.Position = UDim2.fromOffset(0, y)
@@ -686,6 +757,34 @@ local function paintGearCard(card: GearCard, view: GearFormat.Card)
 	y += card.desc.Size.Y.Offset + GEAR_CARD.chipGap
 	chip.Position = UDim2.fromOffset(0, y)
 	card.text.Size = UDim2.fromOffset(textW, y + chip.Size.Y.Offset)
+end
+
+-- 2026-11-12 phone Shop: a tab's row sized to what it shows: each group as wide as its shown cards (the gap between
+-- them), the scroll as wide as the shown groups (the gap between them) and the row's padding.
+local function fitPhonePage(page: ScrollingFrame)
+	local width, groups = 0, 0
+	for _, group in page:GetChildren() do
+		if not (group:IsA("GuiObject") and group.Visible) then
+			continue
+		end
+		local row = group:FindFirstChild("Cards")
+		if row and row:IsA("GuiObject") then
+			local cardsW, cards = 0, 0
+			for _, card in row:GetChildren() do
+				if card:IsA("GuiObject") and card.Visible then
+					cardsW += card.Size.X.Offset
+					cards += 1
+				end
+			end
+			cardsW += math.max(0, cards - 1) * PHONE.cardGap
+			row.Size = UDim2.fromOffset(cardsW, row.Size.Y.Offset)
+			group.Size = UDim2.fromOffset(cardsW, group.Size.Y.Offset)
+		end
+		width += group.Size.X.Offset
+		groups += 1
+	end
+	width += math.max(0, groups - 1) * PHONE.groupGap + 2 * (PHONE.padX - PHONE.clipInset)
+	page.CanvasSize = UDim2.fromOffset(width, 0)
 end
 
 local function paintGear()
@@ -754,6 +853,11 @@ local function paintGear()
 		grid.Visible = #restockViews > 0
 		wait.Text = RestockFormat.waitText(now)
 	end
+	local box, page = restockBox, restockPage -- 2026-11-12 phone Shop: the wait line's card, the offers' row
+	if box and page and page:IsA("ScrollingFrame") then
+		box.Visible = #restockViews == 0
+		fitPhonePage(page)
+	end
 end
 
 -- A tap on a gear card (see the header): buy the shown step, or say why not.
@@ -810,8 +914,46 @@ local function buyGear(card: GearCard)
 	end)
 end
 
+-- 2026-11-12 phone Shop: a standing card's face (the purple card, PHONE.radius) and its coloured panel (`top` ->
+-- `bottom`) over the room PHONE.chip leaves at the bottom. Returns the content box and the panel.
+local function phoneCardFace(rise: Frame, top: Color3, bottom: Color3): (Frame, Frame)
+	local face: Frame = Create("Frame", {
+		Name = "Face",
+		BorderSizePixel = 0,
+		Size = UDim2.fromScale(1, 1),
+		Parent = rise,
+	})
+	sticker(
+		face,
+		{ top = Palette.StickerCardTop, bottom = Palette.StickerCardBottom },
+		PASSES.border,
+		PHONE.radius,
+		CARD_LIP,
+		PASSES.inset
+	)
+	local content: Frame = Create("Frame", {
+		Name = "Content",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, -CARD_LIP),
+		ZIndex = 2,
+		Parent = rise,
+	})
+	local inset = PASSES.border + PHONE.pad
+	local panel: Frame = Create("Frame", {
+		Name = "Panel",
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(inset, inset),
+		Size = UDim2.new(1, -2 * inset, 1, -(2 * inset + PHONE.chip + PASSES.chip.lip + PHONE.pad)),
+		ClipsDescendants = true,
+		Parent = content,
+	})
+	sticker(panel, { top = top, bottom = bottom }, PHONE.panelBorder, PHONE.panelRadius, 0, PASSES.tile.inset)
+	return content, panel
+end
+
 -- A gear card (the pass card's face, H:341, GEAR_CARD.height tall): the tile left, the text stack (name, line, chip).
--- INCOME step 2: `remote` buys it, `list` keeps it (gearCards or incomeCards).
+-- INCOME step 2: `remote` buys it, `list` keeps it (gearCards or incomeCards). 2026-11-12 phone Shop: with `height`
+-- the card stands, `width` x `height` (see paintPhoneCard).
 local function buildGearCard(
 	c: Cleanup.Cleanup,
 	parent: Instance,
@@ -819,7 +961,8 @@ local function buildGearCard(
 	order: number,
 	width: number,
 	remote: string,
-	list: { GearCard }
+	list: { GearCard },
+	height: number?
 )
 	local root: TextButton = Create("TextButton", {
 		Name = "Shop_Gear_" .. line,
@@ -832,39 +975,53 @@ local function buildGearCard(
 	c:add(root)
 	local visual = holder("SD_Visual", root)
 	local rise = holder("SD_Rise", visual)
-	local face: Frame = Create("Frame", {
-		Name = "Face",
-		BorderSizePixel = 0,
-		Size = UDim2.fromScale(1, 1),
-		Parent = rise,
-	})
-	sticker(
-		face,
-		{ top = Palette.StickerCardTop, bottom = Palette.StickerCardBottom },
-		PASSES.border,
-		PASSES.radius,
-		CARD_LIP,
-		PASSES.inset
-	)
-	local content: Frame = Create("Frame", {
-		Name = "Content",
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, -CARD_LIP),
-		ZIndex = 2,
-		Parent = rise,
-	})
+	local content: Frame
+	local panel: Frame? = nil
+	if height then
+		root.Size = UDim2.fromOffset(width, height)
+		local box, inner = phoneCardFace(rise, Palette.StickerWindowTop, Palette.StickerWindowBottom)
+		content, panel = box, inner
+	else
+		local face: Frame = Create("Frame", {
+			Name = "Face",
+			BorderSizePixel = 0,
+			Size = UDim2.fromScale(1, 1),
+			Parent = rise,
+		})
+		sticker(
+			face,
+			{ top = Palette.StickerCardTop, bottom = Palette.StickerCardBottom },
+			PASSES.border,
+			PASSES.radius,
+			CARD_LIP,
+			PASSES.inset
+		)
+		content = Create("Frame", {
+			Name = "Content",
+			BackgroundTransparency = 1,
+			Size = UDim2.new(1, 0, 1, -CARD_LIP),
+			ZIndex = 2,
+			Parent = rise,
+		})
+	end
+	local inset = PASSES.border + PHONE.pad
 	local text: Frame = Create("Frame", {
 		Name = "Text",
 		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0, 0.5),
-		Position = UDim2.new(0, PASSES.border + PASSES.padLeft + PASSES.tile.px + PASSES.gap, 0.5, 0),
-		Parent = content,
+		AnchorPoint = if panel then Vector2.new(0.5, 1) else Vector2.new(0, 0.5),
+		Position = if panel
+			then UDim2.new(0.5, 0, 1, -PHONE.textBottom)
+			else UDim2.new(0, PASSES.border + PASSES.padLeft + PASSES.tile.px + PASSES.gap, 0.5, 0),
+		Size = UDim2.fromOffset(math.max(1, width - 2 * (inset + PHONE.panelBorder + PHONE.textPadX)), 0),
+		ZIndex = if panel then 2 else 1,
+		Parent = panel or content,
 	})
+	local align = if panel then Enum.TextXAlignment.Center else Enum.TextXAlignment.Left
 	local name = Theme.label({
 		Name = "Name",
 		Text = "",
 		AutomaticSize = Enum.AutomaticSize.None,
-		TextXAlignment = Enum.TextXAlignment.Left,
+		TextXAlignment = align,
 		Parent = text,
 	}, PASS_NAME_KIND)
 	Theme.stickerText(name, PASSES.nameRole)
@@ -872,12 +1029,22 @@ local function buildGearCard(
 		Name = "Line",
 		Text = "",
 		AutomaticSize = Enum.AutomaticSize.None,
-		TextXAlignment = Enum.TextXAlignment.Left,
+		TextXAlignment = align,
 		Parent = text,
 	}, PASS_DESC_KIND)
 	Theme.stickerText(desc, PASSES.descRole)
-	local buyChip, buyText = gearChip(c, text, "Price", Palette.StickerGreenTop, Palette.StickerGreen2End, false)
-	local maxChip, maxText = gearChip(c, text, "Max", Palette.StickerDisabledTop, Palette.StickerDisabledEnd, true)
+	local chipParent = if panel then content else text -- phone: the chip spans the card's bottom
+	local buyChip, buyText = gearChip(c, chipParent, "Price", Palette.StickerGreenTop, Palette.StickerGreen2End, false)
+	local maxChip, maxText =
+		gearChip(c, chipParent, "Max", Palette.StickerDisabledTop, Palette.StickerDisabledEnd, true)
+	local chipSize: Vector2? = nil
+	if panel then
+		chipSize = Vector2.new(width - 2 * inset, PHONE.chip + PASSES.chip.lip)
+		for _, chip in { buyChip, maxChip } do
+			chip.AnchorPoint = Vector2.new(0.5, 1)
+			chip.Position = UDim2.new(0.5, 0, 1, -inset)
+		end
+	end
 	local card: GearCard = {
 		line = line,
 		remote = remote,
@@ -897,6 +1064,9 @@ local function buildGearCard(
 		maxChip = maxChip,
 		maxText = maxText,
 		view = nil,
+		panel = panel,
+		cardH = height,
+		chipSize = chipSize,
 	}
 	local feel: Button.DecorateOptions = { fx = "card", visual = visual, pivotPx = CARD_LIP / 2 }
 	c:add(Button.decorate(root, feel))
@@ -1042,6 +1212,11 @@ local function setPage(id: string)
 	if restockPage then
 		restockPage.Visible = page == PAGE_RESTOCK
 	end
+	for _, row in phonePages do -- 2026-11-12 phone Shop: a tab opens at its row's start
+		if row.Visible then
+			row.CanvasPosition = Vector2.zero
+		end
+	end
 	local picker = tabs
 	if picker and picker:selected() ~= page then
 		picker:select(page)
@@ -1185,10 +1360,55 @@ end
 
 -- Layout ------------------------------------------------------------------------------------------------------------
 
--- The whole window at the design's size, shrunk evenly to the screen (ShopFormat.windowFit).
+-- 2026-11-12 phone Shop: the phone window for the screen now (ShopFormat.phoneWindow on SD_Modal's canvas, which
+-- starts under Roblox's top bar), or nil when this is no phone in landscape (the compact class, wider than tall).
+local function phoneWindow(): { width: number, height: number, shift: number }?
+	local screen = UIController.screenGui(MODAL_GUI).AbsoluteSize
+	if UIController.layoutClass() ~= "compact" or screen.X <= screen.Y then
+		return nil
+	end
+	local scale = UIController.scale()
+	return ShopFormat.phoneWindow(screen / scale, GuiService:GetGuiInset().Y / scale)
+end
+
+-- 2026-11-12 phone Shop: the window's basket pinned where the design draws it (PHONE.sticker: smaller and lower than
+-- Theme.fitWindow puts it, clear of Roblox's buttons at the screen's top left), also after Theme fits the band again.
+local function pinBasket(c: Cleanup.Cleanup, root: GuiObject)
+	local basket = root:FindFirstChild("SD_Sticker", true)
+	if not (basket and basket:IsA("GuiObject")) then
+		return
+	end
+	local spec = PHONE.sticker
+	local size = UDim2.fromOffset(spec.px, spec.px)
+	local spot = UDim2.fromOffset(spec.x + spec.px / 2, spec.y + spec.px / 2)
+	local function pin()
+		if basket.Size ~= size then
+			basket.Size = size
+		end
+		if basket.Position ~= spot then
+			basket.Position = spot
+		end
+	end
+	c:add(basket:GetPropertyChangedSignal("Size"):Connect(pin))
+	c:add(basket:GetPropertyChangedSignal("Position"):Connect(pin))
+	pin()
+end
+
+-- The whole window at the design's size, shrunk evenly to the screen (ShopFormat.windowFit). 2026-11-12 phone Shop:
+-- built for a phone, the window fills the phone (phoneWindow) at the UI's own scale, its band at chromeK.
 local function applyLayout()
 	local root, scale = panel, fitScale
 	if root == nil or scale == nil then
+		return
+	end
+	if phone then
+		local win = phoneWindow()
+		if win then -- else (a Studio window made big) it stays where it was
+			scale.Scale = 1
+			root.Size = UDim2.fromOffset(win.width, win.height)
+			root.Position = UDim2.new(0.5, 0, 0.5, win.shift)
+			Theme.fitWindow(root, PHONE.chromeK)
+		end
 		return
 	end
 	local screen = UIController.screenGui(MODAL_GUI).AbsoluteSize
@@ -1227,8 +1447,10 @@ end
 
 -- Builders ----------------------------------------------------------------------------------------------------------
 
--- H:318-336: the featured card (the Dragon Bundle).
-local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number, height: number)
+-- H:318-336: the featured card (the Dragon Bundle). 2026-11-12 phone Shop: with `dragonBox` the card lies down: the
+-- text, the line on two rows and a shorter BUY / OWNED at the left, the Dragon in a `dragonBox` wide box at the right,
+-- LIMITED sticking out over the top left like the rows' label chips.
+local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number, height: number, dragonBox: number?)
 	local border = FEATURED.border
 	local root: Frame = Create("Frame", {
 		Name = "Featured",
@@ -1259,10 +1481,18 @@ local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number
 
 	-- H:320-323: the badge row (padding 14 14 0, gap 8): LIMITED, and the timer pill at the right.
 	local row = BUNDLE.row
-	local limited =
-		badge(clip, "Limited", Strings.shop.limited, Palette.StickerRedTop, Palette.StickerRedEnd, BADGE.limited)
-	limited.Position = UDim2.fromOffset(row.pad, row.pad)
-	limited.ZIndex = 3
+	local limited = badge(
+		if dragonBox then root else clip,
+		"Limited",
+		Strings.shop.limited,
+		Palette.StickerRedTop,
+		Palette.StickerRedEnd,
+		BADGE.limited
+	)
+	limited.Position = if dragonBox -- (its wobble lifts it: a little lower than the label chips, clear of the band)
+		then UDim2.fromOffset(PHONE.label.offsetX, -BADGE.pack.offsetY)
+		else UDim2.fromOffset(row.pad, row.pad)
+	limited.ZIndex = if dragonBox then 5 else 3
 	idle(c, limited, "badge", BADGE.badgeS)
 	local timer: Frame = Create("Frame", {
 		Name = "Timer",
@@ -1303,16 +1533,22 @@ local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number
 
 	-- H:330-335: the text block (padding 0 16 16, gap 6): the name, the line, BUY / OWNED.
 	local text = FEATURED.text
-	local textW = innerW - 2 * text.padX
+	local padX = if dragonBox then PHONE.heroPad else text.padX
+	local textW = if dragonBox then innerW - dragonBox - padX else innerW - 2 * text.padX
 	local nameKind = roleKind(FEATURED.nameRole)
 	local nameH = math.ceil(Theme.textBounds(Strings.shop.bundleName, nameKind, nil, textW).Y)
-	local lineH = math.max(FEATURED.lineCoinPx, math.ceil(Theme.lineHeight(roleKind(FEATURED.lineRole))))
-	local actionH = FEATURED.buy.marginTop + FEATURED.buy.face + BUTTON_LIP
-	local blockH = nameH + text.gap + lineH + text.gap + actionH + text.padBottom
+	local rowH = math.max(FEATURED.lineCoinPx, math.ceil(Theme.lineHeight(roleKind(FEATURED.lineRole))))
+	local rowGap = 2 -- phone: the line's two rows
+	local lineH = if dragonBox then 2 * rowH + rowGap else rowH
+	local buyFace = if dragonBox then PHONE.heroBuy.face else FEATURED.buy.face
+	local buyW = if dragonBox then math.min(textW, PHONE.heroBuy.width) else textW
+	local actionH = FEATURED.buy.marginTop + buyFace + BUTTON_LIP
+	local padBottom = if dragonBox then PHONE.heroPad else text.padBottom
+	local blockH = nameH + text.gap + lineH + text.gap + actionH + padBottom
 	local block: Frame = Create("Frame", {
 		Name = "Text",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(text.padX, faceH - blockH),
+		Position = UDim2.fromOffset(padX, faceH - blockH),
 		Size = UDim2.fromOffset(textW, blockH),
 		ZIndex = 3,
 		Parent = clip,
@@ -1335,11 +1571,38 @@ local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number
 		LayoutOrder = 2,
 		Parent = block,
 	})
-	Theme.list(Enum.FillDirection.Horizontal, 6, line, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	-- phone: "Legendary Dragon +" over the coin and the amount
+	local first, rest: Frame = line, line
+	if dragonBox then
+		Theme.list(Enum.FillDirection.Vertical, rowGap, line, Enum.HorizontalAlignment.Left)
+		for order = 1, 2 do
+			local part: Frame = Create("Frame", {
+				Name = "Row" .. order,
+				BackgroundTransparency = 1,
+				Size = UDim2.fromOffset(textW, rowH),
+				LayoutOrder = order,
+				Parent = line,
+			})
+			Theme.list(
+				Enum.FillDirection.Horizontal,
+				6,
+				part,
+				Enum.HorizontalAlignment.Left,
+				Enum.VerticalAlignment.Center
+			)
+			if order == 1 then
+				first = part
+			else
+				rest = part
+			end
+		end
+	else
+		Theme.list(Enum.FillDirection.Horizontal, 6, line, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Center)
+	end
 	local lineKind = roleKind(FEATURED.lineRole)
 	for index, part in { Strings.shop.bundleLine, "", Format.coins(BUNDLE.coins) } do
 		if index == 2 then
-			c:add(CoinIcon.new({ name = "Coin", sizePx = FEATURED.lineCoinPx, layoutOrder = 2, parent = line }))
+			c:add(CoinIcon.new({ name = "Coin", sizePx = FEATURED.lineCoinPx, layoutOrder = 2, parent = rest }))
 		else
 			local label = Theme.label({
 				Name = "Part" .. index,
@@ -1347,7 +1610,7 @@ local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number
 				AutomaticSize = Enum.AutomaticSize.None,
 				TextWrapped = false,
 				LayoutOrder = index,
-				Parent = line,
+				Parent = if index == 1 then first else rest,
 			}, lineKind)
 			Theme.stickerText(label, FEATURED.lineRole)
 			fitLabel(label, lineKind)
@@ -1364,16 +1627,16 @@ local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number
 		Name = "SD_Pulse",
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.new(0.5, 0, 0, FEATURED.buy.marginTop + (FEATURED.buy.face + BUTTON_LIP) / 2),
-		Size = UDim2.new(1, 0, 0, FEATURED.buy.face + BUTTON_LIP),
+		Position = UDim2.fromOffset(buyW / 2, FEATURED.buy.marginTop + (buyFace + BUTTON_LIP) / 2),
+		Size = UDim2.fromOffset(buyW, buyFace + BUTTON_LIP),
 		Parent = action,
 	})
 	local buy = Button.new({
 		name = "Shop_BuyButton",
 		text = Strings.shop.soon,
 		kind = "primary",
-		width = textW,
-		height = FEATURED.buy.face,
+		width = buyW,
+		height = buyFace,
 		textRole = FEATURED.buy.textRole,
 		keycap = "", -- reserves the row: the Robux picture, then the price (H:333)
 		clickSound = false,
@@ -1399,7 +1662,7 @@ local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number
 		Name = "Owned",
 		BorderSizePixel = 0,
 		Position = UDim2.fromOffset(0, FEATURED.buy.marginTop),
-		Size = UDim2.new(1, 0, 0, FEATURED.owned.face),
+		Size = if dragonBox then UDim2.fromOffset(buyW, buyFace) else UDim2.new(1, 0, 0, FEATURED.owned.face),
 		Visible = false,
 		Parent = action,
 	})
@@ -1442,12 +1705,14 @@ local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number
 	fitLabel(ownedLabel, roleKind(FEATURED.owned.textRole))
 
 	-- H:324-329: the art area between the badge row and the text: the twinkles and the Dragon floating (230).
-	local artTop = row.pad + BADGE.limited.height
+	-- Phone: the Dragon's box at the card's right, its whole height.
+	local artTop = if dragonBox then 0 else row.pad + BADGE.limited.height
+	local wellH = if dragonBox then faceH else math.max(0, faceH - blockH - artTop)
 	local well: Frame = Create("Frame", {
 		Name = "Art",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(0, artTop),
-		Size = UDim2.fromOffset(innerW, math.max(0, faceH - blockH - artTop)),
+		Position = UDim2.fromOffset(if dragonBox then innerW - dragonBox else 0, artTop),
+		Size = UDim2.fromOffset(dragonBox or innerW, wellH),
 		ZIndex = 2,
 		Parent = clip,
 	})
@@ -1467,7 +1732,9 @@ local function buildFeatured(c: Cleanup.Cleanup, parent: Instance, width: number
 			idle(c, image, "twinkle", spot.periodS, spot.delayS)
 		end
 	end
-	local artPx = math.min(FEATURED.art.px, math.floor(math.max(0, faceH - blockH - artTop)))
+	local artPx = if dragonBox
+		then math.min(PHONE.heroDragonPx, faceH - 2 * PHONE.heroPad)
+		else math.min(FEATURED.art.px, math.floor(wellH))
 	local art: Frame = Create("Frame", {
 		Name = "SD_Float",
 		BackgroundTransparency = 1,
@@ -1626,13 +1893,123 @@ local function buildPass(c: Cleanup.Cleanup, parent: Instance, pass: { [string]:
 	table.insert(passCards, { key = pass.key, root = root, rise = rise, chip = chip, price = price })
 end
 
+-- 2026-11-12 phone Shop: a standing pass card (phoneCardFace on the pass's colours): the picture bobbing at the top,
+-- the name over the line at the bottom, the green Robux button across the card. Its BUY waits for a product (§6.11).
+local function buildPhonePass(
+	c: Cleanup.Cleanup,
+	parent: Instance,
+	pass: { [string]: any },
+	order: number,
+	width: number,
+	height: number
+)
+	local texts = (Strings.shop.passes :: any)[pass.key]
+	local root: TextButton = Create("TextButton", {
+		Name = "Shop_Pass_" .. pass.key,
+		Text = "",
+		AutoButtonColor = false,
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Size = UDim2.fromOffset(width, height),
+		LayoutOrder = order,
+	})
+	c:add(root)
+	local visual = holder("SD_Visual", root)
+	local rise = holder("SD_Rise", visual)
+	local content, panel =
+		phoneCardFace(rise, (Palette :: any)[pass.top] :: Color3, (Palette :: any)[pass.bottom] :: Color3)
+	local inset = PASSES.border + PHONE.pad
+	local textW = math.max(1, width - 2 * (inset + PHONE.panelBorder + PHONE.textPadX))
+	local text: Frame = Create("Frame", {
+		Name = "Text",
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -PHONE.textBottom),
+		ZIndex = 2,
+		Parent = panel,
+	})
+	local name = Theme.label({
+		Name = "Name",
+		Text = texts.name,
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = text,
+	}, PASS_NAME_KIND)
+	Theme.stickerText(name, PASSES.nameRole)
+	fitLabel(name, PASS_NAME_KIND, textW)
+	local desc = Theme.label({
+		Name = "Line",
+		Text = texts.desc,
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Position = UDim2.fromOffset(0, name.Size.Y.Offset + PHONE.textGap),
+		Parent = text,
+	}, PASS_DESC_KIND)
+	Theme.stickerText(desc, PASSES.descRole)
+	fitLabel(desc, PASS_DESC_KIND, textW)
+	local textH = name.Size.Y.Offset + PHONE.textGap + desc.Size.Y.Offset
+	text.Size = UDim2.fromOffset(textW, textH)
+	local artPx = ShopFormat.phoneArtPx(height, PHONE.passArtPx, textH)
+	local bob = holder("SD_Bob", panel)
+	bob.AnchorPoint = Vector2.new(0.5, 0)
+	bob.Position = UDim2.new(0.5, 0, 0, PHONE.artTop)
+	bob.Size = UDim2.fromOffset(artPx, artPx)
+	bob.ZIndex = 2
+	picture(bob, pass.image, artPx, "Picture")
+	idle(c, bob, "bob", PASSES.art.bobS)
+	-- the green Robux button across the card (the pass chip's look, PHONE.chip high)
+	local chipSpec = PASSES.chip
+	local chip: Frame = Create("Frame", {
+		Name = "Price",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -inset),
+		Size = UDim2.fromOffset(width - 2 * inset, PHONE.chip + chipSpec.lip),
+		Parent = content,
+	})
+	sticker(
+		chip,
+		{ top = Palette.StickerGreenTop, bottom = Palette.StickerGreen2End },
+		chipSpec.border,
+		chipSpec.radius,
+		chipSpec.lip,
+		chipSpec.inset
+	)
+	local chipFace: Frame = Create("Frame", {
+		Name = "FaceRow",
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, 0, 1, -chipSpec.lip),
+		ZIndex = 2,
+		Parent = chip,
+	})
+	local price = robuxRow(c, chipFace, chipSpec.coinPx, chipSpec.gap, chipSpec.textRole)
+	fitLabel(price, CHIP_KIND)
+	local feel: Button.DecorateOptions = { fx = "card", visual = visual, pivotPx = CARD_LIP / 2 }
+	c:add(Button.decorate(root, feel))
+	c:add(root.Activated:Connect(comingSoon)) -- no pass product yet (§6.11)
+	root.Parent = parent
+	table.insert(passCards, { key = pass.key, root = root, rise = rise, chip = chip, price = price })
+end
+
 -- H:355-363: a coin pack card (cream, the badges, the picture bobbing, the amount, the green Robux price bar).
-local function buildPack(c: Cleanup.Cleanup, parent: Instance, pack: { [string]: any }, order: number, width: number)
+-- 2026-11-12 phone Shop: with `height` the card is `width` x `height` with the phone's taller price bar and picture.
+local function buildPack(
+	c: Cleanup.Cleanup,
+	parent: Instance,
+	pack: { [string]: any },
+	order: number,
+	width: number,
+	height: number?
+)
+	local bar = if height then PHONE.chip else PACKS.priceBar
 	local root: Frame = Create("Frame", {
 		Name = "Shop_Pack_" .. pack.key,
 		BackgroundTransparency = 1,
 		LayoutOrder = order,
 	})
+	if height then
+		root.Size = UDim2.fromOffset(width, height)
+	end
 	c:add(root)
 	local rise = holder("SD_Rise", root)
 	local face: Frame = Create("Frame", {
@@ -1669,7 +2046,7 @@ local function buildPack(c: Cleanup.Cleanup, parent: Instance, pack: { [string]:
 		text = Strings.shop.soon,
 		kind = "primary",
 		accent = "greenChip", -- H:362: #A6F796 -> #38C150
-		height = PACKS.priceBar,
+		height = bar,
 		border = PACKS.priceBorder,
 		radius = PACKS.priceRadius,
 		lip = PACKS.priceLip,
@@ -1710,7 +2087,7 @@ local function buildPack(c: Cleanup.Cleanup, parent: Instance, pack: { [string]:
 		Name = "Amount",
 		Text = Format.coins(pack.amount),
 		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.new(0, 0, 1, -(PACKS.priceBar + PACKS.priceLip + PACKS.innerGap)),
+		Position = UDim2.new(0, 0, 1, -(bar + PACKS.priceLip + PACKS.innerGap)),
 		Size = UDim2.new(1, 0, 0, amountH),
 		AutomaticSize = Enum.AutomaticSize.None,
 		TextXAlignment = Enum.TextXAlignment.Center,
@@ -1718,15 +2095,23 @@ local function buildPack(c: Cleanup.Cleanup, parent: Instance, pack: { [string]:
 		Parent = content,
 	}, amountKind)
 	Theme.stickerText(amount, PACKS.amountRole)
+	local artRoom = bar + PACKS.priceLip + 2 * PACKS.innerGap + amountH
 	local art: Frame = Create("Frame", {
 		Name = "Art",
 		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 1, -(PACKS.priceBar + PACKS.priceLip + 2 * PACKS.innerGap + amountH)),
+		Size = UDim2.new(1, 0, 1, -artRoom),
 		Parent = content,
 	})
+	-- phone: the picture as big as the card's room lets it, at most PHONE.packIconPx
+	local iconPx = if height
+		then math.min(
+			PHONE.packIconPx,
+			height - PACKS.lip - 2 * PACKS.border - PACKS.padTop - PACKS.padBottom - artRoom
+		)
+		else PACKS.iconPx
 	local bob = holder("SD_Bob", art)
-	bob.Size = UDim2.fromOffset(PACKS.iconPx, PACKS.iconPx)
-	picture(bob, pack.image, PACKS.iconPx, "Picture")
+	bob.Size = UDim2.fromOffset(iconPx, iconPx)
+	picture(bob, pack.image, iconPx, "Picture")
 	idle(c, bob, "bob", PACKS.bobS)
 	-- H:356-357: the +n% badge (right -8, top -12, 8°) and BEST (left -8, top -12, -8°).
 	if pack.bonus then
@@ -1745,6 +2130,254 @@ local function buildPack(c: Cleanup.Cleanup, parent: Instance, pack: { [string]:
 	end
 	root.Parent = parent
 	packCards[pack.key] = { key = pack.key, root = root, rise = rise, buy = buy, ready = false }
+end
+
+-- 2026-11-12 phone Shop ---------------------------------------------------------------------------------------------
+
+-- A tab's row: a sideways scroll over the body (its clip PHONE.clipInset inside the window's border), the groups in a
+-- line at the row's padding; hidden until its tab is picked (setPage).
+local function phonePage(body: Frame, name: string): ScrollingFrame
+	local page: ScrollingFrame = Create("ScrollingFrame", {
+		Name = name .. "Page",
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		Position = UDim2.fromOffset(PHONE.clipInset, 0),
+		Size = UDim2.new(1, -2 * PHONE.clipInset, 1, 0),
+		CanvasSize = UDim2.fromOffset(0, 0),
+		ScrollingDirection = Enum.ScrollingDirection.X,
+		ScrollBarThickness = 0,
+		ElasticBehavior = Enum.ElasticBehavior.WhenScrollable,
+		Selectable = false,
+		Visible = false,
+		Parent = body,
+	})
+	Create("UIPadding", {
+		PaddingLeft = UDim.new(0, PHONE.padX - PHONE.clipInset),
+		PaddingRight = UDim.new(0, PHONE.padX - PHONE.clipInset),
+		PaddingTop = UDim.new(0, PHONE.padTop),
+		PaddingBottom = UDim.new(0, PHONE.padBottom),
+		Parent = page,
+	})
+	Theme.list(
+		Enum.FillDirection.Horizontal,
+		PHONE.groupGap,
+		page,
+		Enum.HorizontalAlignment.Left,
+		Enum.VerticalAlignment.Top
+	)
+	table.insert(phonePages, page)
+	return page
+end
+
+-- A group in a tab's row: its cards in a line (`Cards`, cardGap apart, `cardH` high; fitPhonePage sizes it) under
+-- its gold label chip sticking out over the first card's top left. Returns the cards' line.
+local function phoneGroup(page: ScrollingFrame, name: string, label: string, order: number, cardH: number): Frame
+	local group: Frame = Create("Frame", {
+		Name = name,
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(0, cardH),
+		LayoutOrder = order,
+		Parent = page,
+	})
+	local row: Frame = Create("Frame", {
+		Name = "Cards",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(0, cardH),
+		Parent = group,
+	})
+	Theme.list(Enum.FillDirection.Horizontal, PHONE.cardGap, row, Enum.HorizontalAlignment.Left, Enum.VerticalAlignment.Top)
+	local chip = badge(group, "Label", label, Palette.StickerHeaderGoldTop, Palette.StickerHeaderGoldEnd, PHONE.label)
+	chip.Position = UDim2.fromOffset(PHONE.label.offsetX, -PHONE.label.offsetY)
+	chip.ZIndex = 5
+	return row
+end
+
+-- A tab of standing gear cards (buildGearCard with `cardH`) in one group under `head`. Returns the page and the
+-- group's line of cards.
+local function phoneCardPage(
+	c: Cleanup.Cleanup,
+	body: Frame,
+	name: string,
+	head: string,
+	lines: { string },
+	remote: string,
+	list: { GearCard },
+	cardH: number
+): (ScrollingFrame, Frame)
+	local page = phonePage(body, name)
+	local row = phoneGroup(page, name .. "Group", head, 1, cardH)
+	for index, line in lines do
+		buildGearCard(c, row, line, index, PHONE.cardWidth, remote, list, cardH)
+	end
+	return page, row
+end
+
+-- The phone body under the band, from border to border (see the header): each tab's row, the cards PHONE's widths
+-- and as tall as the row; the window-pink fade over the rows' right end (more to swipe).
+-- shortcut: the cards keep the height of the screen the Shop was first built on; a phone keeps its screen size
+-- (landscape both ways), only a resized Studio window shows it.
+local function buildPhoneBody(
+	c: Cleanup.Cleanup,
+	root: Frame,
+	chrome: Theme.FittedChrome,
+	win: { width: number, height: number, shift: number }
+)
+	local lip = Config.UI.Sticker.lip.window
+	local bandBottom = WINDOW_BORDER + chrome.band
+	local bodyW = win.width - 2 * WINDOW_BORDER
+	local body: Frame = Create("Frame", {
+		Name = "Body",
+		BackgroundTransparency = 1,
+		Position = UDim2.fromOffset(WINDOW_BORDER - WINDOW_PAD, bandBottom - chrome.top),
+		Size = UDim2.fromOffset(bodyW, win.height - bandBottom - WINDOW_BORDER - lip),
+		Parent = root,
+	})
+	local cardH = ShopFormat.phoneCardHeight(win.height, bandBottom, WINDOW_BORDER + lip)
+
+	-- SHOP: the Dragon Bundle, GAME PASSES, COINS
+	local canvasW = win.width + 2 * PHONE.side
+	local shop = phonePage(body, "Shop")
+	local heroFit = ShopFormat.phoneHero(canvasW)
+	local hero: Frame = Create("Frame", {
+		Name = "Hero",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(heroFit.width, cardH),
+		LayoutOrder = 1,
+		Parent = shop,
+	})
+	buildFeatured(c, hero, heroFit.width, cardH, heroFit.box)
+	local passes = phoneGroup(shop, "Passes", Strings.shop.sectionPasses, 2, cardH)
+	for index, pass in PASS_LIST do
+		buildPhonePass(c, passes, pass, index, PHONE.cardWidth, cardH)
+	end
+	local packs = phoneGroup(shop, "Packs", Strings.shop.sectionCoins, 3, cardH)
+	for index, pack in PACKS.list do
+		buildPack(c, packs, pack, index, PHONE.packWidth, cardH)
+	end
+	shopPage = shop
+
+	-- GEAR: its cards (big job item 10: the Gear Box 5th), then the throw power on a dashed-look card
+	local lines = { "held", "platform", "arm", "armor", GearFormat.BOX }
+	local gear, gearRow = phoneCardPage(c, body, "Gear", Strings.gear.section, lines, REMOTE_GEAR, gearCards, cardH)
+	gearPage = gear
+	local powerCard: Frame = Create("Frame", {
+		Name = "Power",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(PHONE.powerWidth, cardH - CARD_LIP),
+		LayoutOrder = #lines + 1,
+		Parent = gearRow,
+	})
+	Theme.corner(PHONE.radius, powerCard)
+	Theme.stroke(Theme.Colors.inkUI, PASSES.border, powerCard, 0.6)
+	local power = Theme.label({
+		Name = "Text",
+		Text = "",
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.new(1, -2 * PHONE.heroPad, 1, -2 * PHONE.heroPad),
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Center,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextWrapped = true,
+		Parent = powerCard,
+	}, PASS_NAME_KIND) -- the cards' name size: PC's power line is too small on a phone
+	Theme.stickerText(power, PASSES.nameRole)
+	gearPower = power
+
+	-- INCOME (its GRIP card buys with its own remote, as on PC) and TOYS
+	incomePage = phoneCardPage(
+		c,
+		body,
+		"Income",
+		Strings.income.section,
+		{ "coins", "all", "grip" },
+		REMOTE_INCOME,
+		incomeCards,
+		cardH
+	)
+	for _, card in incomeCards do
+		if card.line == "grip" then
+			card.remote = REMOTE_GRIP
+		end
+	end
+	toysPage = phoneCardPage(c, body, "Toys", Strings.income.toysSection, IncomeFormat.TOYS, REMOTE_INCOME, toyCards, cardH)
+
+	-- RESTOCK: the offers' group, or between restocks the wait line on its card in the row's middle (paintGear)
+	local slots = {}
+	for slot = 1, RESTOCK_SLOTS do
+		table.insert(slots, tostring(slot))
+	end
+	local restock, restockRow =
+		phoneCardPage(c, body, "Restock", Strings.event.restockSection, slots, REMOTE_RESTOCK, restockCards, cardH)
+	restockPage = restock
+	restockGrid = restockRow.Parent :: GuiObject
+	local roomW = bodyW - 2 * PHONE.padX
+	local hold: Frame = Create("Frame", {
+		Name = "Wait",
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(roomW, cardH),
+		LayoutOrder = 2,
+		Visible = false,
+		Parent = restock,
+	})
+	local waitKind = PASS_NAME_KIND -- the cards' name size, like the power card's
+	local iconPx = PHONE.passArtPx
+	local boxW = math.min(roomW, PHONE.waitWidth)
+	local inset = PASSES.border + PHONE.heroPad
+	local textW = boxW - 2 * inset - iconPx - PHONE.heroPad
+	local textH = math.ceil(Theme.textBounds(RestockFormat.waitText(Workspace:GetServerTimeNow()), waitKind, nil, textW).Y)
+	local box: Frame = Create("Frame", {
+		Name = "Card",
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(boxW, math.max(iconPx, textH) + 2 * inset + CARD_LIP),
+		Parent = hold,
+	})
+	sticker(
+		box,
+		{ top = Palette.StickerCardTop, bottom = Palette.StickerCardBottom },
+		PASSES.border,
+		PHONE.radius,
+		CARD_LIP,
+		PASSES.inset
+	)
+	local clock = IconGlyph.image("img.icon.clock", { name = "Clock", sizePx = iconPx, parent = box })
+	clock.AnchorPoint = Vector2.new(0, 0.5)
+	clock.Position = UDim2.new(0, inset, 0.5, -CARD_LIP / 2)
+	clock.ZIndex = 2
+	local wait = Theme.label({
+		Name = "Text",
+		Text = "",
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, inset + iconPx + PHONE.heroPad, 0.5, -CARD_LIP / 2),
+		Size = UDim2.fromOffset(textW, textH),
+		AutomaticSize = Enum.AutomaticSize.None,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Center,
+		TextWrapped = true,
+		ZIndex = 2,
+		Parent = box,
+	}, waitKind)
+	Theme.stickerText(wait, PASSES.nameRole)
+	restockWait = wait
+	restockBox = hold
+
+	for _, page in phonePages do
+		fitPhonePage(page)
+	end
+	local fade: Frame = Create("Frame", {
+		Name = "SD_MoreFade",
+		BackgroundColor3 = Palette.StickerWindowBottom,
+		BorderSizePixel = 0,
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -PHONE.clipInset, 0, 0),
+		Size = UDim2.new(0, PHONE.fadeWidth, 1, 0),
+		Active = false,
+		ZIndex = 6,
+		Parent = body,
+	})
+	Create("UIGradient", { Transparency = NumberSequence.new(1, 0), Parent = fade })
 end
 
 local function build(parent: Instance): GuiObject
@@ -1777,6 +2410,26 @@ local function build(parent: Instance): GuiObject
 	close.root.Modal = true
 	c:add(close)
 	closeButton = close
+	-- The window's end, whichever body it got: the tab shown, kept fitted to the screen.
+	local function finish(): GuiObject
+		setPage(page)
+		panel = root
+		c:add(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyLayout))
+		c:add(UIController.LayoutChanged:connect(applyLayout))
+		applyLayout()
+		refresh()
+		return root
+	end
+	-- 2026-11-12 phone Shop: a phone in landscape gets the phone body (decided here: the window is built once).
+	local win = phoneWindow()
+	if win then
+		phone = true
+		root.Size = UDim2.fromOffset(win.width, win.height)
+		buildPhoneBody(c, root, Theme.fitWindow(root, PHONE.chromeK), win)
+		pinBasket(c, root)
+		close.root.Position += UDim2.fromOffset(-PHONE.closeShift.x, PHONE.closeShift.y) -- in the window's corner
+		return finish()
+	end
 	local chrome = Theme.fitWindow(root, 1)
 
 	-- H:317: the body inside the window's content box (the design's padding 20 24 24 inside the 5 px border).
@@ -1879,14 +2532,7 @@ local function build(parent: Instance): GuiObject
 		toyCards
 	)
 	restockPage = buildRestockPage(c, body, columnLeft, columnW, bodyH) -- 2026-10-31 shop restock
-	setPage(page)
-
-	panel = root
-	c:add(gui:GetPropertyChangedSignal("AbsoluteSize"):Connect(applyLayout))
-	c:add(UIController.LayoutChanged:connect(applyLayout))
-	applyLayout()
-	refresh()
-	return root
+	return finish()
 end
 
 -- H:318, H:328, H:333: the featured card's rise on open, the Dragon's sdFloat 3 s and BUY's sdPulse 1.6 s.
@@ -1941,6 +2587,7 @@ function ShopController.debugState(): { [string]: any }
 		promptingKey = promptingKey,
 		featured = if featured then (if featured.owned.Visible then "owned" else "soon") else nil,
 		page = page, -- gear step 3
+		phone = phone, -- 2026-11-12 phone Shop: built for a phone
 		gear = (function(): { any }
 			local list = {}
 			-- INCOME step 2: then coins, all; 2026-10-31: then the RESTOCK cards shown (1..4)
@@ -2054,6 +2701,8 @@ function ShopController.init()
 		end
 		table.clear(restockCards)
 		restockPage, restockWait, restockGrid = nil, nil, nil
+		phone, restockBox = false, nil -- 2026-11-12 phone Shop
+		table.clear(phonePages)
 	end)
 	log:debug("ready")
 end

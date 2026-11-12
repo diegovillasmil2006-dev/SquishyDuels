@@ -1282,6 +1282,63 @@ local UI = {
 			},
 		},
 		sections = { gap = 12, headRole = "sectionHead", cellGap = 12 }, -- H:314-315, H:329-330
+		-- Phone Shop (owner 2026-11-12 "Yes, build this one", Claude's design canvas "Squishy Duels phone screens"):
+		-- on the compact class the window fills the phone and each tab is one row of big cards swiped sideways. Base px
+		-- (drawn = base x 0.85): the window 12 drawn from the sides, 62 from the top (under Roblox's buttons), its lip 3
+		-- from the bottom (the design's window 10 up with its 7 px shadow); the band at chromeK (64 drawn); the row's
+		-- padding (the bottom one under the cards' lips) and gaps; the cards' widths (hero 360, pass and
+		-- gear 158, pack 140, gear power 150 drawn); the price chip / buy bar 44 drawn; the section chips. A card: its
+		-- lip, radius and padding, the coloured panel (border, radius) holding the picture at the top (artTop under the
+		-- panel's top, at most *ArtPx, smaller when the name and line need the room, never under minArt) and the name
+		-- over the line at the bottom (textGap apart, textBottom over the panel's bottom, textPadX from its sides). The
+		-- hero: its padding, the Dragon's box at the right, the BUY / OWNED bar. clipInset: the row's clip keeps that
+		-- far inside the window's border (a card scrolled into the rounded corner stays inside it); fadeWidth: the
+		-- window-pink fade over the row's right end (more to swipe).
+		phone = {
+			side = 14,
+			top = 73,
+			bottom = 4,
+			chromeK = 0.77,
+			padX = 16,
+			padTop = 22,
+			padBottom = 8,
+			groupGap = 18,
+			cardGap = 14,
+			heroWidth = 424,
+			heroNarrowWidth = 388,
+			narrowBelow = 900, -- canvas width (base px) under which the hero takes heroNarrowWidth
+			heroDragonPx = 230, -- the Dragon's picture frame (as on PC; the squishy fills about half of it)
+			heroDragonBox = 188,
+			heroDragonNarrowBox = 165,
+			heroPad = 14,
+			heroBuy = { width = 200, face = 56 },
+			cardWidth = 186,
+			packWidth = 165,
+			powerWidth = 176,
+			lip = 5,
+			radius = 26,
+			pad = 7,
+			chip = 52,
+			panelBorder = 3,
+			panelRadius = 19,
+			artTop = 9,
+			textGap = 3,
+			textBottom = 7,
+			textPadX = 7,
+			minArt = 40,
+			passArtPx = 80,
+			gearArtPx = 92,
+			packIconPx = 100,
+			clipInset = 8,
+			fadeWidth = 52,
+			waitWidth = 660, -- RESTOCK between restocks: the wait line's card (560 drawn at most)
+			-- the window's basket as the design draws it (96 drawn over the top left corner), clear of Roblox's buttons
+			sticker = { px = 113, x = -12, y = -4 },
+			-- the red X that much further in and lower than on PC: inside the window's corner as the design draws it, on
+			-- the screen and under Roblox's top bar
+			closeShift = { x = 10, y = 21 },
+			label = { height = 33, padX = 14, offsetX = 12, offsetY = 18 },
+		},
 		-- H:330-340: 4 columns, gap 12, padding 12 8 10, gap 6, border 4, radius 20, lip 5, inset 4 .7, the icon 92
 		-- sdBob 2.8s, the amount, the green price bar 38 (border 3, radius 12, inset 2 .55, lip 3)
 		packs = {

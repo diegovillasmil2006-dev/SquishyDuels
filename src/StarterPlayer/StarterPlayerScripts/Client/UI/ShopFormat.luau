@@ -530,6 +530,53 @@ end
 -- shrunk evenly by `k` to fit a ScreenGui of `screenPx` actual px (Layout.windowFit's k: the canvas less the
 -- margin, the sticker and the X hanging off it); `shift` = the design's centre offset (height / 2 + marginTop, H:312)
 -- times k.
+-- Phone Shop (owner 2026-11-12): the window on a phone's canvas (base px), Config.UI.Shop.phone's margins around it;
+-- `above` (base px, default 0) = how far under the screen's top the canvas starts (SD_Modal keeps under Roblox's top
+-- bar), so the window's top stays P.top under the screen's top (at least P.bottom under the canvas's); `shift` = its
+-- centre's offset under the canvas centre.
+function ShopFormat.phoneWindow(canvas: Vector2, above: number?): { width: number, height: number, shift: number }
+	local P = Config.UI.Shop.phone
+	local top = math.max(P.bottom, P.top - (above or 0))
+	return {
+		width = math.max(1, math.floor(canvas.X - 2 * P.side)),
+		height = math.max(1, math.floor(canvas.Y - top - P.bottom)),
+		shift = (top - P.bottom) / 2,
+	}
+end
+
+-- The phone cards' height (base px, the card's face and lip) in a window `windowHeight` tall whose chrome takes
+-- `chromeTop` (the band, its border and the window's top padding) and `bottomPad` under the body.
+function ShopFormat.phoneCardHeight(windowHeight: number, chromeTop: number, bottomPad: number): number
+	local P = Config.UI.Shop.phone
+	return math.max(1, math.floor(windowHeight - chromeTop - bottomPad - P.padTop - P.padBottom))
+end
+
+-- The height inside a phone card's coloured panel (base px): the card (`cardHeight`: its face and lip) less its lip,
+-- border and padding, the price button with its lip and the gap over it, and the panel's border.
+function ShopFormat.phonePanelInner(cardHeight: number): number
+	local P, rows = Config.UI.Shop.phone, Config.UI.Shop.rows
+	return cardHeight - P.lip - 2 * rows.border - 3 * P.pad - (P.chip + rows.chip.lip) - 2 * P.panelBorder
+end
+
+-- A phone card's picture: `maxPx`, smaller when the panel also holds `textHeight` of name and line under it (never
+-- under P.minArt).
+function ShopFormat.phoneArtPx(cardHeight: number, maxPx: number, textHeight: number): number
+	local P = Config.UI.Shop.phone
+	local room = ShopFormat.phonePanelInner(cardHeight) - P.artTop - P.textGap - textHeight - P.textBottom
+	return math.clamp(math.floor(room), P.minArt, maxPx)
+end
+
+-- The phone hero card (the Dragon Bundle): its width and its Dragon's box at the right, both narrower on narrow
+-- phones.
+function ShopFormat.phoneHero(canvasWidth: number): { width: number, box: number }
+	local P = Config.UI.Shop.phone
+	local narrow = canvasWidth < P.narrowBelow
+	return {
+		width = if narrow then P.heroNarrowWidth else P.heroWidth,
+		box = if narrow then P.heroDragonNarrowBox else P.heroDragonBox,
+	}
+end
+
 function ShopFormat.windowFit(screenPx: Vector2): WindowFit
 	local design = Config.UI.Sticker.window.kinds.shop
 	local k = Layout.windowFit(screenPx, "shop").k

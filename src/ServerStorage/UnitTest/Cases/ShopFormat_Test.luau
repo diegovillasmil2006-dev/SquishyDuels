@@ -664,4 +664,54 @@ return function(t: Context)
 		expect.truthy(phone.k > 0 and phone.k < 1)
 		expect.equal(phone.shift, (design.height / 2 + design.marginTop) * phone.k)
 	end)
+
+	-- Phone Shop (owner 2026-11-12 "Yes, build this one": the redesign that fills the phone, one row of big cards you
+	-- swipe sideways). Phones draw at Config.UI.Scale.compactMin; every size here is in base px, drawn = base x scale.
+	t.test("phone window: fills the phone 12 px from the sides, under Roblox's buttons, its lip 3 px over the bottom", function()
+		local scale = Config.UI.Scale.compactMin
+		for _, screen in { Vector2.new(844, 390), Vector2.new(667, 375), Vector2.new(932, 430) } do
+			local canvas = screen / scale
+			local win = ShopFormat.phoneWindow(canvas)
+			-- the window's edges on the screen, drawn px
+			local left = (canvas.X - win.width) / 2 * scale
+			local top = (canvas.Y / 2 + win.shift - win.height / 2) * scale
+			local bottom = screen.Y - top - win.height * scale
+			expect.near(left, 12, 1)
+			expect.near(top, 62, 1)
+			expect.near(bottom, 3, 1)
+			expect.truthy(win.width * scale >= screen.X - 26)
+			-- SD_Modal starts under Roblox's 58 px top bar: the window's top still 62 under the screen's top
+			local barTop = 58
+			local inner = Vector2.new(screen.X, screen.Y - barTop) / scale
+			local under = ShopFormat.phoneWindow(inner, barTop / scale)
+			local underTop = barTop + (inner.Y / 2 + under.shift - under.height / 2) * scale
+			expect.near(underTop, 62, 1)
+			expect.near(screen.Y - underTop - under.height * scale, 3, 1)
+		end
+	end)
+
+	t.test("phone cards: buttons a finger wide, cards tall enough for a picture, a name, a line and the button", function()
+		local P = Config.UI.Shop.phone
+		local scale = Config.UI.Scale.compactMin
+		expect.truthy(P.chip * scale >= 44) -- every price chip and buy bar
+		expect.truthy(P.label.height * scale >= 24)
+		for _, screen in { Vector2.new(844, 390), Vector2.new(667, 375) } do
+			local canvas = screen / scale
+			local win = ShopFormat.phoneWindow(canvas)
+			local chromeTop = math.ceil(98 * P.chromeK) + 5 -- the band at chromeK and the window's border
+			local cardH = ShopFormat.phoneCardHeight(win.height, chromeTop, 5 + 10) -- the border and the window's lip
+			expect.truthy(cardH * scale >= 160)
+			-- the picture, a name line over two lines of text (22 / 16 px) and the button fit in the card
+			local textH = 26 + P.textGap + 38
+			local art = ShopFormat.phoneArtPx(cardH, P.passArtPx, textH)
+			expect.truthy(art >= P.minArt and art <= P.passArtPx)
+			expect.truthy(ShopFormat.phonePanelInner(cardH) >= P.artTop + art + P.textGap + textH + P.textBottom)
+			-- with less text the picture grows, never over its biggest
+			expect.equal(ShopFormat.phoneArtPx(cardH, P.passArtPx, 0), P.passArtPx)
+			-- the hero fits the row, its text keeps room beside the Dragon's box
+			local hero = ShopFormat.phoneHero(canvas.X)
+			expect.truthy(hero.width <= win.width - 2 * P.padX)
+			expect.truthy(hero.width - hero.box >= 200)
+		end
+	end)
 end
