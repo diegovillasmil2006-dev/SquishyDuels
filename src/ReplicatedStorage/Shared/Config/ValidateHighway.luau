@@ -3,8 +3,8 @@
 -- Apart from Config/init (Roblox's 200,000-character Source limit): SDTools HighwayBuilder runs it and refuses to build
 -- on any problem; phase 13's highway service runs it at init. Pure; shared.
 -- validate(config, catalog?) -> { string }: the problems as text (an empty list = valid). `config` = a table with
--- Config's Economy section (Config itself or a test's copy); `catalog` = the Catalog (its isValidId; nil skips the gift
--- kind check). Checks:
+-- Config's Economy section (Config itself or a test's copy); `catalog` = the Catalog (unused since the zone gifts went,
+-- 2026-11-12: the callers still pass it). Checks:
 --   * starts is a non-empty list of whole numbers, starts[1] = 0 (the first biome starts at the gate), strictly rising
 --     (no biome is empty);
 --   * gatesAt is a whole number above the last start (the last biome is not empty).
@@ -14,8 +14,6 @@
 --     config.Economy.Pen, pay.perStud x Pen.minSqueezeValue >= 1 (one stud farther always pays at least one Coin
 --     more), pay.grip a whole number >= 1 (GripService.addFromHighway takes whole squeezes); foodBag.seconds and
 --     foodBag.squeezes > 0;
---   * gifts a list of {biome a whole number in 1..#starts, kind a non-empty string (a Catalog id when a catalog is
---     given), count a whole number >= 1};
 --   * every flight number finite and > 0, carryMax >= carryMin; inFlightGraceSeconds in [0, releaseSeconds);
 --     areaMarginStuds finite and >= 0;
 --   * autoClick: clientPressesPerSecond a whole number >= 1; maxPerSecond under it (a stream at the client's ceiling
@@ -70,7 +68,7 @@ local function show(v: unknown): string
 	return if type(v) == "string" then string.format("%q", v) else tostring(v)
 end
 
-return function(config: any, catalog: any?): { string }
+return function(config: any, _catalog: any?): { string }
 	local problems: { string } = {}
 	local function expect(ok: boolean, message: string)
 		if not ok then
@@ -159,25 +157,6 @@ return function(config: any, catalog: any?): { string }
 		isNumber(bag.squeezes) and bag.squeezes > 0,
 		`{H}.foodBag.squeezes must be above 0 (got {show(bag.squeezes)})`
 	)
-
-	local gifts = c.gifts
-	if type(gifts) ~= "table" then
-		table.insert(problems, `{H}.gifts must be a list (got {show(gifts)})`)
-	else
-		for index, gift in gifts do
-			local g = if type(gift) == "table" then gift else {}
-			local at = `{H}.gifts[{index}]`
-			expect(
-				isWhole(g.biome) and g.biome >= 1 and g.biome <= biomes,
-				`{at}.biome must be a biome 1..{biomes} (got {show(g.biome)})`
-			)
-			local known = type(g.kind) == "string"
-				and g.kind ~= ""
-				and (catalog == nil or (catalog :: any).isValidId(g.kind) == true)
-			expect(known, `{at}.kind must be a squishy id (got {show(g.kind)})`)
-			expect(isWhole(g.count) and g.count >= 1, `{at}.count must be a whole number >= 1 (got {show(g.count)})`)
-		end
-	end
 
 	local flight = section("flight")
 	for _, key in FLIGHT_KEYS do

@@ -20,7 +20,10 @@
 --   * p13v4 the settle at the landing (task.delay; a boost moves it, a stale one does nothing): it pays in full every
 --     time (owner 2026-10-16: no limits): landingCoins(SV, studs, rings) Coins ("highway") and
 --     GripService.addFromHighway(pay.grip); best and biome rise (only up), with a "soon" save and the highway field
---     sent; the biome gifts once each, in the throw that first reaches the biome; the Food Bag every 150 s of flight
+--     sent; the catch (rework Option A, 2026-11-12; Shared/CatchMath): a sure catch at a player's first throw ever and
+--     at the first landing in each new zone (they replace the zone gifts), else one when the catch roll (its own random,
+--     never the course's) falls under CatchMath.chance or the miss count reaches CatchMath.need; the miss and catch
+--     counts saved in the highway field, the catch and the meter in HighwayLanded; the Food Bag every 150 s of flight
 --     time; the launch board (the last 3 throws of anyone, newest first, and the server best; start() writes the empty
 --     board); then HighwayLanded to the owner. playerRemoving settles an open flight without firing.
 --   * the course (owner 2026-11-06): a throw's power is x scatter^(-1..1) (deps.random); HighwayMath.reach decides what it
@@ -50,6 +53,7 @@ return function(t: Context)
 	local Strings = t.requireShared("Strings")
 	local WorldLayout = t.requireShared("World/WorldLayout")
 	local Format = t.requireShared("Util/Format")
+	local CatchMath = t.requireShared("CatchMath")
 	local H = Config.Economy.Highway
 	local SERVER_START = 1_800_000_000.5 -- the PERFECT bar reads 0.625 here: a plain throw
 	-- A world position in the middle of the throw area where a standing character's root is (3 over the deck top at
@@ -95,6 +99,8 @@ return function(t: Context)
 		gamble: boolean, -- item 10: what deps.canGamble answers (may this account buy paid random items)
 		coatGifts: { { player: any, coat: number } }, -- item 10: deps.notifyCoat calls (a zone's coating reward)
 		watch: ((player: any) -> ())?, -- item 9: the handler deps.watchProfiles was given
+		catchRoll: number, -- the catch: what deps.catchRandom answers (0.99 = no lucky catch)
+		grantOk: boolean, -- what deps.grantSquishy answers (false = a full Toy Box and gift queue)
 	}
 
 	local function noFood(): any
@@ -116,7 +122,9 @@ return function(t: Context)
 				top = false,
 			},
 			food = noFood(),
-			highway = { best = 0, biome = 1 },
+			-- the catch: a player who has caught once already (a brand-new player's first throw is a sure catch)
+			highway = { best = 0, biome = 1, miss = 0, caught = 1 },
+			owned = { kitty_bread = 1 },
 			gear = { held = 0, platform = 0, arm = 0, armor = 0 },
 		}
 	end
@@ -158,9 +166,14 @@ return function(t: Context)
 			gamble = true,
 			coatGifts = {},
 			watch = nil,
+			catchRoll = 0.99,
+			grantOk = true,
 		}
 		HighwayService.reset()
 		HighwayService.useDeps({
+			catchRandom = function(): number
+				return w.catchRoll
+			end,
 			canGamble = function(): boolean
 				return w.gamble
 			end,
@@ -229,6 +242,9 @@ return function(t: Context)
 				return squeezes * 10
 			end,
 			grantSquishy = function(player: any, kind: string): boolean
+				if not w.grantOk then
+					return false
+				end
 				table.insert(w.squishies, { player = player, kind = kind })
 				return true
 			end,
@@ -396,7 +412,7 @@ return function(t: Context)
 		expect.deepEqual(w.soonSaves, {})
 		expect.deepEqual(w.landed, {})
 		expect.equal(w.writes, 0)
-		expect.deepEqual(w.profiles[w.a].highway, { best = 0, biome = 1 })
+		expect.deepEqual(w.profiles[w.a].highway, { best = 0, biome = 1, miss = 0, caught = 1 })
 		expect.equal(#w.timers, 1)
 		expect.near(w.timers[1].at, core.landsAt, 1e-6) -- the settle waits for the landing
 		expect.equal(w.checks, 1)
@@ -413,7 +429,9 @@ return function(t: Context)
 			advance(w, 0.02)
 			expect.deepEqual(w.grants, { { player = w.a, amount = 1065, reason = "highway" } }) -- 0.5 x 213 x SV 10
 			expect.deepEqual(w.grip, { { player = w.a, squeezes = 60 } })
-			expect.deepEqual(w.profiles[w.a].highway, { best = 213, biome = 1 })
+			-- the catch: no lucky roll, so one more miss on the meter (and its length saved for the client between throws)
+			local need = CatchMath.need(CatchMath.chance(1065, "snack"))
+			expect.deepEqual(w.profiles[w.a].highway, { best = 213, biome = 1, miss = 1, caught = 1, need = need })
 			expect.deepEqual(w.soonSaves, { w.a })
 			expect.truthy(table.find(w.dirty, "highway") ~= nil)
 			expect.equal(#w.landed, 1)
@@ -427,7 +445,8 @@ return function(t: Context)
 				best = 213,
 				newBest = true,
 				reached = nil,
-				gifts = {},
+				catch = nil,
+				meter = { miss = 1, need = CatchMath.need(CatchMath.chance(1065, "snack")), zone = 1 },
 				food = nil,
 				rings = {},
 				bullseye = false,
@@ -659,8 +678,13 @@ return function(t: Context)
 		expect.deepEqual(landing.rings, HighwayMath.ringsHit(plan))
 		expect.equal(landing.coins, math.floor(0.5 * 403 * (1 + 0.1 * #landing.rings) * sv))
 		expect.equal(landing.reached, 2)
-		expect.deepEqual(landing.gifts, {})
-		expect.deepEqual(w.profiles[w.a].highway, { best = 403, biome = 2 })
+		-- the first landing in Bakery Town: a sure catch from its box (the Soft Box)
+		local kind = CatchMath.pick("snack", 0.99)
+		expect.deepEqual(landing.catch, { kind = kind, sure = true, new = true })
+		expect.deepEqual(
+			w.profiles[w.a].highway,
+			{ best = 403, biome = 2, miss = 0, caught = 2, need = landing.meter.need }
+		)
 		expect.equal(PenMath.levelCap(w.profiles[w.a].highway), 20) -- Bakery Town's food is on sale
 		-- A shorter throw later keeps the best and the biome (they only rise).
 		w.levels[w.a] = 1
@@ -671,7 +695,11 @@ return function(t: Context)
 		expect.truthy(short.coins < landing.coins)
 		expect.equal(short.best, 403)
 		expect.equal(short.reached, nil)
-		expect.deepEqual(w.profiles[w.a].highway, { best = 403, biome = 2 })
+		expect.equal(short.catch, nil)
+		expect.deepEqual(
+			w.profiles[w.a].highway,
+			{ best = 403, biome = 2, miss = 1, caught = 2, need = short.meter.need }
+		)
 		finish()
 	end)
 
@@ -692,7 +720,7 @@ return function(t: Context)
 		return list
 	end
 
-	t.test("the biome gifts once each, at the landing that first reaches the biome (SIM:205)", function()
+	t.test("the first landing in each new zone is a sure catch from that zone's box (the zone gifts are gone)", function()
 		local w = fresh()
 		w.levels[w.a] = levelFor(800) -- Boba Lagoon
 		local plan = HighwayService.throw(w.a, w.serverNow).data
@@ -700,28 +728,96 @@ return function(t: Context)
 		land(w, plan)
 		local landing = lastLanding(w)
 		expect.equal(landing.reached, 3)
-		expect.deepEqual(landing.gifts, { "boba_bear", "boba_bear", "boba_bear" })
-		expect.deepEqual(kinds(w), { "boba_bear", "boba_bear", "boba_bear" })
-		throwAndLand(w, w.a) -- Boba Lagoon again: nothing more
-		expect.equal(#w.squishies, 3)
-		w.levels[w.a] = levelFor(6000) -- past Lava Volcano and Rainbow Road into Divine Heaven at once
+		expect.deepEqual(landing.catch, { kind = CatchMath.pick("sweet", 0.99), sure = true, new = true })
+		expect.deepEqual(kinds(w), { CatchMath.pick("sweet", 0.99) })
+		expect.equal(landing.meter.zone, 3)
+		expect.equal(landing.meter.miss, 0)
+		throwAndLand(w, w.a) -- Boba Lagoon again: no lucky roll, no catch
+		expect.equal(lastLanding(w).catch, nil)
+		expect.equal(#w.squishies, 1)
+		w.levels[w.a] = levelFor(6000) -- past Lava Volcano and Rainbow Road into Divine Heaven at once: one catch
 		throwAndLand(w, w.a)
 		local far = lastLanding(w)
 		expect.equal(far.reached, 7)
-		expect.deepEqual(far.gifts, { "bird", "cloud_bunny", "cloud_bunny", "cloud_bunny" })
-		w.levels[w.a] = levelFor(8500) -- the Golden Gates: biome 8, no gift there
+		expect.deepEqual(far.catch, { kind = CatchMath.pick("halo", 0.99), sure = true, new = true })
+		w.levels[w.a] = levelFor(8500) -- the Golden Gates: a new "zone" too, caught in Divine Heaven's box
 		throwAndLand(w, w.a)
 		local gates = lastLanding(w)
 		expect.equal(gates.studs, 8500)
 		expect.equal(gates.biome, 7) -- it pays as Divine Heaven
 		expect.equal(gates.reached, 8)
-		expect.deepEqual(gates.gifts, {})
-		expect.deepEqual(w.profiles[w.a].highway, { best = 8500, biome = 8 })
-		expect.equal(#w.squishies, 7)
-		-- Another player's gifts are their own.
+		expect.deepEqual(gates.catch, { kind = CatchMath.pick("halo", 0.99), sure = true, new = true })
+		expect.deepEqual(
+			w.profiles[w.a].highway,
+			{ best = 8500, biome = 8, miss = 0, caught = 4, need = gates.meter.need }
+		)
+		expect.equal(#w.squishies, 3)
+		-- Another player's catches and meter are their own.
 		throwAndLand(w, w.b)
 		expect.equal(lastLanding(w).reached, nil)
-		expect.equal(#w.squishies, 7)
+		expect.equal(lastLanding(w).catch, nil)
+		expect.equal(#w.squishies, 3)
+		expect.equal(w.profiles[w.b].highway.miss, 1)
+		finish()
+	end)
+
+	t.test("a brand-new player's first throw is a sure catch; it is new, and the next copy is not", function()
+		local w = fresh()
+		w.profiles[w.a].highway.caught = 0
+		w.profiles[w.a].owned = {}
+		throwAndLand(w, w.a)
+		local first = lastLanding(w)
+		local kind = CatchMath.pick("snack", 0.99)
+		expect.deepEqual(first.catch, { kind = kind, sure = true, new = true })
+		expect.deepEqual(
+			w.profiles[w.a].highway,
+			{ best = 213, biome = 1, miss = 0, caught = 1, need = first.meter.need }
+		)
+		-- the server's own owned map: the grant adds it (the fake only records it), so mark it owned like the real one
+		w.profiles[w.a].owned[kind] = 1
+		w.catchRoll = 0 -- a lucky roll: under any chance
+		throwAndLand(w, w.a)
+		local second = lastLanding(w)
+		expect.deepEqual(second.catch, { kind = CatchMath.pick("snack", 0), sure = false, new = true })
+		w.profiles[w.a].owned[CatchMath.pick("snack", 0)] = 1
+		throwAndLand(w, w.a)
+		expect.deepEqual(lastLanding(w).catch, { kind = CatchMath.pick("snack", 0), sure = false, new = false })
+		expect.equal(w.profiles[w.a].highway.caught, 3)
+		finish()
+	end)
+
+	t.test("a lucky catch needs the roll under the chance; the meter fills until a sure one (bad luck)", function()
+		local w = fresh()
+		local chance = CatchMath.chance(1065, "snack")
+		local need = CatchMath.need(chance)
+		w.catchRoll = chance + 1e-6 -- just over: no luck
+		for miss = 1, need - 1 do
+			throwAndLand(w, w.a)
+			expect.equal(lastLanding(w).catch, nil)
+			expect.deepEqual(lastLanding(w).meter, { miss = miss, need = need, zone = 1 })
+		end
+		throwAndLand(w, w.a) -- the need-th throw since the last catch
+		local sure = lastLanding(w)
+		expect.equal(sure.catch.sure, true)
+		expect.equal(sure.meter.miss, 0)
+		expect.equal(#w.squishies, 1)
+		w.catchRoll = chance - 1e-6 -- just under: lucky
+		throwAndLand(w, w.a)
+		expect.equal(lastLanding(w).catch.sure, false)
+		expect.equal(#w.squishies, 2)
+		finish()
+	end)
+
+	t.test("a catch the Toy Box cannot take is no catch: the meter keeps its count", function()
+		local w = fresh()
+		w.profiles[w.a].highway.miss = 5
+		w.grantOk = false
+		w.catchRoll = 0
+		throwAndLand(w, w.a)
+		local landing = lastLanding(w)
+		expect.equal(landing.catch, nil)
+		expect.equal(landing.meter.miss, 6)
+		expect.equal(w.profiles[w.a].highway.caught, 1)
 		finish()
 	end)
 
@@ -853,7 +949,8 @@ return function(t: Context)
 		advance(w, 1)
 		HighwayService.playerRemoving(w.a)
 		expect.equal(#w.grants, 1)
-		expect.deepEqual(w.profiles[w.a].highway, { best = 213, biome = 1 })
+		local need = CatchMath.need(CatchMath.chance(1065, "snack"))
+		expect.deepEqual(w.profiles[w.a].highway, { best = 213, biome = 1, miss = 1, caught = 1, need = need })
 		expect.deepEqual(w.landed, {})
 		land(w, plan)
 		expect.equal(#w.grants, 1)

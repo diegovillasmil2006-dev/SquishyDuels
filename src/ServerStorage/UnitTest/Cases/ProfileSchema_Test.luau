@@ -227,7 +227,7 @@ return function(t: Context)
 		expected.buyBack = {} -- pens3 phases 7-8: the same
 		expected.bag = { 0, 0, 0, 0, 0, 0, 0 }
 		expected.food = NO_FOOD -- pens3 phase 9: the same
-		expected.highway = { best = 0, biome = 1 } -- pens3 phase 13: the same
+		expected.highway = { best = 0, biome = 1, miss = 0, caught = 0, need = 0 } -- phase 13 (+ the catch): the same
 		expected.gear = gearOf(0, 0, 0, 0) -- gear step 2: the same (item 10: no cards, nothing Golden)
 		-- Pens3 phase 1: the default pen (Kitty Bread, id 1), then one item per other owned kind, in id order.
 		expected.pen = {
@@ -312,7 +312,7 @@ return function(t: Context)
 		expect.deepEqual(d.bag, { 0, 0, 0, 0, 0, 0, 0 })
 		expect.equal(#d.bag, #Config.Economy.Pen.coatMult - 1)
 		expect.deepEqual(d.food, NO_FOOD) -- pens3 phase 9: no food
-		expect.deepEqual(d.highway, { best = 0, biome = 1 }) -- pens3 phase 13: no throw yet, Candy Meadow
+		expect.deepEqual(d.highway, { best = 0, biome = 1, miss = 0, caught = 0, need = 0 }) -- phase 13: no throw, no catch
 		expect.deepEqual(d.gear, gearOf(0, 0, 0, 0)) -- gear step 2: no gear bought (item 10: no cards, nothing Golden)
 		-- defaults are valid as they are: sanitize changes nothing
 		local _, problems = ProfileSchema.sanitize(TableUtil.deepCopy(d), { now = NOW })
@@ -1580,13 +1580,13 @@ return function(t: Context)
 			local result = load(older)
 			expect.equal(result.fromVersion, 3)
 			expect.deepEqual(result.problems, {})
-			expect.deepEqual(result.profile.highway, { best = 0, biome = 1 })
+			expect.deepEqual(result.profile.highway, { best = 0, biome = 1, miss = 0, caught = 0, need = 0 })
 			local HttpService = game:GetService("HttpService")
 			local kept = load(FIXTURE_V1).profile :: any
-			kept.highway = { best = 1234, biome = 3 }
+			kept.highway = { best = 1234, biome = 3 } -- saved before the catch: miss, caught and need join quietly
 			local again = load(HttpService:JSONDecode(HttpService:JSONEncode(kept)))
 			expect.deepEqual(again.problems, {})
-			expect.deepEqual(again.profile.highway, { best = 1234, biome = 3 })
+			expect.deepEqual(again.profile.highway, { best = 1234, biome = 3, miss = 0, caught = 0, need = 0 })
 			kept.highway = { best = 8500, biome = 8 } -- the Golden Gates
 			expect.deepEqual(load(kept).problems, {})
 		end
@@ -1599,26 +1599,36 @@ return function(t: Context)
 			local result, problems = ProfileSchema.sanitize(profile, { now = NOW })
 			return result.highway, notesAbout(problems, "highway")
 		end
+		-- rework Option A: miss, caught and need (0 when missing, quietly)
+		local function hw(best: number, biome: number, miss: number?, caught: number?, need: number?): any
+			return { best = best, biome = biome, miss = miss or 0, caught = caught or 0, need = need or 0 }
+		end
 		local h, n = fixed("garbage")
-		expect.deepEqual(h, { best = 0, biome = 1 })
+		expect.deepEqual(h, hw(0, 1))
 		expect.equal(n, 1)
 		h, n = fixed({ best = 1234.7, biome = 3 })
-		expect.deepEqual(h, { best = 1234, biome = 3 }) -- cut: never farther than thrown
+		expect.deepEqual(h, hw(1234, 3)) -- cut: never farther than thrown
 		expect.equal(n, 1)
 		h = fixed({ best = 99_999, biome = 99 })
-		expect.deepEqual(h, { best = 8500, biome = 8 }) -- clamped to the Golden Gates
+		expect.deepEqual(h, hw(8500, 8)) -- clamped to the Golden Gates
 		h = fixed({ best = -5, biome = 0 })
-		expect.deepEqual(h, { best = 0, biome = 1 })
+		expect.deepEqual(h, hw(0, 1))
 		h = fixed({ best = 0 / 0, biome = "x" })
-		expect.deepEqual(h, { best = 0, biome = 1 })
+		expect.deepEqual(h, hw(0, 1))
 		h = fixed({ best = 900, biome = 0 / 0 }) -- a broken biome: what the best reaches (Boba Lagoon)
-		expect.deepEqual(h, { best = 900, biome = 3 })
+		expect.deepEqual(h, hw(900, 3))
 		h, n = fixed({ best = 2600, biome = 2 }) -- under what the best reaches: raised (Lava Volcano)
-		expect.deepEqual(h, { best = 2600, biome = 5 })
+		expect.deepEqual(h, hw(2600, 5))
 		expect.equal(n, 1)
-		h, n = fixed({ best = 100, biome = 6 }) -- above the best: kept (it only rises; gifts are never given again)
-		expect.deepEqual(h, { best = 100, biome = 6 })
+		h, n = fixed({ best = 100, biome = 6 }) -- above the best: kept (it only rises; a new zone's sure catch once)
+		expect.deepEqual(h, hw(100, 6))
 		expect.equal(n, 0)
+		h, n = fixed({ best = 213, biome = 1, miss = 12, caught = 7, need = 40 }) -- kept as they are
+		expect.deepEqual(h, hw(213, 1, 12, 7, 40))
+		expect.equal(n, 0)
+		h, n = fixed({ best = 213, biome = 1, miss = -3, caught = 2.5, need = 0 / 0 }) -- broken: logged
+		expect.deepEqual(h, hw(213, 1, 0, 2, 0))
+		expect.equal(n, 3)
 	end)
 
 	-- Gear step 2 (2026-10-26): gear ------------------------------------------------------------------------------

@@ -201,7 +201,14 @@ export type BuyBackEntry = { item: PenItem, price: number, at: number, req: stri
 export type FoodCounts = { [string]: number }
 -- Phase 13: the farthest landing (whole studs from the start line, 0..gatesAt) and the biome reached (1..#starts,
 -- #starts + 1 = the Golden Gates; it only rises).
-export type HighwayState = { best: number, biome: number }
+-- Rework Option A (2026-11-12): `miss` = throws since the last catch (the CATCH meter), `caught` = catches so far; a
+-- profile saved before has neither (read as 0; ProfileSchema fills them quietly).
+export type HighwayState = { best: number, biome: number, miss: number?, caught: number?, need: number? }
+-- Rework Option A: what a landing caught (HighwayLanding.catch) and the CATCH meter after it (HighwayLanding.meter):
+-- `sure` = a guaranteed catch (first throw, a new zone, or the meter full), `new` = the first of its kind owned;
+-- `need` = throws without a catch until a sure one, `zone` = the zone it caught (or would have caught) in.
+export type HighwayCatch = { kind: string, sure: boolean, new: boolean }
+export type CatchMeter = { miss: number, need: number, zone: number }
 -- Gear step 2: the steps bought of each gear line (GearMath.LINES; whole numbers in [0, GearMath.maxStep]).
 -- Big job item 10 (2026-11-10): `cards` = the gear cards waiting on each line (0..Gear.goldCards), `gold` = the tier of
 -- each line whose piece is Golden (0 = none); a profile saved before has neither (read as none; Shared/GearMath).
@@ -701,8 +708,9 @@ export type HighwayPlan = {
 }
 -- HighwayLanded's payload (the server's settle at the landing): what the landing paid (`coins` with the rings' share,
 -- `grip`); the player's `best` after it and `newBest`; `reached` the biome (1..8) this throw reached first (nil if
--- none); `gifts` the biome gifts given (squishy ids); `food` the Food Bag it filled (nil if none); `rings` the
--- WorldLayout.Highway.rings indices it flew through; `bullseye` it stopped on a pad; `boosts` the boosts it used.
+-- none); rework Option A: `catch` what it caught (nil if nothing), `meter` the CATCH meter after it; `food` the Food Bag
+-- it filled (nil if none); `rings` the WorldLayout.Highway.rings indices it flew through; `bullseye` it stopped on a
+-- pad; `boosts` the boosts it used.
 export type HighwayLanding = {
 	id: number,
 	studs: number,
@@ -712,7 +720,8 @@ export type HighwayLanding = {
 	best: number,
 	newBest: boolean,
 	reached: number?, -- the biome first reached by this throw (8 = the Golden Gates), else nil
-	gifts: { string },
+	catch: HighwayCatch?,
+	meter: CatchMeter,
 	food: { id: string, count: number }?,
 	rings: { number }, -- WorldLayout.Highway.rings indices hit, ascending
 	bullseye: boolean,

@@ -35,9 +35,15 @@
 --   HighwayMath.landingCoins(SV, studs, rings) Coins with the "highway" reason (p13v3: by distance; p13v4: + a share a
 --   ring flown through, HighwayMath.ringsHit) and GripService.addFromHighway(pay.grip). Then ONE mutate when
 --   something saved changes: highway.best and highway.biome rise (only up: HighwayMath.reached, 8 = the Golden
---   Gates), and a Food Bag's food (below). The biome gifts of every biome this throw reaches first, once each (the
---   saved biome only rises, so they are never given twice), through EconomyService.grantSquishy(p, kind, "grant",
---   true): a full Toy Box queues them (pens3 phase 5). The `highway` (and `food`) fields sent, a "soon" save (reading:
+--   Gates), and a Food Bag's food (below). The catch (rework Option A, owner 2026-11-12 "Yes, build it"; Config/Catch,
+--   Shared/CatchMath): the landing catches from the box of CatchMath.zoneOf(studs, the biome reached after the throw) —
+--   surely at a player's first throw ever (highway.caught 0) and at the first landing in a new zone (these replace the
+--   zone gifts of 2026-10-18), else when the catch roll (deps.catchRandom: its own random, so the course's scatter rolls
+--   stay as they were) falls under CatchMath.chance(the throw's Coins) or the misses since the last catch reach
+--   CatchMath.need (the CATCH meter); the squishy is a second roll of the box's weights (CatchMath.pick), granted
+--   through EconomyService.grantSquishy(p, kind, "grant", true) (a full Toy Box queues it; a refused one is no catch).
+--   highway.miss / highway.caught are saved with best and biome in that one mutate (every landing now writes: the
+--   miss count changes each throw). The `highway` (and `food`) fields sent, a "soon" save (reading:
 --   a landing only grants, nothing is spent, so no awaited "now" save: one per throw would wait on the DataStore's 6 s
 --   rule for one key every few seconds; PenPlace / Feed's reading), the board, and HighwayLanded(Types.HighwayLanding)
 --   to the thrower (not when the player is leaving).
@@ -99,6 +105,7 @@ local Workspace = game:GetService("Workspace")
 -- Requires
 
 local Shared = ReplicatedStorage.Shared
+local CatchMath = require(Shared.CatchMath) -- rework Option A: the throw catches squishies
 local Catalog = require(Shared.Catalog)
 local CoatMath = require(Shared.CoatMath) -- big job item 10: a zone's coating as its reward
 local Config = require(Shared.Config)
@@ -153,6 +160,7 @@ export type Deps = {
 	nameOf: (player: any) -> string, -- the board's name: the player's DisplayName
 	writeBoard: (lines: { [string]: string }) -> (), -- the launch board's live lines, by name
 	random: () -> number, -- the course: a number in [0, 1) (the throw's scatter)
+	catchRandom: () -> number, -- rework Option A: a number in [0, 1) (the catch roll and its pick)
 	trySpend: (player: any, amount: number, reason: string) -> (boolean, string?), -- EconomyService.trySpend
 	saveNow: (player: any) -> boolean, -- DataService.saveNowAsync (yields)
 	spots: () -> { HighwayMath.Spot }, -- the course: Config's spots
@@ -367,6 +375,9 @@ local function defaultDeps(): Deps
 		random = function(): number
 			return rng:NextNumber()
 		end,
+		catchRandom = function(): number
+			return rng:NextNumber()
+		end,
 		trySpend = function(player: any, amount: number, reason: string): (boolean, string?)
 			return EconomyService.trySpend(player, amount, reason)
 		end,
@@ -459,25 +470,36 @@ local function refused(player: any): (string?, Vector3?)
 	return nil, root
 end
 
--- The saved highway as stored (a broken one reads as none: sanitize repairs it on load).
+-- The saved highway as stored (a broken one reads as none: sanitize repairs it on load). Rework Option A: the misses
+-- since the last catch and the catches so far.
 local function savedHighway(profile: any): Types.HighwayState
 	local h = if type(profile) == "table" then profile.highway else nil
 	local bestStuds = if type(h) == "table" and isFinite(h.best) then h.best else 0
 	local biome = if type(h) == "table" and isFinite(h.biome) then h.biome else 1
-	return { best = bestStuds, biome = biome }
+	local miss = if type(h) == "table" and isFinite(h.miss) then h.miss else 0
+	local caught = if type(h) == "table" and isFinite(h.caught) then h.caught else 0
+	return { best = bestStuds, biome = biome, miss = miss, caught = caught }
 end
 
--- The gifts of every biome after `from` up to `to` (Config's order; each `count` times).
-local function giftsBetween(from: number, to: number): { string }
-	local list: { string } = {}
-	for _, gift in H.gifts do
-		if gift.biome > from and gift.biome <= to then
-			for _ = 1, gift.count do
-				table.insert(list, gift.kind)
-			end
-		end
+-- Rework Option A (see the header): what this landing catches, decided before anything is written. `sure` = the
+-- first throw ever, a new zone, or the meter full; `kind` nil = no catch this time.
+type CatchPlan = { zone: number, need: number, kind: string?, sure: boolean, new: boolean }
+local function planCatch(profile: any, before: Types.HighwayState, studs: number, reached: number, coins: number): CatchPlan
+	local zone = CatchMath.zoneOf(studs, math.max(before.biome, reached))
+	local boxId = CatchMath.boxFor(zone) :: string
+	local chance = CatchMath.chance(coins, boxId)
+	local need = CatchMath.need(chance)
+	local miss = before.miss :: number
+	local newZone = reached > before.biome
+	local full = miss + 1 >= need
+	local sure = newZone or (before.caught :: number) <= 0 or full
+	local lucky = not sure and CatchMath.decide(miss, chance, deps.catchRandom())
+	if not (sure or lucky) then
+		return { zone = zone, need = need, kind = nil, sure = false, new = false }
 	end
-	return list
+	local kind = CatchMath.pick(boxId, deps.catchRandom())
+	local owned = if type(profile.owned) == "table" then profile.owned else {}
+	return { zone = zone, need = need, kind = kind, sure = sure, new = kind ~= nil and owned[kind] == nil }
 end
 
 -- The landing of the open flight (see the header): pays, saves, writes the board, and fires HighwayLanded when `fire`.
@@ -514,45 +536,42 @@ local function settle(player: any, session: Session, fire: boolean)
 	end
 	local newBest = studs > before.best
 	local firstBiome = reached > before.biome
-	if newBest or firstBiome or bag ~= nil then
-		local added = 0 -- the Food Bag's pieces that fit under maxPieces
-		local written = deps.mutate(player, function(live: any): boolean
-			local h = if type(live.highway) == "table" then live.highway else { best = 0, biome = 1 }
-			h.best = math.max(if isFinite(h.best) then h.best else 0, studs)
-			h.biome = math.max(if isFinite(h.biome) then h.biome else 1, reached)
-			live.highway = h
-			local food = live.food
-			if bag ~= nil and type(food) == "table" then
-				local have = if isFinite(food[bag.id]) then food[bag.id] else 0
-				food[bag.id] = math.max(have, math.min(FOOD.maxPieces, have + bag.count))
-				added = food[bag.id] - have
-			end
-			return true
-		end)
-		if bag ~= nil then
-			-- Verification fix: the landing names the pieces really added; none (a full stock) = no bag.
-			bag = if added > 0 then { id = bag.id, count = added } else nil
+	-- Rework Option A: the catch (see the header). The grant goes first (it is its own write, EconomyService); a
+	-- refused one (a full Toy Box and gift queue) is no catch and the meter keeps counting.
+	local catchPlan = planCatch(profile, before, studs, reached, landing)
+	local kind = catchPlan.kind
+	local caught = kind ~= nil and deps.grantSquishy(player, kind :: string)
+	local miss = if caught then 0 else (before.miss :: number) + 1
+	local added = 0 -- the Food Bag's pieces that fit under maxPieces
+	local written = deps.mutate(player, function(live: any): boolean
+		local h = if type(live.highway) == "table" then live.highway else { best = 0, biome = 1 }
+		h.best = math.max(if isFinite(h.best) then h.best else 0, studs)
+		h.biome = math.max(if isFinite(h.biome) then h.biome else 1, reached)
+		h.miss = miss
+		h.caught = (if isFinite(h.caught) then h.caught else 0) + (if caught then 1 else 0)
+		h.need = catchPlan.need -- the CATCH meter's length until the next landing (the client's meter between throws)
+		live.highway = h
+		local food = live.food
+		if bag ~= nil and type(food) == "table" then
+			local have = if isFinite(food[bag.id]) then food[bag.id] else 0
+			food[bag.id] = math.max(have, math.min(FOOD.maxPieces, have + bag.count))
+			added = food[bag.id] - have
 		end
-		if not written then
-			-- Cannot happen without a yield after the check above (the session was ready a moment ago); logged loudly.
-			log:error(
-				`user {userIdOf(player)}: a {studs}-stud landing paid but its best / biome / food was not written`
-			)
-		end
-		deps.markDirty(player, FIELD_HIGHWAY)
-		if bag ~= nil then
-			deps.markDirty(player, FIELD_FOOD)
-		end
+		return true
+	end)
+	if bag ~= nil then
+		-- Verification fix: the landing names the pieces really added; none (a full stock) = no bag.
+		bag = if added > 0 then { id = bag.id, count = added } else nil
 	end
-	local gifts: { string } = {}
+	if not written then
+		-- Cannot happen without a yield after the check above (the session was ready a moment ago); logged loudly.
+		log:error(`user {userIdOf(player)}: a {studs}-stud landing paid but its best / biome / catch / food was not written`)
+	end
+	deps.markDirty(player, FIELD_HIGHWAY)
+	if bag ~= nil then
+		deps.markDirty(player, FIELD_FOOD)
+	end
 	if firstBiome then
-		-- shortcut: a gift refused (a full Toy Box with Pen.giftQueueMax gifts already queued) is not retried; give the
-		-- biome gifts profile.gifts keys (EconomyService.grantGift) if that queue can ever fill in real play.
-		for _, kind in giftsBetween(before.biome, reached) do
-			if deps.grantSquishy(player, kind) then
-				table.insert(gifts, kind)
-			end
-		end
 		-- Big job item 10 (Config/Coats: the design's "<zone> reward"): the first time in zone 3..7, one of that zone's
 		-- coating goes into the bag, with a toast.
 		local coats = CoatMath.zoneGift(before.biome, reached)
@@ -583,7 +602,8 @@ local function settle(player: any, session: Session, fire: boolean)
 			best = math.max(before.best, studs),
 			newBest = newBest,
 			reached = if firstBiome then reached else nil,
-			gifts = gifts,
+			catch = if caught then { kind = kind :: string, sure = catchPlan.sure, new = catchPlan.new } else nil,
+			meter = { miss = miss, need = catchPlan.need, zone = catchPlan.zone },
 			food = bag,
 			rings = rings,
 			bullseye = HighwayMath.bullseye(studs),
@@ -893,6 +913,10 @@ function HighwayService.init()
 	local gearProblems = ValidateGear(Config) -- gear step 2
 	if #gearProblems > 0 then
 		error(`[SD][Highway] Config.Economy.Gear is invalid: {table.concat(gearProblems, "; ")}`)
+	end
+	local catchProblems = CatchMath.validate(Config.Economy.Catch) -- rework Option A
+	if #catchProblems > 0 then
+		error(`[SD][Highway] Config.Economy.Catch is invalid: {table.concat(catchProblems, "; ")}`)
 	end
 	NetService.onInvoke(REMOTE, function(player: Player, clientTime: any, fastSeconds: number): any
 		return HighwayService.throw(player, clientTime, fastSeconds)

@@ -13,7 +13,7 @@
 --     at most `cap` times in any rolling second, never while a reply is more than `late` seconds late (the list keeps
 --     only the last second's sends);
 --   * landingToasts(landing): the landing (distance, Coins, Grip), then a new best, a new biome (its name; none for the
---     Golden Gates), the gifts (one line a kind, with its count) and the Food Bag, each only when it happened;
+--     Golden Gates) and the Food Bag, each only when it happened (a catch shows on its card, no toast);
 --   * zoneBanner(biome, level) (Claude Design's zone banner): the zone's name in its colour, "Recommended:" and its
 --     power wall, ready from the first Grip level whose throw reaches the wall, its difficulty and tag; nil for no zone;
 --   * init / start / destroy run cleanly in Edit mode and leave nothing behind (no Scheduler effect, the Highway
@@ -32,6 +32,9 @@
 --     landing shot lets go holdSeconds later (finish: the toasts);
 --   * HighwayLanded: for the current throw it is kept (its pops and toasts come with the landing); for any other id
 --     (an older throw, one already finished) its toasts show at once;
+--   * the catch (rework Option A, a stand-in deps.catch): no meter on the deck, the meter from the press, then flying,
+--     prepare at the release, landed, result, finish in that order; holdFor(landing) = landingShot.holdSeconds without a catch, the
+--     longer Catch.wild.holdSeconds with one, and the shot lets go only then;
 --   * p13v3 (owner 2026-10-18: "Yes, above 20 a second"): every real THROW press counts on the client's clock
 --     (Shared/PressSpeed), the ones during a flight and the ones the cap holds back too; each send reports the seconds
 --     in a row over 20 presses; a press the server answers highway.superFast shows that warning, during a flight too.
@@ -78,6 +81,11 @@ return function(t: Context)
 		local l = U.landingShot
 		expect.near((lane(eye) - Vector3.new(2 + l.side, 3 + l.up, 500 - l.back)).Magnitude, 0, 1e-3)
 		expect.near((lane(look) - p).Magnitude, 0, 1e-3)
+		eye, look = HighwayThrowController.shotGoal("catch", p) -- rework Option A: wider, the crowd in view
+		local k = Config.Economy.Catch.shot
+		expect.near((lane(eye) - Vector3.new(2 + k.side, 3 + k.up, 500 - k.back)).Magnitude, 0, 1e-3)
+		expect.near((lane(look) - Vector3.new(2, 3 + k.lookUp, 500 + k.ahead)).Magnitude, 0, 1e-3)
+		expect.truthy(k.back > l.back or k.up > l.up) -- farther out than the landing shot
 	end)
 
 	t.test("mayForward: at most the cap in a rolling second, none while a reply is late", function()
@@ -103,7 +111,7 @@ return function(t: Context)
 			grip = 600,
 			best = 213,
 			newBest = false,
-			gifts = {},
+			meter = { miss = 1, need = 40, zone = 1 },
 			rings = {},
 			bullseye = false,
 			perfect = false,
@@ -111,7 +119,7 @@ return function(t: Context)
 		}
 	end
 
-	t.test("landingToasts: the landing, then a best, a biome, the gifts and the Food Bag when they happened", function()
+	t.test("landingToasts: the landing, then a best, a biome and the Food Bag when they happened (a catch: no toast)", function()
 		local base = landingOf(1)
 		base.studs, base.coins = 21, 700
 		local plain = HighwayThrowController.landingToasts(base)
@@ -127,23 +135,16 @@ return function(t: Context)
 		local all = table.clone(base) :: any
 		all.newBest = true
 		all.reached = 3
-		all.gifts = { "boba_bear", "boba_bear", "boba_bear", "bird" }
+		all.catch = { kind = "boba_bear", sure = true, new = true } -- shown on the catch card, not as a toast
 		all.food = { id = "candy_drop", count = 2 }
 		local texts = {}
 		for _, toast in HighwayThrowController.landingToasts(all) do
 			table.insert(texts, toast.text)
 		end
-		local gift = Strings.highway.gift
-		local Catalog = t.requireShared("Catalog")
-		local function nameOf(id: string): string
-			return Strings.resolve((Catalog.get(id) :: any).nameKey) :: string
-		end
 		expect.deepEqual(texts, {
 			plain[1].text,
 			Strings.format(Strings.highway.newBest, { distance = "21" }),
 			Strings.format(Strings.highway.reached, { biome = Strings.highway.biome.bobaLagoon }),
-			Strings.format(gift.many, { count = 3, name = nameOf("boba_bear") }),
-			Strings.format(gift.one, { count = 1, name = nameOf("bird") }),
 			Strings.format(Strings.highway.foodBag, { count = 2, food = "Candy Drop" }),
 		})
 		local gates = table.clone(base) :: any
@@ -226,6 +227,7 @@ return function(t: Context)
 			contexts = {},
 			liveToasts = {}, -- toasts shown while the toast hold was off (UIController queues the others)
 			queued = {},
+			catches = {}, -- rework Option A: the catch's hooks, in order (setShown only when it changes)
 		}
 		-- The player's zoom limits, every write counted by key.
 		local zoom = { CameraMinZoomDistance = SAVED_MIN, CameraMaxZoomDistance = SAVED_MAX }
@@ -329,6 +331,29 @@ return function(t: Context)
 			heldOverlay = function(_overlay: any): boolean
 				return true
 			end,
+			catch = {
+				setShown = function(on: boolean)
+					if w.catchShown ~= on then
+						w.catchShown = on
+						table.insert(w.catches, "shown:" .. tostring(on))
+					end
+				end,
+				flying = function(zone: number?)
+					table.insert(w.catches, "flying:" .. tostring(zone))
+				end,
+				prepare = function(plan: any)
+					table.insert(w.catches, "prepare:" .. plan.id)
+				end,
+				landed = function(id: number)
+					table.insert(w.catches, "landed:" .. id)
+				end,
+				result = function(landing: any)
+					table.insert(w.catches, "result:" .. landing.id)
+				end,
+				finish = function()
+					table.insert(w.catches, "finish")
+				end,
+			},
 			burst = function(at: Vector3)
 				w.burst = at
 			end,
@@ -614,6 +639,46 @@ return function(t: Context)
 			Strings.format(pop.landed, { distance = Format.distance(landing.studs) }),
 			Strings.format(pop.rings, { hit = 1, total = 3 }),
 		})
+		stop()
+	end)
+
+	t.test("the catch (rework Option A): its hooks in order; a landing that caught holds the landing shot longer", function()
+		expect.equal(HighwayThrowController.holdFor(nil), U.landingShot.holdSeconds)
+		expect.equal(HighwayThrowController.holdFor(landingOf(1)), U.landingShot.holdSeconds) -- no catch
+		local caught = landingOf(3)
+		caught.catch = { kind = "kitty_bread", sure = true, new = false }
+		local hold = math.max(U.landingShot.holdSeconds, Config.Economy.Catch.wild.holdSeconds)
+		expect.equal(HighwayThrowController.holdFor(caught), hold)
+		expect.truthy(hold > U.landingShot.holdSeconds)
+
+		local w = driven({ thrown(3, 1000, 3.0) })
+		w.body = IN_AREA
+		w.tick()
+		expect.deepEqual(w.catches, { "shown:false" }) -- no meter on the deck (it would cover the quest tracker)
+		w.handler(Enum.UserInputState.Begin)
+		w.tick()
+		expect.equal(w.catches[2], "shown:true") -- the meter from the press
+		w.now = 10.5 -- the release
+		w.tick()
+		w.server = 1003.1 -- the landing (at clock 10.5)
+		w.tick()
+		w.landed(caught)
+		local function at(event: string): number
+			return table.find(w.catches, event) or math.huge
+		end
+		expect.truthy(at("flying:1") < at("prepare:3"))
+		expect.truthy(at("prepare:3") < at("landed:3"))
+		expect.truthy(at("landed:3") < at("result:3"))
+		w.now = 10.5 + U.landingShot.holdSeconds + 0.05
+		w.tick()
+		expect.equal(HighwayThrowController.debugState().throwing, true) -- held on: the catch is seen
+		expect.equal(at("finish"), math.huge)
+		w.now = 10.5 + hold + 0.05
+		w.tick()
+		expect.equal(HighwayThrowController.debugState().throwing, false)
+		expect.equal(w.catches[#w.catches], "finish")
+		w.landed(landingOf(9)) -- another throw's landing goes to the catch too (its card, then home)
+		expect.equal(w.catches[#w.catches], "result:9")
 		stop()
 	end)
 

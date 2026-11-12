@@ -771,6 +771,14 @@ local function fixHighway(d: any, problems: { string })
 		note(problems, "highway.biome", highway.biome, floor)
 		highway.biome = floor
 	end
+	-- Rework Option A (2026-11-12): the misses since the last catch, the catches so far and the meter's length at the
+	-- last landing (`need`, 0 = no landing yet); a missing one (a save from before) is 0, unlogged.
+	for _, key in { "miss", "caught", "need" } do
+		if highway[key] == nil then
+			highway[key] = 0
+		end
+		fixInt(highway, key, 0, MAX_COUNTER, 0, "highway." .. key, problems)
+	end
 end
 
 -- Gear step 2 (see the header): none of each line.
@@ -881,7 +889,7 @@ function ProfileSchema.defaults(now: number): Profile
 		buyBack = {}, -- pens3 phase 7: nothing to buy back
 		bag = table.create(#PEN.coatMult - 1, 0), -- pens3 phase 8: no coating in the bag
 		food = noFood(), -- pens3 phase 9: no food
-		highway = { best = 0, biome = 1 }, -- pens3 phase 13: no throw yet, Candy Meadow
+		highway = { best = 0, biome = 1, miss = 0, caught = 0, need = 0 }, -- pens3 phase 13: no throw, Candy Meadow
 		gear = noGear(), -- gear step 2: no gear bought
 	}
 	for _, id in PAID_BOX_IDS do

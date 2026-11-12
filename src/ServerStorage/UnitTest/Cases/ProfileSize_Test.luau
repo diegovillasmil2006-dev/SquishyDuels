@@ -199,8 +199,14 @@ return function(t: Context)
 		for _, food in Config.Economy.Food.foods do
 			p.food[food.id] = Config.Economy.Food.maxPieces
 		end
-		-- Pens3 phase 13: the farthest throw and the last biome (the Golden Gates).
-		p.highway = { best = Config.Economy.Highway.gatesAt, biome = #Config.Economy.Highway.starts + 1 }
+		-- Pens3 phase 13: the farthest throw and the last biome (the Golden Gates); rework Option A: the catch's counts.
+		p.highway = {
+			best = Config.Economy.Highway.gatesAt,
+			biome = #Config.Economy.Highway.starts + 1,
+			miss = BIG_COUNTER,
+			caught = BIG_COUNTER,
+			need = BIG_COUNTER,
+		}
 		return p
 	end
 
@@ -243,7 +249,8 @@ return function(t: Context)
 		expect.equal(#decoded.buyBack, Config.Economy.Pen.buyBackMax)
 		expect.deepEqual(decoded.bag, p.bag) -- pens3 phase 8
 		expect.deepEqual(decoded.food, p.food) -- pens3 phase 9: string keys, whole counts
-		expect.deepEqual(decoded.highway, { best = 8500, biome = 8 }) -- pens3 phase 13
+		expect.deepEqual(decoded.highway, p.highway) -- pens3 phase 13 (+ the catch's counts), exact
+		expect.equal(decoded.highway.best, 8500)
 		local opponents = 0
 		for key, times in decoded.samePair do
 			opponents += 1

@@ -53,8 +53,14 @@
 --   and fireworks finish (at the drawn landing). The drawn flight runs on its clock (held back by a slow motion, then
 --   catching up), while the boost button keeps the server's clock; the design's hero shot replaces the landing shot
 --   and its shakes and FOV kicks ride on every shot.
--- Public: the pure parts (mayForward, shotGoal, landingToasts), init(), start(scheduler?), destroy() (tests and leak
--- checks; the bootstrap never calls it), debugState(), useDeps() (Edit-mode tests: see REAL_DEPS).
+-- * Rework Option A (2026-11-12, the catch): deps.catch (HighwayCatchController) draws it: setShown(launching) each
+--   frame, flying(zone) at each zone drawn, prepare(plan) at the release and at each boost, landed(id) at the drawn landing,
+--   result(landing) on every HighwayLanded, finish() as the shot ends (after the holds let go). A landing that caught
+--   holds its landing shot holdFor(landing) (Config.Economy.Catch.wild.holdSeconds) instead of landingShot.holdSeconds,
+--   and once its payload is in the camera leaves the close hero shot for the wider "catch" shot (Config.Economy.Catch
+--   .shot, eased at landingShot.posRate), so the wild ones and the bubble are seen.
+-- Public: the pure parts (mayForward, shotGoal, holdFor, landingToasts), init(), start(scheduler?), destroy() (tests
+-- and leak checks; the bootstrap never calls it), debugState(), useDeps() (Edit-mode tests: see REAL_DEPS).
 
 -- Services
 
@@ -96,6 +102,7 @@ local ControlsController = require(script.Parent.ControlsController)
 local FirstPersonController = require(script.Parent.FirstPersonController)
 local GripController = require(script.Parent.GripController)
 local HeldSquishyController = require(script.Parent.HeldSquishyController)
+local HighwayCatchController = require(script.Parent.HighwayCatchController)
 local HighwayFxController = require(script.Parent.HighwayFxController)
 local NetController = require(script.Parent.NetController)
 local NotifyController = require(script.Parent.NotifyController)
@@ -106,7 +113,7 @@ local UIController = require(script.Parent.UIController)
 -- Types
 
 export type Toast = { text: string, kind: Types.NotifyKind }
-export type Shot = "throw" | "chase" | "landing"
+export type Shot = "throw" | "chase" | "landing" | "catch"
 export type DebugState = {
 	started: boolean,
 	inArea: boolean,
@@ -265,6 +272,7 @@ local REAL_DEPS = {
 		return StateController.get("gear") -- gear step 2: the zone banner's power counts it
 	end,
 	mood = HighwayMood, -- Claude Design's zone moods (a no-op outside a running client)
+	catch = HighwayCatchController, -- rework Option A: the catch's meter, wild squishies, bubble and card
 	fpActive = FirstPersonController.isActive,
 	player = function(): any?
 		return Players.LocalPlayer
@@ -525,6 +533,7 @@ local function finish(throw: Throw, chained: boolean?)
 		throw.hold = nil
 		hold:release()
 	end
+	deps.catch.finish() -- rework Option A: the caught one flies to the Squishies button (the HUD is back)
 	deps.mood.reset() -- the lobby's light back (HighwayMood)
 	if not chained then
 		deps.holdToasts(false)
@@ -574,6 +583,7 @@ local function release(throw: Throw, now: number)
 	throw.model, throw.trail = deps.spawn(throw.kind, HighwayThrowController.trailColor(deps.gear()))
 	deps.heldHidden(true)
 	HighwayFxController.launch(throw.fx, throw.model, plan, throw.kind) -- part 4: the launch blast
+	deps.catch.prepare(plan) -- rework Option A: the wild squishies wait where it will stop
 	play(U.sounds.throw)
 	if plan.perfect then
 		pop({ { text = Strings.highway.pop.perfect, big = true, color = U.pop.colors.perfect } })
@@ -631,7 +641,8 @@ local function land(throw: Throw, now: number, p: Vector3)
 	local plan = throw.plan :: Types.HighwayPlan
 	throw.landed = true
 	throw.landedAt = now
-	throw.doneAt = now + U.landingShot.holdSeconds
+	throw.doneAt = now + HighwayThrowController.holdFor(throw.landing)
+	deps.catch.landed(plan.id) -- rework Option A: the wild ones see it and come
 	local trail = throw.trail
 	if trail then
 		FxPool.default():release(trail)
@@ -667,10 +678,17 @@ local function drawCamera(throw: Throw, dt: number, now: number, p: Vector3?)
 	local eye, look = shotEye, shotLook
 	local released = throw.releasedAt
 	local heroEye, heroLook = nil, nil
-	if p ~= nil and throw.landed then
+	local landing = throw.landing
+	local caught = p ~= nil and throw.landed and landing ~= nil and landing.catch ~= nil
+	if p ~= nil and throw.landed and not caught then
 		heroEye, heroLook = HighwayFxController.hero(throw.fx, p, throw.eye or shotEye, throw.look or shotLook)
 	end
-	if heroEye ~= nil and heroLook ~= nil then
+	if caught and p ~= nil then -- rework Option A: the wider catch shot (the wild ones and the bubble in view)
+		local goalEye, goalLook = HighwayThrowController.shotGoal("catch", p)
+		local a = 1 - math.exp(-dt * U.landingShot.posRate)
+		eye = (throw.eye or shotEye):Lerp(goalEye, a)
+		look = (throw.look or shotLook):Lerp(goalLook, a)
+	elseif heroEye ~= nil and heroLook ~= nil then
 		eye, look = heroEye, heroLook -- part 4: the design's hero shot instead of the landing shot
 	elseif p ~= nil and throw.landed then
 		local goalEye, goalLook = HighwayThrowController.shotGoal("landing", p)
@@ -713,6 +731,7 @@ local function drawFlight(throw: Throw, d: number, boost: boolean, now: number)
 			HighwayFxController.zone(throw.fx, biome) -- part 4: the zone's ring, sparkles, warp lines and theme
 		end
 		deps.mood.enter(biome) -- Claude Design's zone mood (HighwayMood), the first zone's too
+		deps.catch.flying(biome) -- rework Option A: the CATCH meter counts this zone
 		throw.biome = biome
 	end
 	local hit = 0
@@ -847,6 +866,9 @@ local function step(dt: number, now: number): boolean
 	end
 	stepZoom(live and not deps.fpActive())
 	stepBig(live)
+	-- rework Option A: the CATCH meter during a launch only (the HUD is hidden then; on the deck it would sit on the
+	-- quest tracker and the Highway button, seen at PC size)
+	deps.catch.setShown(live and throw ~= nil)
 	local serverNow = deps.serverNow()
 	local h = hud
 	if h then
@@ -896,6 +918,7 @@ local function boosted(plan: Types.HighwayPlan)
 	throw.blendFrom, throw.blendAt = throw.drawn, deps.serverNow()
 	throw.plan = plan
 	throw.hits = HighwayMath.ringsHit(plan)
+	deps.catch.prepare(plan) -- rework Option A: it stops somewhere else now
 	local s, colors = Strings.highway.pop, U.pop.colors
 	local lines: { HighwayHud.Line } = { { text = s.boost, big = true, color = colors.boost } }
 	play(U.sounds.boost)
@@ -1009,11 +1032,17 @@ local function onLanded(landing: any)
 	if throw ~= nil and plan ~= nil and plan.id == landing.id then
 		throw.landing = landing
 		local at = throw.landedAt
-		if throw.landed and at ~= nil and deps.clock() - at <= U.landingWaitSeconds then
-			landingPops(throw)
+		if throw.landed and at ~= nil then
+			-- rework Option A: a catch keeps the landing shot on long enough to see it
+			throw.doneAt = math.max(throw.doneAt or at, at + HighwayThrowController.holdFor(landing))
+			if deps.clock() - at <= U.landingWaitSeconds then
+				landingPops(throw)
+			end
 		end
+		deps.catch.result(landing)
 		return
 	end
+	deps.catch.result(landing)
 	showToasts(landing)
 end
 
@@ -1044,7 +1073,7 @@ function HighwayThrowController.mayForward(
 end
 
 -- A shot's eye and the point it looks at (world) for lane-local p = (x, y, d): "throw" (p = the root at the press),
--- "chase" and "landing" (p = the squishy); Config.UI.Highway's offsets.
+-- "chase" and "landing" (p = the squishy); Config.UI.Highway's offsets ("catch": Config.Economy.Catch.shot's).
 function HighwayThrowController.shotGoal(kind: Shot, p: Vector3): (Vector3, Vector3)
 	local eye: Vector3, look: Vector3
 	if kind == "throw" then
@@ -1053,6 +1082,9 @@ function HighwayThrowController.shotGoal(kind: Shot, p: Vector3): (Vector3, Vect
 	elseif kind == "chase" then
 		local c = U.chase
 		eye, look = Vector3.new(p.X, p.Y + c.up, p.Z - c.back), Vector3.new(p.X, p.Y + c.lookUp, p.Z + c.lookAhead)
+	elseif kind == "catch" then
+		local c = Config.Economy.Catch.shot
+		eye, look = Vector3.new(p.X + c.side, p.Y + c.up, p.Z - c.back), Vector3.new(p.X, p.Y + c.lookUp, p.Z + c.ahead)
 	else
 		local l = U.landingShot
 		eye, look = Vector3.new(p.X + l.side, p.Y + l.up, p.Z - l.back), p
@@ -1089,6 +1121,16 @@ function HighwayThrowController.zoneBanner(biome: number, level: number, gear: a
 	}
 end
 
+-- Rework Option A: how long the landing shot holds after the landing: longer when the landing caught a squishy (the
+-- wild ones' run, the hop and the card are seen), else Config.UI.Highway.landingShot.holdSeconds.
+function HighwayThrowController.holdFor(landing: Types.HighwayLanding?): number
+	local hold = U.landingShot.holdSeconds
+	if landing ~= nil and landing.catch ~= nil then
+		return math.max(hold, Config.Economy.Catch.wild.holdSeconds)
+	end
+	return hold
+end
+
 -- The landing's toasts (see the header).
 function HighwayThrowController.landingToasts(data: Types.HighwayLanding): { Toast }
 	local h = Strings.highway
@@ -1110,21 +1152,7 @@ function HighwayThrowController.landingToasts(data: Types.HighwayLanding): { Toa
 		local name = Strings.resolve(biome.nameKey) or ""
 		table.insert(toasts, { text = Strings.format(h.reached, { biome = name }), kind = "info" })
 	end
-	local counts: { [string]: number } = {}
-	local order: { string } = {}
-	for _, kind in data.gifts do
-		if counts[kind] == nil then
-			table.insert(order, kind)
-		end
-		counts[kind] = (counts[kind] or 0) + 1
-	end
-	for _, kind in order do
-		local def = Catalog.get(kind)
-		local name = if def then Strings.resolve(def.nameKey) or kind else kind
-		local count = counts[kind]
-		local text = Strings.format(Strings.plural(count, h.gift.one, h.gift.many), { count = count, name = name })
-		table.insert(toasts, { text = text, kind = "success" })
-	end
+	-- (The zone gifts' toasts went 2026-11-12: a catch shows on its own card, HighwayCatchController.)
 	local bag = data.food
 	if bag ~= nil then
 		local food = PenMath.food(bag.id)

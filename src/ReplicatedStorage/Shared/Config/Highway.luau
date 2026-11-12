@@ -49,13 +49,7 @@ local Highway = {
 	-- The Food Bag (SIM:59 foodEvery / foodSV, :239; V3:185): every `seconds` of flight time of paid throws,
 	-- `squeezes` x the squeeze value of food (pieces of the weakest placed squishy's band food).
 	foodBag = { seconds = 150, squeezes = 50 },
-	-- The biome gifts (SIM:205: 3 Boba Bears at Boba Lagoon, a Bird at Lava Volcano, 3 Cloud Bunnies at Divine Heaven),
-	-- given once each, in the throw that first reaches the biome (a full Toy Box queues them, pens3 phase 5).
-	gifts = {
-		{ biome = 3, kind = "boba_bear", count = 3 },
-		{ biome = 5, kind = "bird", count = 1 },
-		{ biome = 7, kind = "cloud_bunny", count = 3 },
-	} :: { { biome: number, kind: string, count: number } },
+	-- (The biome gifts of SIM:205 went 2026-11-12: the first landing in a new zone is a sure catch instead, Config/Catch.)
 	-- The flight (P3D:575-597, the design's own throw; HighwayMath.flight). Release at the A3 "Release" marker (K:5295,
 	-- 0.42 s), then the air: a carry of carryShare x the landing (P3D:554, at least carryMin and at most carryMax, and
 	-- never past the landing) over airSeconds + airPerRoot x sqrt(the carry / airRoot) seconds, peaking at peakShare

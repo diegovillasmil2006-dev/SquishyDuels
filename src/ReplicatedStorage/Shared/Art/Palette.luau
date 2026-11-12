@@ -868,6 +868,9 @@ local Palette = {
 	DuelTimerLow = Color3.fromHex("#FF8496"), -- D:416 the timer at 10 s or less
 	DuelSquished = Color3.fromHex("#FF4D6A"), -- D:70 the SQUISHED tag, D:157 the phone's slash
 	DuelHeadGrey = Color3.fromHex("#969696"), -- superprompt §3: the squished player's headshot, as an ImageColor3
+	-- The catch (rework Option A, 2026-11-12; Claude Design's catch canvas): the CATCH meter's fill, pink to gold.
+	CatchBarPink = Color3.fromHex("#FF8FC8"),
+	CatchBarGold = Color3.fromHex("#FFD34E"),
 	-- Mode select (2026-10-24; L = "Squishy Duels LOBBY HUD.dc.html"): the cards' faces, glows and bottom fades
 	-- (L:1358-1363), the screen's base under its radial picture (L:174's outer stop), the shards (L:995), the unpicked
 	-- cards' dim (L:206) and the cards' soft shadow (L:187).

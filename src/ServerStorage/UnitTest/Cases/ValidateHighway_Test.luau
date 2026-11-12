@@ -10,10 +10,8 @@
 -- Gates at 2.4e31), the power 2 x 1.1^(Grip Lv - 1) (G110:42, x1.1 fixed by the owner), the pay (p13v3, owner
 -- 2026-10-18: Coins by distance) 0.5 squeezes of Coins a stud and 60 of Grip a landing (SIM:59), with one stud
 -- farther always paying at least one Coin more (perStud x Pen.minSqueezeValue >= 1, checked when the copy has the Pen
--- section), the Food Bag 50 squeezes every 150 s (SIM:59), the gifts 3 Boba Bears
--- at Boba Lagoon, a Bird at Lava Volcano and 3 Cloud Bunnies at Divine Heaven (SIM:205), the flight P3D's
--- (P3D:554, :575, :590; the Release marker K:5295, 0.42 s); a gift kind the catalog does not know, and every broken new
--- value, are reported by name.
+-- section), the Food Bag 50 squeezes every 150 s (SIM:59), no zone gifts (gone 2026-11-12: a sure catch instead), the
+-- flight P3D's (P3D:554, :575, :590; the Release marker K:5295, 0.42 s); every broken new value is reported by name.
 -- P13v4 (owner 2026-10-19: the TikTok throw; work/pens3/p13v4/SPEC.md 5.3, all [P]): power.base 900, the flight almost
 -- all air (carryShare 0.9 up to 8,500, peakMax 60, a short roll, releaseUp 1.5, centreStuds 60), the PERFECT bar
 -- (timing), the boost (boost) and pay.ringShare 0.1; each broken new value is reported by name, 0 allowed where it
@@ -129,11 +127,7 @@ return function(t: Context)
 		-- p13v3: Coins by distance (owner 2026-10-18); p13v4 [P]: +10 % a ring hit
 		expect.deepEqual(h.pay, { perStud = 0.5, grip = 60, ringShare = 0.1 })
 		expect.deepEqual(h.foodBag, { seconds = 150, squeezes = 50 })
-		expect.deepEqual(h.gifts, {
-			{ biome = 3, kind = "boba_bear", count = 3 },
-			{ biome = 5, kind = "bird", count = 1 },
-			{ biome = 7, kind = "cloud_bunny", count = 3 },
-		})
+		expect.equal(h.gifts, nil) -- 2026-11-12: the zone gifts went (a sure catch instead, Config/Catch)
 		local f = h.flight
 		expect.equal(f.releaseSeconds, 0.42)
 		-- p13v4 [P]: the video flies almost all the way (carry 0.9, to the gates, arcs at most 60 high, a short roll)
@@ -178,10 +172,6 @@ return function(t: Context)
 			{ changes = { pay = { perStud = 0.5, grip = 6.5 } }, field = "pay.grip" },
 			{ changes = { foodBag = { seconds = 0, squeezes = 50 } }, field = "foodBag.seconds" },
 			{ changes = { foodBag = { seconds = 150, squeezes = 0 / 0 } }, field = "foodBag.squeezes" },
-			{ changes = { gifts = { { biome = 9, kind = "bird", count = 1 } } }, field = "gifts[1].biome" },
-			{ changes = { gifts = { { biome = 3, kind = "", count = 1 } } }, field = "gifts[1].kind" },
-			{ changes = { gifts = { { biome = 3, kind = "bird", count = 0 } } }, field = "gifts[1].count" },
-			{ changes = { gifts = "bird" }, field = "gifts" },
 			{ changes = { inFlightGraceSeconds = 1 }, field = "inFlightGraceSeconds" }, -- not under the release
 			{ changes = { areaMarginStuds = -1 }, field = "areaMarginStuds" },
 		}
@@ -238,17 +228,6 @@ return function(t: Context)
 		expect.truthy(mentions(validate(withNet(net(cap, remote.burst, live.Global.rate))), "HighwayThrow"))
 		expect.truthy(mentions(validate(withNet(net(remote.rate, cap - 1, live.Global.rate))), "HighwayThrow"))
 		expect.truthy(mentions(validate(withNet(net(remote.rate, remote.burst, cap))), "Global.rate"))
-		-- A gift kind the catalog does not know (only checked with a catalog).
-		local unknown = broken({ gifts = { { biome = 3, kind = "pizza", count = 1 } } })
-		expect.deepEqual(validate(unknown), {})
-		expect.truthy(mentions(
-			validate(unknown, {
-				isValidId = function(id: string)
-					return id ~= "pizza"
-				end,
-			}),
-			"gifts[1].kind"
-		))
 	end)
 
 	t.test("p13v3: one stud farther pays at least one Coin more (perStud x Pen.minSqueezeValue >= 1)", function()

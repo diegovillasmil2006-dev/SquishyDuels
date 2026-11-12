@@ -1932,8 +1932,26 @@ local Strings = {
 		landed = "{distance} studs! +{coins} Coins, +{grip} Grip",
 		newBest = "New best: {distance} studs!",
 		reached = "You reached {biome}!",
-		gift = { one = "{name} joined your pen!", many = "{count} {name} squishies joined your pen!" },
 		foodBag = "Food Bag: +{count} {food}",
+		-- Rework Option A (2026-11-12, the catch; Claude's design canvas): the CATCH meter ({have} / {total} = the zone's
+		-- box kinds owned / all), the catch card's title by rarity, its NEW! badge and its collection line, the chip under
+		-- a new zone's banner, and the +1 at the Squishies button.
+		catch = {
+			meter = "CATCH",
+			sure = "SURE CATCH!",
+			here = "{have}/{total} here",
+			inZone = "{have}/{total} in this zone",
+			new = "NEW!",
+			sureZone = "Your first catch here is sure!",
+			plusOne = "+1",
+			title = {
+				Common = "CAUGHT!",
+				Uncommon = "CAUGHT!",
+				Rare = "RARE CATCH!",
+				Epic = "EPIC CATCH!",
+				Exclusive = "LEGENDARY!",
+			},
+		},
 		-- P13v4 [P] the throw screen (HighwayHud, the video's flight HUD; {n} = the zone's number 1..7, {biome} = its
 		-- name, {hit} / {total} = rings, {fuel} = boosts left): the zone line, the rings line, the PERFECT bar's label,
 		-- the boost button's action by input and its fuel line ("SQUISH!" for the video's "QUACK!").

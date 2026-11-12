@@ -1166,14 +1166,22 @@ return function(t: Context)
 		)
 		expect.equal(Strings.format(h.newBest, { distance = "328" }), "New best: 328 studs!")
 		expect.equal(Strings.format(h.reached, { biome = "BAKERY TOWN" }), "You reached BAKERY TOWN!")
-		expect.equal(
-			Strings.format(Strings.plural(1, h.gift.one, h.gift.many), { name = "Bird", count = 1 }),
-			"Bird joined your pen!"
-		)
-		expect.equal(
-			Strings.format(Strings.plural(3, h.gift.one, h.gift.many), { name = "Boba Bear", count = 3 }),
-			"3 Boba Bear squishies joined your pen!"
-		)
+		expect.equal(h.gift, nil) -- 2026-11-12: the zone gifts went (a sure catch instead)
+		-- rework Option A: the catch's words
+		local c = h.catch
+		expect.equal(c.meter, "CATCH")
+		expect.equal(c.sure, "SURE CATCH!")
+		expect.equal(Strings.format(c.here, { have = 4, total = 11 }), "4/11 here")
+		expect.equal(Strings.format(c.inZone, { have = 5, total = 11 }), "5/11 in this zone")
+		expect.equal(c.new, "NEW!")
+		expect.equal(c.sureZone, "Your first catch here is sure!")
+		expect.deepEqual(c.title, {
+			Common = "CAUGHT!",
+			Uncommon = "CAUGHT!",
+			Rare = "RARE CATCH!",
+			Epic = "EPIC CATCH!",
+			Exclusive = "LEGENDARY!",
+		})
 		expect.equal(Strings.format(h.foodBag, { count = 2, food = "Candy Drop" }), "Food Bag: +2 Candy Drop")
 		-- Calm: no hurry, no countdown, and the auto-clicker warning names no number.
 		for _, text in { h.board.empty, h.landed, h.reached, h.foodBag, Strings.reason.highway.paused } do

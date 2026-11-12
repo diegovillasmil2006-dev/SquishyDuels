@@ -140,6 +140,8 @@ local Economy = {
 	Gear = require(script.Parent.Gear),
 	-- The INCOME upgrade (INCOME step 1): Config/Income (SQUISHY COINS + ALL EARNINGS; checked by Config/ValidateIncome).
 	Income = require(script.Parent.Income),
+	-- The throw catches squishies (rework Option A, 2026-11-12): Config/Catch (checked by Shared/CatchMath.validate).
+	Catch = require(script.Parent.Catch),
 
 	-- Duplicate results (§6.5). Pens3 phase 5: "copy" (every box result, shop buy or gift adds a pen item, so a squishy
 	-- you own again is a copy; the Toy Box cap, Config/Pen toyBoxMax, is the limit). Was "refund".
