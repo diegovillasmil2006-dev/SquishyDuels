@@ -1,8 +1,10 @@
 --!strict
 -- InventoryFormat (client only, pure). DESIGN §11.6 (Squishies screen), §10.8 (compact info panel), §4.3 (rarity),
 -- §5.8 (throw stat bands). What InventoryController shows, as plain data:
---   entries(defs, owned, equipped, isNew)  one entry per Catalog squishy, sorted: equipped first, then rarity
---                                          descending, then name (§11.6)
+--   entries(defs, owned, equipped, isNew, seasonOn?)  one entry per Catalog squishy, sorted: equipped first, then the
+--                                          owned ones (rarity descending, then name: §11.6), then the others cheapest
+--                                          first (Pricing.shopPrice now; not sold last), then name (audit row 15,
+--                                          2026-11-12: a new player saw the 12 dearest first, what they can buy last)
 --   FILTERS / nextFilter(f, dir)           All, Common, Uncommon, Rare, Epic, Exclusive (shown Legendary); L1 / R1
 --                                          cycle them (§11.4)
 --   visible(entries, filter, showNotOwned) the cards a filter shows ("Show locked" off hides unowned ones)
@@ -57,6 +59,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
+local Pricing = require(Shared.Pricing)
 local Rarity = require(Shared.Rarity)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
@@ -77,6 +80,7 @@ export type Entry = {
 	owned: boolean,
 	equipped: boolean,
 	isNew: boolean,
+	price: number?, -- an unowned one's shop price now (Pricing.shopPrice); nil when owned or not sold
 }
 
 export type EquipState = "equip" | "equipped" | "notOwned" | "locked" | "loading"
@@ -251,6 +255,15 @@ function InventoryFormat.sort(list: { Entry }): { Entry }
 		if a.equipped ~= b.equipped then
 			return a.equipped
 		end
+		if a.owned ~= b.owned then
+			return a.owned
+		end
+		if not a.owned then -- cheapest first; one that is not sold last
+			local pa, pb = a.price or math.huge, b.price or math.huge
+			if pa ~= pb then
+				return pa < pb
+			end
+		end
 		local byRarity = Rarity.compare(a.rarity, b.rarity)
 		if byRarity ~= 0 then
 			return byRarity > 0
@@ -267,11 +280,13 @@ function InventoryFormat.entries(
 	defs: { Types.SquishyDef },
 	owned: { [string]: any },
 	equipped: string,
-	isNew: (id: string) -> boolean
+	isNew: (id: string) -> boolean,
+	seasonOn: boolean?
 ): { Entry }
 	local list: { Entry } = {}
 	for _, def in defs do
 		local has = owned[def.id] ~= nil
+		local price = if has then nil else Pricing.shopPrice(def.id, owned, seasonOn == true)
 		table.insert(list, {
 			id = def.id,
 			def = def,
@@ -280,6 +295,7 @@ function InventoryFormat.entries(
 			owned = has,
 			equipped = has and def.id == equipped,
 			isNew = has and isNew(def.id),
+			price = price,
 		})
 	end
 	return InventoryFormat.sort(list)

@@ -349,7 +349,8 @@ local function currentEntries(): { InventoryFormat.Entry }
 		Seasons.defs(StateController.owned(), seasonOn()), -- a seasonal squishy: only on sale or owned
 		StateController.owned(),
 		StateController.equipped(),
-		StateController.isNewOwned
+		StateController.isNewOwned,
+		seasonOn() -- audit row 15: the unowned ones cheapest first
 	)
 end
 

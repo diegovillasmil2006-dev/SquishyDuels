@@ -2,8 +2,9 @@
 -- InventoryFormat_Test: StarterPlayerScripts.Client.UI.InventoryFormat (the Squishies screen as data). Server only
 -- (ServerStorage.UnitTest). Pure: no instances.
 -- Contract (DESIGN §11.6, §10.8, §4.3, §5.8, §11.4):
---   * one entry per Catalog squishy, sorted: equipped first, then rarity descending, then name; an unowned squishy is
---     never "equipped" or "new";
+--   * one entry per Catalog squishy, sorted: equipped first, then the owned ones (rarity descending, then name), then
+--     the others by their shop price (cheapest first, not sold last; audit row 15); an unowned squishy is never
+--     "equipped" or "new";
 --   * filters All, Common, Uncommon, Epic, Exclusive (L1 / R1 wrap around); "Show not owned" off hides unowned cards;
 --     chip counts are what each chip would show; "Collected {n}/14";
 --   * columns = floor(gridWidth / (cardWidth + pad)), at least 1; the selection is kept while visible;
@@ -86,38 +87,40 @@ return function(t: Context)
 		return map
 	end
 
-	t.test("entries: equipped first, then rarity descending, then name", function()
-		local list = InventoryFormat.entries(Catalog.list(), owned({ "kitty_bread", "toast", "bird" }), "toast", never)
+	t.test("entries: equipped first, then the owned ones by rarity and name, then the others cheapest first", function()
+		local Pricing = t.requireShared("Pricing")
+		local Rarity = t.requireShared("Rarity")
+		local have = owned({ "kitty_bread", "toast", "bird" })
+		local list = InventoryFormat.entries(Catalog.list(), have, "toast", never)
 		expect.equal(#list, #Catalog.list())
 		expect.equal(list[1].id, "toast")
 		expect.equal(list[1].equipped, true)
-		-- Exclusive by name, unowned: Candyglass Qilin (Prism Box), Cosmo (Series 01), Divine Loaf (Halo Box), Dragon,
-		-- Mallow Behemoth (Lava Box), Parfait Wyvern (Frosty Box)
-		expect.equal(list[2].id, "candyglass_qilin")
-		expect.equal(list[3].id, "cosmo")
-		expect.equal(list[4].id, "divine_loaf")
-		expect.equal(list[5].id, "dragon")
-		expect.equal(list[5].owned, false)
-		expect.equal(list[6].id, "mallow_behemoth")
-		expect.equal(list[7].id, "parfait_wyvern")
-		-- Epic by name: Birdie, Cloud Bunny, Cupcake Axolotl, Donut, Gelato Narwhal, Gummy Pufferfish, Lava Cake Hippo,
-		-- Souffle Seraph
-		expect.deepEqual(
-			ids({ list[8], list[9], list[10], list[11], list[12], list[13], list[14], list[15] }),
-			{
-				"bird",
-				"cloud_bunny",
-				"cupcake_axolotl",
-				"donut",
-				"gelato_narwhal",
-				"gummy_pufferfish",
-				"lava_cake_hippo",
-				"souffle_seraph",
-			}
-		)
-		-- Commons last, by name (... Pancake Pup, Peachy, Slushy Seal, Taffy Tadpole; Toast is equipped, so first)
-		local tail = ids({ list[#list - 3], list[#list - 2], list[#list - 1], list[#list] })
-		expect.deepEqual(tail, { "pancake_pup", "peachy", "slushy_seal", "taffy_tadpole" })
+		-- The owned ones next, rarity descending: Birdie (Epic), then Kitty Bread (Common).
+		expect.deepEqual(ids({ list[2], list[3] }), { "bird", "kitty_bread" })
+		-- Audit row 15: then every unowned one, its shop price never falling; the ones not sold last.
+		local last, sawUnsold = -math.huge, false
+		for i = 4, #list do
+			local entry = list[i]
+			expect.equal(entry.owned, false)
+			expect.equal(entry.price, Pricing.shopPrice(entry.id, have, false))
+			if entry.price == nil then
+				sawUnsold = true
+			else
+				expect.falsy(sawUnsold) -- a priced one never after an unsold one
+				expect.truthy(entry.price >= last)
+				last = entry.price
+			end
+		end
+		-- A new player's first unowned card is the cheapest squishy of all, never a Legendary.
+		local fresh = InventoryFormat.entries(Catalog.list(), owned({ "kitty_bread" }), "kitty_bread", never)
+		local cheapest = math.huge
+		for _, entry in fresh do
+			if entry.price then
+				cheapest = math.min(cheapest, entry.price)
+			end
+		end
+		expect.equal(fresh[2].price, cheapest)
+		expect.truthy(Rarity.index(fresh[2].rarity) < Rarity.index("Exclusive"))
 		for _, entry in list do
 			if not entry.owned then
 				expect.equal(entry.equipped, false)
