@@ -1697,6 +1697,8 @@ local Strings = {
 		welcome = "Welcome to Squishy Duels! Your first squishy is {starterName}.",
 		-- Spec 2026-10-11 §5 (squeeze anywhere); Phase 5: a pad no longer boosts a squeeze (capsules set its pay).
 		squeeze = "Squeeze squishies anywhere to earn Coins. {squeezeHint}.",
+		-- Audit 2026-11 row 5: the highway step (its first throw is a sure catch since the rework).
+		highway = "Throw your squishy on the HIGHWAY! Cross the bridge or press HIGHWAY. Your first throw catches a squishy!",
 		-- Pens3 phase 1: the pen step (the first pen spot bought at the sign; it replaced Batch 1's capsule step).
 		pen = "Your squishies earn Coins in your pen. Buy more pen space at the sign!",
 		-- Pens3 phase 5: {goal} = the cheapest Welcome price (1K since 2026-10-31; V4:161 points new players to the

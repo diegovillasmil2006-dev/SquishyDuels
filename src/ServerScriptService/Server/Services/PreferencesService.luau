@@ -14,7 +14,8 @@
 --   "Replay tutorial" stays local). Server-observed steps are recorded through markStep(p, id) by the
 --   wiring below: squeeze (SqueezeService.Squeezed, first accepted squeeze), pen (EconomyService.CoinsChanged: the
 --   first spend with reason "pen", a pen spot bought at the sign; pens3 phase 1, was Batch 1's capsule step), firstBox
---   (EconomyService.SquishyGranted from a box or the shop), duel (QueueService.Joined, when that signal exists).
+--   (EconomyService.SquishyGranted from a box or the shop), duel (QueueService.Joined, when that signal exists),
+--   highway (HighwayService.Landed, the first paid landing; audit 2026-11 row 5).
 --   Recording is idempotent and never pays Coins (§11.8).
 -- * A READY session changes through DataService.mutate (the data port) and asks for a "soon" save. An OFFLINE /
 --   READONLY session keeps the change in its in-memory view only (DataService never saves it, §3.9); a loading one has
@@ -59,6 +60,7 @@ local STEP_FIRST_BOX = "firstBox"
 local STEP_PEN = "pen"
 local PEN_REASON = "pen" -- PenService's Coin reason: its spends are the pen spots (its pay is a grant)
 local STEP_DUEL = "duel"
+local STEP_HIGHWAY = "highway"
 local FIRST_BOX_SOURCES: { [string]: boolean } = { box = true, shop = true }
 local SETTING_KEYS = { "music", "sfx", "cameraShake", "showTips" }
 
@@ -302,6 +304,11 @@ function PreferencesService.onQueueJoined(player: any)
 	PreferencesService.markStep(player, STEP_DUEL)
 end
 
+-- HighwayService.Landed (a paid landing), when that signal exists: completes "highway".
+function PreferencesService.onHighwayLanded(player: any)
+	PreferencesService.markStep(player, STEP_HIGHWAY)
+end
+
 -- Lifecycle ------------------------------------------------------------------------------------------------------------
 
 function PreferencesService.init()
@@ -320,6 +327,10 @@ function PreferencesService.init()
 	local QueueService = optionalModule("QueueService")
 	if QueueService and not connect(QueueService.Joined, PreferencesService.onQueueJoined) then
 		log:info("QueueService.Joined missing: the onboarding step duel is not recorded yet")
+	end
+	local HighwayService = optionalModule("HighwayService")
+	if HighwayService and not connect(HighwayService.Landed, PreferencesService.onHighwayLanded) then
+		log:warn("HighwayService.Landed missing: the onboarding step highway is not recorded")
 	end
 end
 

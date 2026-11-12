@@ -92,6 +92,7 @@ local REMOTE = "OnboardingStep"
 local FIELD = "onboarding"
 local WELCOME = "welcome"
 local INSPECT_STEP = "inspect"
+local HIGHWAY_STEP = "highway"
 local SKIP_STEP: string = ONBOARDING.skipStepId
 local HUD_GUI = "SD_Hud"
 local COLUMN = HudFormat.COLUMN
@@ -158,12 +159,18 @@ local function effectiveState(): any
 	return { v = if type(saved) == "table" then saved.v else nil, done = done, skipped = skipped }
 end
 
--- Steps whose screen is not registered yet are passed over (the Inspect step until Part 6's "inspect" exists).
+-- Steps passed over: the Inspect step until Part 6's "inspect" screen exists; audit row 5: the highway step for a
+-- player who has thrown before (the saved highway best above 0; their done set predates the step), never in a replay.
 local function unavailable(): { [string]: boolean }?
-	if UIController.isRegistered(INSPECT_SCREEN) then
-		return nil
+	local skip: { [string]: boolean } = {}
+	if not UIController.isRegistered(INSPECT_SCREEN) then
+		skip[INSPECT_STEP] = true
 	end
-	return { [INSPECT_STEP] = true }
+	local highway = StateController.get("highway")
+	if not replay and type(highway) == "table" and type(highway.best) == "number" and highway.best > 0 then
+		skip[HIGHWAY_STEP] = true
+	end
+	return if next(skip) then skip else nil
 end
 
 local function context(): OnboardingFormat.Context
@@ -675,6 +682,17 @@ function OnboardingController.init()
 		if replay and not StateController.isApplyingFull() and OnboardingFormat.penBought(value, old) then
 			markReplay("pen")
 		end
+	end))
+	-- Audit row 5: a landing raises the saved highway best (the replay's highway step); the real step's pass-over
+	-- (unavailable) reads that best too.
+	c:add(StateController.changed("highway"):connect(function(value: any, old: any)
+		if replay and not StateController.isApplyingFull() and type(value) == "table" and type(old) == "table" then
+			if (tonumber(value.best) or 0) > (tonumber(old.best) or 0) then
+				markReplay(HIGHWAY_STEP)
+				return
+			end
+		end
+		refresh()
 	end))
 	c:add(StateController.QueueChanged:connect(function(new: StateController.QueueView, old: StateController.QueueView)
 		if replay and new.state == SEARCHING and old.state ~= SEARCHING then

@@ -85,7 +85,7 @@ return function(t: Context)
 	t.test("a new player sends Joined, each step once in its number, then Finished", function()
 		local _, calls = setup()
 		local p = { name = "new" }
-		expect.equal(#STEPS, 6)
+		expect.equal(#STEPS, 7) -- audit row 5 (2026-11-12): + the highway step
 		TrackingService.onLoaded(p, profile(), "ready")
 		TrackingService.onStepDone(p, STEPS[2].id)
 		TrackingService.onStepDone(p, STEPS[1].id) -- older than the last sent step: not sent (Roblox back-fills it)
@@ -100,7 +100,8 @@ return function(t: Context)
 			{ 5, STEPS[4].id },
 			{ 6, STEPS[5].id },
 			{ 7, STEPS[6].id },
-			{ 8, "Finished" },
+			{ 8, STEPS[7].id },
+			{ 9, "Finished" },
 		})
 		expect.equal(calls[1][2], p)
 		TrackingService.useDeps(nil)

@@ -221,7 +221,11 @@ return function(t: Context)
 		PreferencesService.onSquishyGranted(player, "toast", "box")
 		PreferencesService.onSqueezed(player)
 		PreferencesService.onQueueJoined(player)
-		expect.deepEqual(profile.onboarding.done, { pen = true, firstBox = true, squeeze = true, duel = true })
+		PreferencesService.onHighwayLanded(player) -- audit row 5: the first paid landing
+		expect.deepEqual(
+			profile.onboarding.done,
+			{ pen = true, firstBox = true, squeeze = true, duel = true, highway = true }
+		)
 		expect.equal((PreferencesService :: any).onEquipped, nil) -- Batch 1: there is no equip step any more
 		expect.equal(profile.coins, 0) -- onboarding never pays Coins
 	end)

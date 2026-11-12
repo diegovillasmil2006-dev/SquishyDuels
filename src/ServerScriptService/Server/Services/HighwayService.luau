@@ -117,6 +117,7 @@ local HighwayBoosters = require(Shared.Art.HighwayBoosters)
 local HighwayTraps = require(Shared.Art.HighwayTraps)
 local Log = require(Shared.Util.Log)
 local PenMath = require(Shared.PenMath)
+local Signal = require(Shared.Util.Signal)
 local Strings = require(Shared.Strings)
 local Types = require(Shared.Types)
 local Validate = require(Shared.Util.Validate)
@@ -227,6 +228,10 @@ local COAT_GIFT = "coat.gift" -- its toast (Strings)
 -- Module table
 
 local HighwayService = {}
+
+-- (event) a throw of `player` landed and was paid, `studs` far (audit 2026-11 row 5: PreferencesService records the
+-- highway tutorial step on it).
+HighwayService.Landed = Signal.new() :: Signal.Signal<any, number>
 
 -- Private
 
@@ -592,6 +597,7 @@ local function settle(player: any, session: Session, fire: boolean)
 	end
 	onBoard(deps.nameOf(player), studs)
 	deps.requestSave(player, SAVE_SOON)
+	HighwayService.Landed:fire(player, studs)
 	if fire then
 		deps.fireLanded(player, {
 			id = plan.id,

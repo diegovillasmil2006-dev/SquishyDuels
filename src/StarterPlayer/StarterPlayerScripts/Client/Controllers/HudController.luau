@@ -2503,8 +2503,8 @@ function HudController.layoutRects(): Rects
 	}
 end
 
--- A HUD element by name: "coins", "squishies", "boxes", "shop", "quests", "daily", "duel", "settings", "tracker" (for
--- onboarding pulses and Studio checks).
+-- A HUD element by name: "coins", "squishies", "boxes", "shop", "quests", "daily", "duel", "settings", "tracker",
+-- "highway" (for onboarding pulses and Studio checks).
 function HudController.element(name: string): GuiObject?
 	if name == "coins" then
 		return if coins then coins.root else nil
@@ -2514,6 +2514,8 @@ function HudController.element(name: string): GuiObject?
 		return if settingsButton then settingsButton.root else nil
 	elseif name == "tracker" then
 		return if tracker then tracker.root else nil
+	elseif name == "highway" then -- audit row 5: the highway tutorial step pulses it
+		return if highwayButton then highwayButton.root else nil
 	end
 	local tile = tiles[name]
 	return if tile then tile.root else nil

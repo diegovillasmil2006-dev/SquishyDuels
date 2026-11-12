@@ -8,7 +8,7 @@ export type Step = {
 	id: string,
 	textKey: string,
 	recordedBy: "client" | "server",
-	guidance: "none" | "waypointMat" | "waypointShop" | "pulseSquishies" | "waypointPodium",
+	guidance: "none" | "waypointMat" | "waypointShop" | "pulseSquishies" | "waypointPodium" | "waypointHighway",
 }
 
 local Onboarding = {
@@ -19,6 +19,11 @@ local Onboarding = {
 		{ id = "welcome", textKey = "onboarding.welcome", recordedBy = "client", guidance = "none" },
 		-- First accepted squeeze.
 		{ id = "squeeze", textKey = "onboarding.squeeze", recordedBy = "server", guidance = "waypointMat" },
+		-- Audit 2026-11 row 5 (owner 2026-11-12 "do everything"): the first highway landing (HighwayService.Landed). The
+		-- highway is where a new player earns most, and since the catch its first throw is a sure catch. The waypoint is
+		-- the bridge's foot and the HUD's HIGHWAY button pulses; a player who has thrown before never sees it
+		-- (OnboardingController passes it over when the saved highway best is above 0).
+		{ id = "highway", textKey = "onboarding.highway", recordedBy = "server", guidance = "waypointHighway" },
 		-- First box opened or first shop purchase; everyone is pointed to the Shop and its cheapest squishy (a Welcome
 		-- price Common), never the 150,000 Snack Box. Owner 2026-10-31 ("Cheaper first + tip order"): right after the
 		-- squeeze, now that the goal is short (1,000; Batch 1 had put it last so a 10,000 goal never hid the duel card).

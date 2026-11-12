@@ -78,9 +78,11 @@ local DEFAULT_INPUT: InputKind = "keyboard"
 local WAYPOINTS: { [string]: string } = {
 	waypointShop = "shop",
 	waypointPodium = "duel",
+	waypointHighway = "highway", -- audit row 5: the bridge's foot, and the HUD's HIGHWAY button pulses too
 }
 local PULSES: { [string]: string } = {
 	pulseSquishies = "squishies",
+	waypointHighway = "highway",
 }
 
 -- Module table

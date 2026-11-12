@@ -1329,6 +1329,8 @@ local Waypoints: { [string]: Vector3 } = {
 	duel = DuelGate.approach,
 	practice = PracticeRange.approach,
 	giftBox = GiftBoxCounter.approach,
+	-- Audit 2026-11 row 5: the highway tutorial step points at the bridge's foot (the walk up to the throw deck).
+	highway = Vector3.new(Lobby.bridge.x, Lobby.bridge.fromTop, Lobby.bridge.fromZ),
 }
 
 -- Private: arena template (§5.3, §7.8) -----------------------------------------------------------------------------

@@ -29,6 +29,7 @@ return function(t: Context)
 	local Format = t.requireShared("Util/Format")
 	local Pricing = t.requireShared("Pricing")
 	local Strings = t.requireShared("Strings")
+	local WorldLayout = t.requireShared("World/WorldLayout")
 	local STEPS = Config.Onboarding.Steps
 
 	local function cheapest(owned: { [string]: any }): number
@@ -163,6 +164,13 @@ return function(t: Context)
 			local duel = OnboardingFormat.model(ctx(doneBefore("duel")))
 			expect.equal(duel.waypoint, "duel")
 			expect.equal(duel.text, Strings.onboarding.duel)
+			-- Audit row 5: the highway step points at the bridge's foot and pulses the HUD's HIGHWAY button.
+			local highway = OnboardingFormat.model(ctx(doneBefore("highway")))
+			expect.equal(highway.stepId, "highway")
+			expect.equal(highway.waypoint, "highway")
+			expect.equal(highway.pulse, "highway")
+			expect.equal(highway.text, Strings.onboarding.highway)
+			expect.truthy(WorldLayout.waypoint("highway") ~= nil)
 		end
 	)
 
@@ -225,7 +233,8 @@ return function(t: Context)
 			for _, step in STEPS do
 				table.insert(ids, step.id)
 			end
-			expect.deepEqual(ids, { "welcome", "squeeze", "firstBox", "pen", "inspect", "duel" })
+			-- audit row 5 (2026-11-12): the highway step right after the squeeze (the first throw is a sure catch)
+			expect.deepEqual(ids, { "welcome", "squeeze", "highway", "firstBox", "pen", "inspect", "duel" })
 		end
 	)
 
