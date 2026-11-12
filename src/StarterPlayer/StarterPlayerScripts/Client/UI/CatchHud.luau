@@ -673,6 +673,45 @@ function CatchHud.new(spec: Spec): Hud
 		plus.Position = UDim2.fromOffset(to.X + targetSize.X / 2 + 4, to.Y - targetSize.Y / 2 + plusSize.Y / 2)
 		plus.Visible = false
 		local pop: UIScale = Create("UIScale", { Parent = plus })
+		-- A curve through a point arc x the distance above the middle (a quadratic Bezier).
+		local mid = (from + to) / 2 - Vector2.new(0, (from - to).Magnitude * FLY.arc)
+		local function curve(s: number): Vector2
+			return from:Lerp(mid, s):Lerp(mid:Lerp(to, s), s)
+		end
+		-- Home's dotted flight line: a white dot every dotGap px along the curve (none at its two ends), each gone as
+		-- the bubble passes it. Made before the bubble so the bubble draws over them.
+		local dots: { { s: number, dot: Frame } } = {}
+		if not reducedOf() then
+			local steps = math.max(8, math.ceil(((from - mid).Magnitude + (mid - to).Magnitude) / 4))
+			local length, last = 0, from
+			for i = 1, steps do
+				local p = curve(i / steps)
+				length += (p - last).Magnitude
+				last = p
+			end
+			local walked, nextAt = 0, FLY.dotGap
+			last = from
+			for i = 1, steps do
+				local s = i / steps
+				local p = curve(s)
+				walked += (p - last).Magnitude
+				last = p
+				if walked >= nextAt and walked <= length - FLY.dotGap then
+					nextAt += FLY.dotGap
+					local dot: Frame = Create("Frame", {
+						Name = "Dot",
+						BackgroundColor3 = WHITE,
+						AnchorPoint = Vector2.new(0.5, 0.5),
+						Position = UDim2.fromOffset(p.X, p.Y),
+						Size = UDim2.fromOffset(FLY.dotPx, FLY.dotPx),
+						Parent = holder,
+					})
+					Theme.corner(FLY.dotPx / 2, dot)
+					Theme.stroke(INK, 1.5, dot)
+					table.insert(dots, { s = s, dot = dot })
+				end
+			end
+		end
 		local bubble: Frame = Create("Frame", {
 			Name = "Bubble",
 			BackgroundColor3 = WHITE,
@@ -707,12 +746,15 @@ function CatchHud.new(spec: Spec): Hud
 			arrive()
 			return
 		end
-		-- A curve through a point arc x the distance above the middle (a quadratic Bezier).
-		local mid = (from + to) / 2 - Vector2.new(0, (from - to).Magnitude * FLY.arc)
 		run("fly", FLY.ms / MS, function(u: number)
 			local e = 1 - (1 - u) * (1 - u)
-			local p = from:Lerp(mid, e):Lerp(mid:Lerp(to, e), e)
+			local p = curve(e)
 			bubble.Position = UDim2.fromOffset(p.X, p.Y)
+			for _, d in dots do
+				if d.s <= e then
+					d.dot.Visible = false
+				end
+			end
 			local s = 1 - 0.35 * e
 			bubble.Size = UDim2.fromOffset(FLY.px * s, FLY.px * s)
 		end, arrive)

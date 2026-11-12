@@ -10,7 +10,8 @@
 --   * the screen: the meter shows and hides; the chip only when asked; a card hides the meter and the chip while it
 --     shows and goes after inMs + holdMs + outMs (the meter back), or outMs after hideCard(); a Legendary card has the
 --     rays, a Rare one the ring;
---     the fly ends with "+1" and leaves nothing behind; destroy removes everything.
+--     the fly ends with "+1" and leaves nothing behind; its dotted line goes dot by dot as the bubble passes; destroy
+--     removes everything.
 
 type Context = {
 	test: (name: string, fn: () -> ()) -> (),
@@ -169,5 +170,39 @@ return function(t: Context)
 		target:Destroy()
 		expect.equal(#gui:GetChildren(), 0)
 		expect.equal(scheduler:count("render"), 0)
+	end)
+
+	t.test("the fly draws a dotted line; each dot goes as the bubble passes it", function()
+		local hud, gui, scheduler = made()
+		local target = Instance.new("Frame")
+		target.Size = UDim2.fromOffset(56, 56)
+		target.Position = UDim2.fromOffset(400, 300)
+		target.Parent = gui
+		hud:fly(ofRarity("Common") :: string, Color3.new(1, 1, 1), target)
+		local fly = find(gui, "CatchFly") :: GuiObject
+		local dots: { GuiObject } = {}
+		for _, d in fly:GetChildren() do
+			if d.Name == "Dot" and d:IsA("GuiObject") then
+				table.insert(dots, d)
+			end
+		end
+		local function shown(): number
+			local n = 0
+			for _, d in dots do
+				n += if d.Visible then 1 else 0
+			end
+			return n
+		end
+		expect.truthy(#dots >= 5)
+		expect.equal(shown(), #dots)
+		local ms = Config.Economy.Catch.ui.fly.ms / 1000
+		run(scheduler, ms / 2)
+		local half = shown()
+		expect.truthy(half > 0 and half < #dots)
+		run(scheduler, ms / 2 + 0.05)
+		expect.equal(shown(), 0)
+		hud:destroy()
+		target:Destroy()
+		expect.equal(#gui:GetChildren(), 0)
 	end)
 end

@@ -9,12 +9,14 @@
 --   else the furthest zone reached), SURE CATCH! when the next catch is sure (the first catch ever, the meter full, or
 --   a flight in a zone new to the player: then the chip "Your first catch here is sure!" too).
 -- * prepare(plan) (the release, and each boost's new plan): wild.count wild squishies of the landing zone's box (its
---   pen copies, wild.scale bigger) stand beside the lane around where the throw will stop, facing it.
+--   pen copies, wild.scale bigger) stand beside the lane around where the throw will stop, facing it, all on the
+--   side away from the landing cameras, in a near and a far row.
 -- * landed(id) (the drawn landing): each gets a "!" (alertSeconds), then runs to runTo studs from the squishy
---   (runSeconds, bobbing).
+--   (runSeconds, bobbing), a white dust puff (wild.dust) at its feet as it sets off and as it stops.
 -- * result(landing) (HighwayLanded): with a catch, the wild one of that kind (else the nearest, swapped to it) hops up
 --   into a bubble in its rarity's colour (a beam from Rare up) as the card slides in (sounds: catch, rare). A landing
---   of no drawn scene (an older throw, or after the shot ended) shows the card alone, then the fly.
+--   of no drawn scene (an older throw, or after the shot ended) shows the card alone, then the fly. A Legendary catch
+--   dims the world for a moment (ui.dim: Lighting.SD_CatchDim, gone after).
 -- * finish() (the shot ends, the camera back): the bubble leaves the world and flies to the HUD's Squishies button,
 --   "+1" (sound: home); the others go staySeconds after the landing.
 -- ReducedMotion: no run, no hop; the bubble and the card, the "+1" at once.
@@ -22,8 +24,10 @@
 
 -- Services
 
+local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 
 -- Requires
@@ -33,6 +37,7 @@ local Boxes = require(Shared.Boxes)
 local CatchMath = require(Shared.CatchMath)
 local Catalog = require(Shared.Catalog)
 local Config = require(Shared.Config)
+local HighwayFx = require(Shared.Config.HighwayFx)
 local HighwayMath = require(Shared.HighwayMath)
 local Palette = require(Shared.Art.Palette)
 local Rarity = require(Shared.Rarity)
@@ -41,6 +46,7 @@ local Types = require(Shared.Types)
 local WorldLayout = require(Shared.World.WorldLayout)
 
 local Client = script.Parent.Parent
+local FxPool = require(Client.Anim.FxPool)
 local Scheduler = require(Client.Anim.Scheduler)
 local Tweens = require(Client.Anim.Tweens)
 local SquishyCache = require(Client.Models.SquishyCache)
@@ -59,6 +65,7 @@ type Wild = {
 	stop: Vector3, -- its pivot after the run (runTo studs from the landing)
 	height: number,
 	alert: BillboardGui?,
+	dust: number?, -- the dust puffs given so far (1 = setting off, 2 = stopping)
 }
 
 export type DebugState = {
@@ -85,6 +92,12 @@ local RAY_UP = 60
 local RAY_LENGTH = 160
 local RAY_TRIES = 4
 local CLEAR = 0.95 -- a part at least this transparent is no ground (the deck's invisible walls)
+local DIM_NAME = "SD_CatchDim"
+local EVERY_WAY = Vector2.new(180, 180) -- a dust puff spreads every way (as the landing's debris burst)
+local LEGENDARY = 5 -- Rarity.index of Exclusive (shown as Legendary)
+-- The wild ones' lane side: away from the landing cameras (a no-catch landing's hero shot, Config.HighwayFx.hero, swings
+-- round to the right; the catch shot stands right too). On the cameras' side they filled the screen (2026-11-12).
+local WILD_SIDE = -math.sign(HighwayFx.hero.side)
 
 -- Module table
 
@@ -329,6 +342,61 @@ local function chooseCaught(kind: string): Wild?
 	return chosen
 end
 
+-- A white dust puff at a running wild one's feet (Landing's puffs). Sizes, speeds and turns vary and it fades fast
+-- (the vault: identical puffs that linger read as flat discs).
+local function dust(wild: Wild, at: Vector3)
+	local d = W.dust
+	pcall(function()
+		FxPool.default():emit(at - Vector3.new(0, wild.height / 2, 0), d.count, {
+			Texture = Config.Vfx.Textures.smoke,
+			Lifetime = NumberRange.new(d.lifetime * 0.6, d.lifetime),
+			Speed = NumberRange.new(d.speed * 0.5, d.speed),
+			Size = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, d.size * 0.7, d.size * 0.3),
+				NumberSequenceKeypoint.new(1, 0),
+			}),
+			Transparency = NumberSequence.new(0.2, 1),
+			Rotation = NumberRange.new(0, 360),
+			SpreadAngle = EVERY_WAY,
+			LightInfluence = 0,
+			Color = ColorSequence.new(Color3.new(1, 1, 1)),
+		})
+	end)
+end
+
+local function undim()
+	local old = Lighting:FindFirstChild(DIM_NAME)
+	if old then
+		old:Destroy()
+	end
+end
+
+-- A Legendary catch dims the world for a moment (the screens stay bright: a ColorCorrectionEffect only touches 3D).
+local function dimWorld()
+	local d = UI.dim
+	undim()
+	local cc = Instance.new("ColorCorrectionEffect")
+	cc.Name = DIM_NAME
+	cc.Parent = Lighting
+	TweenService:Create(cc, TweenInfo.new(d.inMs / 1000, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Brightness = d.brightness,
+		Saturation = d.saturation,
+	}):Play()
+	task.delay((d.inMs + d.holdMs) / 1000, function()
+		if cc.Parent == nil then
+			return
+		end
+		local back = TweenService:Create(cc, TweenInfo.new(d.outMs / 1000, Enum.EasingStyle.Quad), {
+			Brightness = 0,
+			Saturation = 0,
+		})
+		back.Completed:Once(function()
+			cc:Destroy()
+		end)
+		back:Play()
+	end)
+end
+
 local function startHop(now: number)
 	local catch = scene.catch :: Types.HighwayCatch
 	local wild = scene.caught
@@ -337,6 +405,9 @@ local function startHop(now: number)
 	play(C.sounds.catch, if wild then wild.model:GetPivot().Position else nil)
 	if rank(catch.kind) >= 3 then
 		play(C.sounds.rare)
+	end
+	if rank(catch.kind) >= LEGENDARY then
+		dimWorld()
 	end
 	if wild == nil then
 		return
@@ -414,6 +485,15 @@ local function step(_dt: number, _now: number): boolean
 				end
 				if not reduced then
 					local u = math.clamp((t - W.alertSeconds) / W.runSeconds, 0, 1)
+					local runs = (wild.stop - wild.home).Magnitude > 0.5
+					local given = wild.dust or 0
+					if runs and t >= W.alertSeconds and given < 1 then
+						wild.dust = 1
+						dust(wild, wild.home)
+					elseif runs and u >= 1 and given < 2 then
+						wild.dust = 2
+						dust(wild, wild.stop)
+					end
 					local e = 1 - (1 - u) * (1 - u)
 					local at = wild.home:Lerp(wild.stop, e)
 					at += Vector3.new(0, math.abs(math.sin(u * math.pi * 3)) * wild.height * W.bobShare * (1 - u), 0)
@@ -546,9 +626,11 @@ function HighwayCatchController.prepare(plan: Types.HighwayPlan)
 	scene.landing = landing
 	for i = 1, W.count do
 		local kind = kinds[(i - 1) % #kinds + 1]
-		local side = if i % 2 == 0 then 1 else -1
-		local x = side * rng:NextNumber(W.sideMin, W.sideMax)
-		local d = endAt.Z + rng:NextNumber(-W.behind, W.ahead)
+		-- Two rows (near, far) spread from behind to ahead, so they do not stand in each other.
+		local mid = (W.sideMin + W.sideMax) / 2
+		local x = WILD_SIDE
+			* (if i % 2 == 0 then rng:NextNumber(W.sideMin, mid) else rng:NextNumber(mid, W.sideMax))
+		local d = endAt.Z - W.behind + (i - 0.5 + rng:NextNumber(-0.3, 0.3)) / W.count * (W.behind + W.ahead)
 		local point = WorldLayout.highwayCFrame(x, 0, d).Position
 		local model, height = spawnModel(kind)
 		local ground = groundAt(point) or point.Y
@@ -652,6 +734,7 @@ end
 -- Leak checks and tests: everything drawn goes.
 function HighwayCatchController.destroy()
 	clearScene()
+	undim()
 	local handle = effect
 	effect = nil
 	if handle then

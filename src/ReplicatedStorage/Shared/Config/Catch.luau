@@ -43,6 +43,9 @@ local Catch = {
 		alertPx = 34,
 		alertHoldSeconds = 1.2, -- the "!" shows this long (Catch: gone by the hop)
 		bobShare = 0.25, -- a running one bobs up to this share of its height
+		-- Landing's dust puffs (owner 2026-11-12 "do everything"): a white puff at a running one's feet as it sets off
+		-- and as it stops (none under ReducedMotion: nobody runs).
+		dust = { count = 6, lifetime = 0.55, speed = 5, size = 2.6 },
 	},
 	-- The catch shot (the canvas's Landing / Catch pictures were taken from here): a landing that caught leaves the close
 	-- landing shot for a wider one, lane-local from the squishy: `side` right of, `up` above and `back` behind it,
@@ -119,9 +122,24 @@ local Catch = {
 			outMs = 250,
 		},
 		-- Home: the bubble flies from (fromX, fromY) of the screen to the Squishies button, then "+1" beside it.
-		fly = { px = 72, ms = 700, arc = 0.35, fromX = 0.52, fromY = 0.3, plusMs = 900, plusKind = "Found", halo = 3 },
+		-- dotPx / dotGap: Home's dotted flight line (white dots dotGap base px apart, each gone as the bubble passes it).
+		fly = {
+			px = 72,
+			ms = 700,
+			arc = 0.35,
+			fromX = 0.52,
+			fromY = 0.3,
+			plusMs = 900,
+			plusKind = "Found",
+			halo = 3,
+			dotPx = 7,
+			dotGap = 16,
+		},
 		bubble = { scale = 1.6, transparency = 0.55 },
 		beam = { height = 40, width = 6, transparency = 0.45 },
+		-- Rare (the vault's tier ladder: only the top tier dims the world): a Legendary catch dims the world (not the
+		-- screens) for a moment as it hops (a ColorCorrectionEffect, eased in, held, eased out).
+		dim = { brightness = -0.18, saturation = -0.2, inMs = 200, holdMs = 900, outMs = 500 },
 	},
 }
 
